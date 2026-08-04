@@ -158,6 +158,12 @@ Read in this order:
 
 ---
 
+## Branches
+
+- **`main`** — production. Only receives merges from `develop`.
+- **`develop`** — integration, the default branch. Feature branches
+  (`feat/...`) PR into here after review and green CI.
+
 ## Decisions made so far
 
 | Decision | Choice | Why |
