@@ -1,0 +1,12 @@
+
+=================================================================
+==3561==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 16 byte(s) in 1 object(s) allocated from:
+    #0 0xff042c1d4d48 in operator new[](unsigned long) ../../../../src/libsanitizer/lsan/lsan_interceptors.cpp:250
+    #1 0xab1344810824 in main /w/tests/fixtures/cpp/leak.cpp:6
+    #2 0xff042bca84c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xff042bca8594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #4 0xab134481072c in _start (/w/tests/fixtures/build/leak_lsan+0x72c) (BuildId: 0fab84dc4dbcf686ffda7ec98d9d03e24f145623)
+
+SUMMARY: LeakSanitizer: 16 byte(s) leaked in 1 allocation(s).

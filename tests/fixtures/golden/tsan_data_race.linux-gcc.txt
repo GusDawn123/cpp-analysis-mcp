@@ -1,0 +1,35 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=3531)
+  Read of size 4 at 0xaae2b2d6001c by thread T2:
+    #0 bump /w/tests/fixtures/cpp/data_race.cpp:11 (data_race_tsan+0xfb8) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (data_race_tsan+0x115c) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (data_race_tsan+0x115c)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (data_race_tsan+0x115c)
+    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (data_race_tsan+0x115c)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (data_race_tsan+0x115c)
+    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Previous write of size 4 at 0xaae2b2d6001c by thread T1:
+    #0 bump /w/tests/fixtures/cpp/data_race.cpp:11 (data_race_tsan+0xfe4) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (data_race_tsan+0x115c) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (data_race_tsan+0x115c)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (data_race_tsan+0x115c)
+    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (data_race_tsan+0x115c)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (data_race_tsan+0x115c)
+    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Location is global '(anonymous namespace)::counter' of size 4 at 0xaae2b2d6001c (data_race_tsan+0x2001c)
+
+  Thread T2 (tid=3534, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 main /w/tests/fixtures/cpp/data_race.cpp:20 (data_race_tsan+0x1048) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+
+  Thread T1 (tid=3533, finished) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 main /w/tests/fixtures/cpp/data_race.cpp:19 (data_race_tsan+0x1038) (BuildId: e6c63e85724aede3416d3d395c77ed290ec6bb88)
+
+SUMMARY: ThreadSanitizer: data race /w/tests/fixtures/cpp/data_race.cpp:11 in bump
+==================
+ThreadSanitizer: reported 1 warnings

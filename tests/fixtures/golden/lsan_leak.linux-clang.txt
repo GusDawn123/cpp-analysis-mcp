@@ -1,0 +1,12 @@
+
+=================================================================
+==4051==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 16 byte(s) in 1 object(s) allocated from:
+    #0 0xb312754446a4 in operator new[](unsigned long) (/w/tests/fixtures/build/leak_lsan+0x346a4) (BuildId: d6dfdd514447e46eca04918a1cd75743f695256d)
+    #1 0xb31275446cd0 in main /w/tests/fixtures/cpp/leak.cpp:6:28
+    #2 0xe121fa0884c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xe121fa088594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #4 0xb312754157ec in _start (/w/tests/fixtures/build/leak_lsan+0x57ec) (BuildId: d6dfdd514447e46eca04918a1cd75743f695256d)
+
+SUMMARY: LeakSanitizer: 16 byte(s) leaked in 1 allocation(s).

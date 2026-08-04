@@ -1,0 +1,25 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=68814)
+  Write of size 4 at 0x000100fdc000 by thread T2:
+    #0 (anonymous namespace)::bump() data_race.cpp:12 (data_race_tsan:arm64+0x1000007cc)
+    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (data_race_tsan:arm64+0x10000098c)
+
+  Previous write of size 4 at 0x000100fdc000 by thread T1:
+    #0 (anonymous namespace)::bump() data_race.cpp:12 (data_race_tsan:arm64+0x1000007cc)
+    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (data_race_tsan:arm64+0x10000098c)
+
+  Location is global '(anonymous namespace)::counter' at 0x000100fdc000 (data_race_tsan+0x100008000)
+
+  Thread T2 (tid=17348113, running) created by main thread at:
+    #0 pthread_create <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x33834)
+    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (data_race_tsan:arm64+0x100000874)
+    #2 main data_race.cpp:20 (data_race_tsan:arm64+0x100000734)
+
+  Thread T1 (tid=17348112, finished) created by main thread at:
+    #0 pthread_create <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x33834)
+    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (data_race_tsan:arm64+0x100000874)
+    #2 main data_race.cpp:19 (data_race_tsan:arm64+0x100000724)
+
+SUMMARY: ThreadSanitizer: data race data_race.cpp:12 in (anonymous namespace)::bump()
+==================
+ThreadSanitizer: reported 1 warnings

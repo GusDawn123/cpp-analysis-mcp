@@ -1,0 +1,56 @@
+=================================================================
+==3555==ERROR: AddressSanitizer: heap-use-after-free on address 0x502000000014 at pc 0xaab29d5b0bbc bp 0xffffd52e5fc0 sp 0xffffd52e5fb0
+READ of size 4 at 0x502000000014 thread T0
+    #0 0xaab29d5b0bb8 in main /w/tests/fixtures/cpp/use_after_free.cpp:8
+    #1 0xff3b958184c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #2 0xff3b95818594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xaab29d5b092c in _start (/w/tests/fixtures/build/use_after_free_asan+0x92c) (BuildId: 4ae6402b99aa1acd70f332efc8c61d5f747756c6)
+
+0x502000000014 is located 4 bytes inside of 16-byte region [0x502000000010,0x502000000020)
+freed by thread T0 here:
+    #0 0xff3b95e1901c in operator delete[](void*) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:155
+    #1 0xaab29d5b0b34 in main /w/tests/fixtures/cpp/use_after_free.cpp:6
+    #2 0xff3b958184c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xff3b95818594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #4 0xaab29d5b092c in _start (/w/tests/fixtures/build/use_after_free_asan+0x92c) (BuildId: 4ae6402b99aa1acd70f332efc8c61d5f747756c6)
+
+previously allocated by thread T0 here:
+    #0 0xff3b95e184a8 in operator new[](unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:98
+    #1 0xaab29d5b0a90 in main /w/tests/fixtures/cpp/use_after_free.cpp:5
+    #2 0xff3b958184c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xff3b95818594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #4 0xaab29d5b092c in _start (/w/tests/fixtures/build/use_after_free_asan+0x92c) (BuildId: 4ae6402b99aa1acd70f332efc8c61d5f747756c6)
+
+SUMMARY: AddressSanitizer: heap-use-after-free /w/tests/fixtures/cpp/use_after_free.cpp:8 in main
+Shadow bytes around the buggy address:
+  0x501ffffffd80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501ffffffe00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501ffffffe80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501fffffff00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501fffffff80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+=>0x502000000000: fa fa[fd]fd fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000080: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000100: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07 
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==3555==ABORTING

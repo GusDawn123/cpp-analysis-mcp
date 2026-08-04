@@ -1,0 +1,7 @@
+/w/tests/fixtures/cpp/signed_overflow.cpp:10:11: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+    #0 0xb7441f8ef1cc in main /w/tests/fixtures/cpp/signed_overflow.cpp:10:11
+    #1 0xf3f4e23f84c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #2 0xf3f4e23f8594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xb7441f8c4e6c in _start (/w/tests/fixtures/build/signed_overflow_ubsan+0x4e6c) (BuildId: ca50118fa8b63e802ddf01b5564d76fae790f04f)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior /w/tests/fixtures/cpp/signed_overflow.cpp:10:11 

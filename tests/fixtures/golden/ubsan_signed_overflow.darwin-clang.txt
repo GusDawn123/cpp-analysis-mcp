@@ -1,0 +1,5 @@
+/Users/gustavorosas/Documents/cpp-analysis-mcp/tests/fixtures/cpp/signed_overflow.cpp:10:11: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+    #0 0x0001008786a4 in main signed_overflow.cpp:10
+    #1 0x000182b73dfc in start+0x1b4c (dyld:arm64e+0x1fdfc)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior /Users/gustavorosas/Documents/cpp-analysis-mcp/tests/fixtures/cpp/signed_overflow.cpp:10:11 
