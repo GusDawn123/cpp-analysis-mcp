@@ -68,6 +68,14 @@ SUPPORT: list[Case] = [
         expect=("WARNING: ThreadSanitizer: data race",),
     ),
     Case(
+        fixture="race_with_lock",
+        sanitizer="thread",
+        tool="tsan",
+        # The second marker guarantees goldens carry mutex annotations, which
+        # the tsan parser's locks_held extraction is tested against.
+        expect=("WARNING: ThreadSanitizer: data race", "(mutexes:"),
+    ),
+    Case(
         fixture="deadlock",
         sanitizer="thread",
         tool="tsan",

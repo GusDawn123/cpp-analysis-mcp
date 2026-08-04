@@ -1,0 +1,48 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=4120)
+  Write of size 4 at 0xab5e401138e8 by thread T2:
+    #0 (anonymous namespace)::unlocked_bump() /w/tests/fixtures/cpp/race_with_lock.cpp:23:9 (race_with_lock_tsan+0xf49dc) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (race_with_lock_tsan+0xf4a5c) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (race_with_lock_tsan+0xf4a5c)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (race_with_lock_tsan+0xf4a5c)
+    #4 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (race_with_lock_tsan+0xf4a5c)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (race_with_lock_tsan+0xf4a5c)
+    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Previous write of size 4 at 0xab5e401138e8 by thread T1 (mutexes: write M0):
+    #0 (anonymous namespace)::locked_bump() /w/tests/fixtures/cpp/race_with_lock.cpp:17:9 (race_with_lock_tsan+0xf496c) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (race_with_lock_tsan+0xf4a5c) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (race_with_lock_tsan+0xf4a5c)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (race_with_lock_tsan+0xf4a5c)
+    #4 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (race_with_lock_tsan+0xf4a5c)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (race_with_lock_tsan+0xf4a5c)
+    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Location is global '(anonymous namespace)::counter' of size 4 at 0xab5e401138e8 (race_with_lock_tsan+0x15f38e8)
+
+  Mutex M0 (0xab5e401138f0) created at:
+    #0 pthread_mutex_lock <null> (race_with_lock_tsan+0x6b9ec) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749:12 (race_with_lock_tsan+0xf4958) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #2 std::mutex::lock() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_mutex.h:113:17 (race_with_lock_tsan+0xf4958)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/mutex:779:19 (race_with_lock_tsan+0xf4958)
+    #4 (anonymous namespace)::locked_bump() /w/tests/fixtures/cpp/race_with_lock.cpp:16:26 (race_with_lock_tsan+0xf4958)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (race_with_lock_tsan+0xf4a5c) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (race_with_lock_tsan+0xf4a5c)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (race_with_lock_tsan+0xf4a5c)
+    #8 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (race_with_lock_tsan+0xf4a5c)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (race_with_lock_tsan+0xf4a5c)
+    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Thread T2 (tid=4123, running) created by main thread at:
+    #0 pthread_create <null> (race_with_lock_tsan+0x699f8) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 <null> <null> (libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+
+  Thread T1 (tid=4122, running) created by main thread at:
+    #0 pthread_create <null> (race_with_lock_tsan+0x699f8) (BuildId: d3d15155df0879383ddbf462bb9859f27392fc87)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 <null> <null> (libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+
+SUMMARY: ThreadSanitizer: data race /w/tests/fixtures/cpp/race_with_lock.cpp:23:9 in (anonymous namespace)::unlocked_bump()
+==================
+ThreadSanitizer: reported 1 warnings
