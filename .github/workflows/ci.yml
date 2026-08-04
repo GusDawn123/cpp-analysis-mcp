@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feat/**"
+
+# Supersede an in-flight run when the same ref gets a new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # v7 is the newest floating major tag setup-uv publishes; later releases
+      # are exact-version tags only, so @v8/@v9 will not resolve.
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: make lint
+      - run: make type
+
+  unit:
+    name: unit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: make test
+
+  fixtures:
+    name: fixtures (${{ matrix.os }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every compiler's verdict, not just the first one to fail.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            compiler: clang++
+          - os: ubuntu-24.04
+            compiler: g++
+          - os: macos-15
+            compiler: clang++
+    steps:
+      - uses: actions/checkout@v7
+      # Skip uv on purpose: the script is stdlib-only and this job proves it
+      # still runs bare. It SKIPs the cases its platform cannot support.
+      - run: python3 scripts/fixtures.py --compiler ${{ matrix.compiler }} validate

@@ -1,0 +1,31 @@
+# Refresh the Linux golden files after sanitizer output formats drift.
+# Run it by hand, download the "linux-goldens" artifact, diff it against
+# tests/fixtures/golden/, and commit the changes you agree with. This workflow
+# never commits anything itself.
+#
+# The artifact carries the whole golden directory, so the checked-in darwin
+# files ride along unchanged -- only the linux-* files are newly written.
+
+name: Capture goldens
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # Each compiler writes its own linux-clang / linux-gcc files, so the
+      # second run adds to the first rather than overwriting it.
+      - name: Capture with clang++
+        run: python3 scripts/fixtures.py --compiler clang++ capture
+
+      - name: Capture with g++
+        run: python3 scripts/fixtures.py --compiler g++ capture
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-goldens
+          path: tests/fixtures/golden/
