@@ -11,6 +11,7 @@ src/ -- this script predates the package and runs bare in CI.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import platform
 import shutil
@@ -145,15 +146,20 @@ def compiler_family(compiler: str) -> str:
 def run_env() -> dict[str, str]:
     """Build the child environment: inherited, plus pinned sanitizer options."""
     env = dict(os.environ)
-    env.pop("ASAN_OPTIONS", None)  # drop a developer's shell setting
+    # Drop developer shell settings that would change sanitizer output.
+    env.pop("ASAN_OPTIONS", None)
+    env.pop("LSAN_OPTIONS", None)
     env.update(PINNED_ENV)
     return env
 
 
 def run_command(
     cmd: list[str], env: dict[str, str], timeout: int = RUN_TIMEOUT_S
-) -> tuple[int, str]:
-    """Run a command with stderr merged into stdout. Returns (exit code, output)."""
+) -> tuple[int | None, str]:
+    """Run a command with stderr merged into stdout.
+
+    Returns (exit code, output); the code is None when the run timed out.
+    """
     # New session so a hung sanitizer takes its symbolizer child down with it.
     proc = subprocess.Popen(
         cmd,
@@ -167,9 +173,12 @@ def run_command(
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        # start_new_session made the child its own group leader, so its pid is
+        # the pgid; it may also exit on its own between the timeout and the kill.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
         output, _ = proc.communicate()
-        return -1, (output or "") + f"\n[killed after {timeout}s timeout]\n"
+        return None, (output or "") + f"\n[killed after {timeout}s timeout]\n"
     return proc.returncode, output
 
 
@@ -212,6 +221,9 @@ def build_and_run(case: Case, compiler: str) -> tuple[str, str]:
     if not ok:
         return "", "compile failed: " + excerpt(compile_output)
     code, output = run_command([str(binary_path(case))], run_env())
+    # A marker printed before a hang must not count as a pass.
+    if code is None:
+        return output, "run timed out: " + excerpt(output)
     if case.require_exit_zero and code != 0:
         return output, f"expected exit 0, got {code}: " + excerpt(output)
     return output, ""
