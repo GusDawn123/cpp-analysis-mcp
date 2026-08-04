@@ -1,0 +1,186 @@
+"""Enforce the four layer rules from docs/architecture.md by reading the source tree.
+
+Each rule is checked by parsing the real files under src/cpp_analysis_mcp with ast,
+so a violation fails a test instead of relying on review discipline. Most of the
+package is still docstring stubs; these tests are the ratchet for what gets added.
+"""
+
+from __future__ import annotations
+
+import ast
+from collections.abc import Iterator
+from pathlib import Path
+
+from helpers import PACKAGE_DIR, SRC_DIR
+
+PACKAGE_NAME = PACKAGE_DIR.name
+PIPELINES = f"{PACKAGE_NAME}.pipelines"
+
+# the layers below pipelines: they may be imported by a pipeline, never the reverse
+PRIMITIVE_PACKAGES = ("build", "parsers", "platforms", "toolchains")
+
+SERVER = PACKAGE_DIR / "server.py"
+
+CONTROL_FLOW_NODES = (
+    ast.If,
+    ast.IfExp,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.Try,
+    ast.TryStar,
+    ast.With,
+    ast.AsyncWith,
+    ast.Match,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
+IMPURE_ATTRIBUTES = ("os.system", "os.popen")
+
+
+def modules_in(*package_names: str) -> list[Path]:
+    """Return every .py file under the named subpackages, nested ones included."""
+    found: list[Path] = []
+    for name in package_names:
+        found.extend(sorted((PACKAGE_DIR / name).rglob("*.py")))
+    return found
+
+
+def parse(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def package_of(path: Path) -> str:
+    """Return the package a module's relative imports resolve against."""
+    parts = path.relative_to(SRC_DIR).parts
+    return ".".join(parts[:-1])
+
+
+def import_targets(node: ast.stmt, package: str) -> list[str]:
+    """Return the dotted names one import statement pulls in, relative forms resolved.
+
+    `from ..pipelines import sanitize` inside cpp_analysis_mcp.build yields both
+    cpp_analysis_mcp.pipelines and cpp_analysis_mcp.pipelines.sanitize, since the
+    imported name may be either a submodule or an attribute of the package.
+    """
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+
+    base = node.module or ""
+    if node.level:
+        parts = package.split(".")
+        prefix = parts[: len(parts) - node.level + 1]
+        base = ".".join([*prefix, base]) if base else ".".join(prefix)
+    if not base:
+        return [alias.name for alias in node.names]
+    return [base, *(f"{base}.{alias.name}" for alias in node.names)]
+
+
+def imports_of(tree: ast.Module, package: str) -> Iterator[tuple[ast.stmt, list[str]]]:
+    """Yield each import statement in a module with the dotted names it reaches."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            yield node, import_targets(node, package)
+
+
+def reaches(target: str, package: str) -> bool:
+    """Report whether a dotted name is that package or something inside it."""
+    return target == package or target.startswith(f"{package}.")
+
+
+def test_layer_packages_exist() -> None:
+    """Guard the rules below: a renamed directory would make them pass vacuously."""
+    expected = (*PRIMITIVE_PACKAGES, "pipelines")
+    missing = [name for name in expected if not (PACKAGE_DIR / name).is_dir()]
+    assert not missing, f"missing layer packages under {PACKAGE_DIR}: {missing}"
+    assert SERVER.is_file(), f"missing {SERVER}"
+    assert modules_in(*expected), f"no python modules found under {PACKAGE_DIR}"
+
+
+def test_primitives_do_not_import_pipelines() -> None:
+    """Rule 1: layers only point downward -- no primitive imports an orchestrator."""
+    violations: list[str] = []
+    for path in modules_in(*PRIMITIVE_PACKAGES):
+        package = package_of(path)
+        for node, targets in imports_of(parse(path), package):
+            offending = [target for target in targets if reaches(target, PIPELINES)]
+            if offending:
+                violations.append(f"{path}:{node.lineno} imports {offending[0]}")
+
+    assert not violations, "primitives must not import pipelines:\n" + "\n".join(violations)
+
+
+def test_pipelines_do_not_import_each_other() -> None:
+    """Rule 1, second half: a pipeline composes primitives, never another pipeline."""
+    violations: list[str] = []
+    # __init__.py is exempt: importing a submodule there is re-export, not one
+    # pipeline calling another.
+    for path in modules_in("pipelines"):
+        if path.name == "__init__.py":
+            continue
+        own_module = f"{PIPELINES}.{path.stem}"
+        package = package_of(path)
+        for node, targets in imports_of(parse(path), package):
+            offending = [
+                target
+                for target in targets
+                if reaches(target, PIPELINES)
+                and target != PIPELINES
+                and not reaches(target, own_module)
+            ]
+            if offending:
+                violations.append(f"{path}:{node.lineno} imports sibling {offending[0]}")
+
+    assert not violations, "no pipeline may import another pipeline:\n" + "\n".join(violations)
+
+
+def test_server_has_no_control_flow() -> None:
+    """Rule 2: handlers declare inputs and delegate; an `if` means logic leaked up."""
+    violations = [
+        f"{SERVER}:{node.lineno} contains {type(node).__name__}"
+        for node in ast.walk(parse(SERVER))
+        if isinstance(node, CONTROL_FLOW_NODES)
+    ]
+
+    assert not violations, "server.py must hold no control flow:\n" + "\n".join(violations)
+
+
+def test_parsers_are_pure() -> None:
+    """Rule 4: text in, findings out -- no subprocess, no filesystem."""
+    violations: list[str] = []
+    for path in modules_in("parsers"):
+        tree = parse(path)
+        package = package_of(path)
+
+        for node, targets in imports_of(tree, package):
+            if any(reaches(target, "subprocess") for target in targets):
+                violations.append(f"{path}:{node.lineno} imports subprocess")
+            for name in IMPURE_ATTRIBUTES:
+                if name in targets:
+                    violations.append(f"{path}:{node.lineno} imports {name}")
+
+        for child in ast.walk(tree):
+            if (
+                isinstance(child, ast.Attribute)
+                and isinstance(child.value, ast.Name)
+                and f"{child.value.id}.{child.attr}" in IMPURE_ATTRIBUTES
+            ):
+                violations.append(f"{path}:{child.lineno} references {child.value.id}.{child.attr}")
+            if isinstance(child, ast.Call) and _callee_name(child.func) == "open":
+                violations.append(f"{path}:{child.lineno} calls open()")
+
+    assert not violations, "parsers must stay pure:\n" + "\n".join(violations)
+
+
+def _callee_name(func: ast.expr) -> str:
+    """Return the last name in a call target: `open`, `p.open` -> open."""
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return ""
