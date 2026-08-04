@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - develop
       - "feat/**"
 
 # Supersede an in-flight run when the same ref gets a new push.
