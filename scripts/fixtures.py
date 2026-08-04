@@ -53,6 +53,9 @@ class Case:
     forbid: tuple[str, ...] = ()  # substrings that must not appear
     platforms: frozenset[str] = frozenset({"darwin", "linux"})
     skip_reason: str = ""
+    # Controls must actually run: a crashed program prints no forbidden
+    # markers, and that silence must not count as a pass.
+    require_exit_zero: bool = False
 
 
 # Ground truth: which fixture proves which tool still works, and where.
@@ -101,10 +104,28 @@ SUPPORT: list[Case] = [
         tool="ubsan",
         expect=("runtime error: signed integer overflow",),
     ),
-    # The control: three runs that must all come back silent.
-    Case(fixture="clean", sanitizer="thread", tool="tsan", forbid=SANITIZER_MARKERS),
-    Case(fixture="clean", sanitizer="address", tool="asan", forbid=SANITIZER_MARKERS),
-    Case(fixture="clean", sanitizer="undefined", tool="ubsan", forbid=SANITIZER_MARKERS),
+    # The control: three runs that must all come back silent AND exit 0.
+    Case(
+        fixture="clean",
+        sanitizer="thread",
+        tool="tsan",
+        forbid=SANITIZER_MARKERS,
+        require_exit_zero=True,
+    ),
+    Case(
+        fixture="clean",
+        sanitizer="address",
+        tool="asan",
+        forbid=SANITIZER_MARKERS,
+        require_exit_zero=True,
+    ),
+    Case(
+        fixture="clean",
+        sanitizer="undefined",
+        tool="ubsan",
+        forbid=SANITIZER_MARKERS,
+        require_exit_zero=True,
+    ),
 ]
 
 
@@ -190,7 +211,9 @@ def build_and_run(case: Case, compiler: str) -> tuple[str, str]:
     ok, compile_output = compile_case(case, compiler)
     if not ok:
         return "", "compile failed: " + excerpt(compile_output)
-    _, output = run_command([str(binary_path(case))], run_env())
+    code, output = run_command([str(binary_path(case))], run_env())
+    if case.require_exit_zero and code != 0:
+        return output, f"expected exit 0, got {code}: " + excerpt(output)
     return output, ""
 
 

@@ -15,3 +15,7 @@ tests/fixtures/**/build/
 *.o
 a.out
 *.dSYM/
+
+# container crashes drop core dumps at the bind-mount root
+/core
+/core.*

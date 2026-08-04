@@ -1,0 +1,49 @@
+=================================================================
+==4041==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x502000000020 at pc 0xb28940d62cdc bp 0xffffcb3406e0 sp 0xffffcb3406d8
+WRITE of size 4 at 0x502000000020 thread T0
+    #0 0xb28940d62cd8 in main /w/tests/fixtures/cpp/heap_overflow.cpp:10:17
+    #1 0xfe7b07af84c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #2 0xfe7b07af8594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xb28940c8456c in _start (/w/tests/fixtures/build/heap_overflow_asan+0x3456c) (BuildId: 006c228f0712eba2a7fd5d9e89e26d96a401b82a)
+
+0x502000000020 is located 0 bytes after 16-byte region [0x502000000010,0x502000000020)
+allocated by thread T0 here:
+    #0 0xb28940d60b68 in operator new[](unsigned long) (/w/tests/fixtures/build/heap_overflow_asan+0x110b68) (BuildId: 006c228f0712eba2a7fd5d9e89e26d96a401b82a)
+    #1 0xb28940d62c78 in main /w/tests/fixtures/cpp/heap_overflow.cpp:8:19
+    #2 0xfe7b07af84c0  (/lib/aarch64-linux-gnu/libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #3 0xfe7b07af8594 in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x28594) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+    #4 0xb28940c8456c in _start (/w/tests/fixtures/build/heap_overflow_asan+0x3456c) (BuildId: 006c228f0712eba2a7fd5d9e89e26d96a401b82a)
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow /w/tests/fixtures/cpp/heap_overflow.cpp:10:17 in main
+Shadow bytes around the buggy address:
+  0x501ffffffd80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501ffffffe00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501ffffffe80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501fffffff00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x501fffffff80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+=>0x502000000000: fa fa 00 00[fa]fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000080: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000100: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000000280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07 
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==4041==ABORTING

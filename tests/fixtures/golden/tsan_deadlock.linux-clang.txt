@@ -1,0 +1,69 @@
+==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=4033)
+  Cycle in lock order graph: M0 (0xaaaaac0938e8) => M1 (0xaaaaac093918) => M0
+
+  Mutex M1 acquired here while holding mutex M0 in thread T1:
+    #0 pthread_mutex_lock <null> (deadlock_tsan+0x6b9ec) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749:12 (deadlock_tsan+0xf4950) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #2 std::mutex::lock() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_mutex.h:113:17 (deadlock_tsan+0xf4950)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/mutex:779:19 (deadlock_tsan+0xf4950)
+    #4 (anonymous namespace)::lock_a_then_b() /w/tests/fixtures/cpp/deadlock.cpp:16:22 (deadlock_tsan+0xf4950)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (deadlock_tsan+0xf4aa0) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (deadlock_tsan+0xf4aa0)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (deadlock_tsan+0xf4aa0)
+    #8 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (deadlock_tsan+0xf4aa0)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (deadlock_tsan+0xf4aa0)
+    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Mutex M0 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (deadlock_tsan+0x6b9ec) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749:12 (deadlock_tsan+0xf4940) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #2 std::mutex::lock() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_mutex.h:113:17 (deadlock_tsan+0xf4940)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/mutex:779:19 (deadlock_tsan+0xf4940)
+    #4 (anonymous namespace)::lock_a_then_b() /w/tests/fixtures/cpp/deadlock.cpp:15:22 (deadlock_tsan+0xf4940)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (deadlock_tsan+0xf4aa0) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (deadlock_tsan+0xf4aa0)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (deadlock_tsan+0xf4aa0)
+    #8 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (deadlock_tsan+0xf4aa0)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (deadlock_tsan+0xf4aa0)
+    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Mutex M0 acquired here while holding mutex M1 in thread T2:
+    #0 pthread_mutex_lock <null> (deadlock_tsan+0x6b9ec) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749:12 (deadlock_tsan+0xf49dc) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #2 std::mutex::lock() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_mutex.h:113:17 (deadlock_tsan+0xf49dc)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/mutex:779:19 (deadlock_tsan+0xf49dc)
+    #4 (anonymous namespace)::lock_b_then_a() /w/tests/fixtures/cpp/deadlock.cpp:21:22 (deadlock_tsan+0xf49dc)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (deadlock_tsan+0xf4aa0) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (deadlock_tsan+0xf4aa0)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (deadlock_tsan+0xf4aa0)
+    #8 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (deadlock_tsan+0xf4aa0)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (deadlock_tsan+0xf4aa0)
+    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Mutex M1 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (deadlock_tsan+0x6b9ec) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749:12 (deadlock_tsan+0xf49cc) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #2 std::mutex::lock() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_mutex.h:113:17 (deadlock_tsan+0xf49cc)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/mutex:779:19 (deadlock_tsan+0xf49cc)
+    #4 (anonymous namespace)::lock_b_then_a() /w/tests/fixtures/cpp/deadlock.cpp:20:22 (deadlock_tsan+0xf49cc)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:61:14 (deadlock_tsan+0xf4aa0) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/invoke.h:96:14 (deadlock_tsan+0xf4aa0)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:292:13 (deadlock_tsan+0xf4aa0)
+    #8 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:299:11 (deadlock_tsan+0xf4aa0)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/bin/../lib/gcc/aarch64-linux-gnu/13/../../../../include/c++/13/bits/std_thread.h:244:13 (deadlock_tsan+0xf4aa0)
+    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+
+  Thread T1 (tid=4035, finished) created by main thread at:
+    #0 pthread_create <null> (deadlock_tsan+0x699f8) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 <null> <null> (libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+
+  Thread T2 (tid=4036, running) created by main thread at:
+    #0 pthread_create <null> (deadlock_tsan+0x699f8) (BuildId: b81a7f4833f71316d9704040625515e06d35e470)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
+    #2 <null> <null> (libc.so.6+0x284c0) (BuildId: 54ae5337044aaabab70d65e0c3444f7e4735e059)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/w/tests/fixtures/build/deadlock_tsan+0x6b9ec) (BuildId: b81a7f4833f71316d9704040625515e06d35e470) in pthread_mutex_lock
+==================
+ThreadSanitizer: reported 1 warnings
