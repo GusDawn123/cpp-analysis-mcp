@@ -43,17 +43,60 @@ project is that wiring.
 
 ## What it does
 
-Two kinds of question:
+Three kinds of question.
 
-**"Is my code wrong?"**
+### "Is my code wrong?"
+
 - **ThreadSanitizer** finds data races like the one above
 - **AddressSanitizer** finds memory corruption — buffer overflows, use-after-free
+- **LeakSanitizer** finds memory that is allocated and never released
+- **UndefinedBehaviorSanitizer** finds the bugs that appear only once you turn
+  optimization on
 - **clang-tidy** finds suspicious patterns without running anything
 - **`-Wthread-safety`** catches missing locks at compile time, if you annotate
 
-**"Is my code slow?"**
+### "Is my code slow?"
+
 - **Profilers** measure where a running program actually spends its time
   (`perf` on Linux, `xctrace` on macOS, ETW on Windows)
+
+### "Is my code wasteful?"
+
+Separate from whether memory handling is *broken* — this is how much you use,
+where it comes from, and whether you are allocating somewhere you cannot afford
+to.
+
+- **Heap profilers** show which lines allocate the most, and how usage grows over
+  time (`heaptrack` on Linux, Instruments Allocations on macOS)
+- **Allocation-in-hot-path detection** — a single `malloc` in a latency-critical
+  path can cost more than everything else in the function
+- **False sharing detection** (`perf c2c`) — when two threads write to two
+  *different* variables that happen to share a 64-byte cache line. No race, code
+  is correct, throughput drops 10x, and every other tool here is blind to it.
+  Largely x86-only; ARM support is thin and macOS has no equivalent.
+
+---
+
+## It works with the build you already have
+
+You do not switch compilers or restructure your project to use this.
+
+The server detects what your project already compiles with and adapts —
+clang or gcc, and MSVC where it can. Where a given compiler genuinely cannot do
+something, it says so plainly instead of returning an empty result that looks
+like a clean bill of health.
+
+| | clang | gcc | MSVC |
+|---|---|---|---|
+| ThreadSanitizer | yes | yes | no — needs WSL |
+| AddressSanitizer | yes | yes | yes |
+| UBSan / LeakSanitizer | yes | yes | no |
+| `-Wthread-safety` | yes | no equivalent | no |
+| clang-tidy | yes | yes | yes |
+
+gcc support costs almost nothing because gcc does not write its own sanitizers —
+it vendors LLVM's runtime library. Same code, same report format, so the parsers
+work unchanged.
 
 The value is not any single tool. It is that **no single tool finds most bugs** —
 their coverage barely overlaps. Given the buggy program above:

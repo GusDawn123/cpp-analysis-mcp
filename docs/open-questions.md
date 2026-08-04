@@ -33,13 +33,50 @@ are nearly free and often make the rest unnecessary.
 
 **a. Trim stack frames to user code.** A raw ThreadSanitizer stack is ~20 frames,
 of which ~15 are `std::` internals, libc, and pthread machinery nobody reads.
-Keeping only frames whose file path is inside the project directory, plus one
-boundary frame for context, cuts a finding by roughly 60% and loses nothing
-useful.
 
-**b. Deduplicate.** Fifty reported races are usually three real bugs hit
-repeatedly in a loop. Group by `(category, file, line)` and report an occurrence
-count. Free, and frequently solves the whole problem.
+The rule is a path comparison, not a judgement: keep frames whose file path is
+inside the project directory, drop the rest, and replace them with a marker
+recording how many were hidden and that they were library code.
+
+```
+  #0 OrderBook::add_fill       src/order_book.cpp:147     kept
+  #1 FeedHandler::on_message   src/feed.cpp:210           kept
+  [+7 frames of std::thread machinery]                    marker
+```
+
+Those seven frames appear in every threaded C++ program ever written. Cuts a
+finding by roughly 60%.
+
+Known limits: if the bug is inside a third-party library, or in a header-only
+library like Boost or Eigen, the relevant frames get trimmed. The caller's frame
+in user code survives, which is the line a developer would edit anyway. An
+`include_system_frames` parameter is the escape hatch.
+
+**b. Group identical findings.** Fifty reported races are usually three real bugs
+hit repeatedly in a loop. Report an occurrence count instead of fifty copies.
+
+The grouping key must be **the pair of locations**, not one:
+
+```
+(category, write_location, read_location)
+```
+
+An earlier draft keyed on a single location, which was wrong. A race is between
+two places, so one write site can race with two different read sites — genuinely
+two bugs. Keying on one location would merge them and silently discard the
+second. Keying on the pair means grouping only ever merges findings identical in
+every way that matters.
+
+### The safety property underneath all of this
+
+**Nothing is ever deleted.** The complete tool output is always written to disk
+and its path returned. Trimming and grouping decide what to show *first*; they
+never destroy data. If the summarized view does not explain the bug, the AI opens
+the raw log and reads or greps all of it — it already has file tools.
+
+This is testable rather than hoped for. The `fixtures/cpp/` programs contain
+deliberately planted bugs at known lines, so a test asserts that the *trimmed*
+output still identifies them. Any rule that cuts too aggressively turns CI red.
 
 After (a) and (b), the 47-finding example often collapses to ~6 unique findings
 at ~2,400 tokens — comfortably within budget, no truncation needed.
@@ -171,7 +208,48 @@ cpp_analyze_snippet()   fast path for a single self-contained file
 
 ---
 
-## 6. Where to cut v1
+## 6. Memory profiling — a third category we nearly missed
+
+The original goal was tooling for **multithreaded, low-latency, and
+memory-efficient** C++. The first draft of this design covered the first two and
+silently dropped the third.
+
+"Is my memory handling broken?" (AddressSanitizer, LeakSanitizer) is a different
+question from **"how much memory am I using, where does it come from, and am I
+allocating somewhere I cannot afford to?"** For low-latency work the second is
+often the more important one — a single allocation in a hot path can cost more
+than the rest of the function.
+
+| Question | Linux | macOS | Windows |
+|---|---|---|---|
+| Total usage and growth over time | heaptrack, `/proc/<pid>/smaps` | `footprint`, `vmmap` | VMMap |
+| Which lines allocate the most | heaptrack | Instruments Allocations | ETW |
+| Short-lived allocation churn | Valgrind DHAT | Instruments | — |
+| False sharing between threads | `perf c2c` | no equivalent | — |
+
+**False sharing deserves specific attention.** Two threads writing to two
+*different* variables that happen to share a 64-byte cache line. There is no
+race — the code is correct — but the cache line ping-pongs between cores on every
+write and throughput can drop tenfold. TSan sees nothing because there is no
+race. A normal profiler shows a slow function with no explanation. `perf c2c` is
+purpose-built for it.
+
+It is also the sharpest platform-portability problem in the project: it depends
+on specific Intel/AMD performance-counter events, so it is largely x86-only, ARM
+Linux support is thin, and macOS has nothing comparable.
+
+**Open:**
+- Does memory profiling belong in v1, or with general profiling in v2? It is
+  Tier 2 work — heaptrack, Instruments, and VMMap share nothing.
+- Is false sharing detection worth shipping as an x86-Linux-only feature? It is
+  high value for the target audience and genuinely hard to find another way, but
+  it would be the first capability with no path to the other platforms at all.
+- Is "am I allocating in a hot path" better served by heap profiling, or by
+  cross-referencing profiler output against allocation sites?
+
+---
+
+## 7. Where to cut v1
 
 Everything above describes the full vision. What actually ships first?
 
