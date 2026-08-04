@@ -1,5 +1,17 @@
 __pycache__/
 *.py[cod]
 .venv/
-build*/
+.mypy_cache/
+.ruff_cache/
 .pytest_cache/
+.coverage
+htmlcov/
+dist/
+
+# root-anchored so it does not swallow src/cpp_analysis_mcp/build/
+/build/
+tests/fixtures/**/build/
+
+*.o
+a.out
+*.dSYM/
