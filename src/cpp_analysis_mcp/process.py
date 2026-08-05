@@ -18,6 +18,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 # a sanitized run inherits these from the developer's shell and then reports something else
 SANITIZER_ENV_VARS = ("ASAN_OPTIONS", "LSAN_OPTIONS", "TSAN_OPTIONS", "UBSAN_OPTIONS")
@@ -69,6 +70,23 @@ def run(
             output=(output or "") + f"\n[killed after {timeout_s}s timeout]\n",
         )
     return RunResult(exit_code=proc.returncode, output=output)
+
+
+class Runner(Protocol):
+    """run's call shape, named so anything that spawns can be handed a fake instead.
+
+    Lives here rather than beside its callers so every layer that takes a runner takes the
+    same one, and a test can inject something that never reaches a subprocess.
+    """
+
+    def __call__(
+        self,
+        cmd: Sequence[str],
+        *,
+        timeout_s: int,
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
+    ) -> RunResult: ...
 
 
 def hygienic_env(overrides: Mapping[str, str]) -> dict[str, str]:

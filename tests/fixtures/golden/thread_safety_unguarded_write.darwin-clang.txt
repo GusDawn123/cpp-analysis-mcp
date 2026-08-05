@@ -1,0 +1,4 @@
+tests/fixtures/cpp/unguarded_write.cpp:21:5: warning: writing variable 'counter' requires holding mutex 'counter_mutex' exclusively [-Wthread-safety-analysis]
+   21 |     counter = 1;  // BUG: writes a guarded variable with no lock held
+      |     ^
+1 warning generated.

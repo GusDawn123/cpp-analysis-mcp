@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 
 
 class SanitizerKind(StrEnum):
@@ -119,6 +120,30 @@ class BuiltBinary:
     compile_commands: Path | None
     # -Wthread-safety fires at compile time, so building already produces findings
     warnings: tuple[Finding, ...]
+
+    def __post_init__(self) -> None:
+        # frozen= stops rebinding but not editing inside the mapping; the proxy copy also
+        # unshares the pinned table a builder hands in
+        object.__setattr__(self, "runtime_env", MappingProxyType(dict(self.runtime_env)))
+
+
+@dataclass(frozen=True, slots=True)
+class BuildFailure:
+    """A build that produced no binary, reported as facts.
+
+    User code that does not compile is an expected outcome of asking to build it, not an
+    internal error, so it comes back as a return value rather than an exception: the caller
+    reads which step died and what the tool said instead of catching something.
+    """
+
+    stage: str  # "configure", "compile" or "build" -- which step died
+    # the tool's full output, stderr merged in, kept whole so nothing a reader needs is cut
+    output: str
+    # what the platform's failure signature said, when one matched; None when the output
+    # explains itself and inventing a reason would be worse than quoting the tool
+    reason: str | None = None
+    suggestion: str | None = None
+    timed_out: bool = False
 
 
 @dataclass(frozen=True, slots=True)

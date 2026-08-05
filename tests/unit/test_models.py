@@ -16,6 +16,7 @@ from cpp_analysis_mcp.models import (
     SANITIZER_FOR,
     AccessOp,
     Analysis,
+    BuildFailure,
     BuiltBinary,
     CapabilityStatus,
     Finding,
@@ -51,6 +52,10 @@ def a_built_binary() -> BuiltBinary:
         compile_commands=None,
         warnings=(),
     )
+
+
+def a_build_failure() -> BuildFailure:
+    return BuildFailure(stage="compile", output="a.cpp:1:1: error: expected ';'\n")
 
 
 def test_enum_values_are_the_strings_tools_use() -> None:
@@ -120,6 +125,7 @@ def test_instances_use_slots() -> None:
         a_finding(),
         CapabilityStatus(available=True),
         a_built_binary(),
+        a_build_failure(),
         Hotspot(function="bump()", self_pct=1.0, total_pct=1.0),
     )
 
@@ -190,6 +196,64 @@ def test_built_binary_takes_a_plain_dict_for_runtime_env() -> None:
     assert binary.compile_commands is None
     assert binary.sanitizer == "thread"
     assert binary.warnings == ()
+
+
+def test_built_binary_runtime_env_rejects_item_assignment() -> None:
+    """frozen= stops rebinding the field; the proxy stops editing what is inside it.
+
+    An edit here would be a binary whose environment stopped matching how it was compiled.
+    """
+    binary = a_built_binary()
+
+    with pytest.raises(TypeError):
+        binary.runtime_env["TSAN_OPTIONS"] = "history_size=0"  # type: ignore[index]
+
+    assert binary.runtime_env["TSAN_OPTIONS"] == "history_size=7"
+
+
+def test_built_binary_unshares_the_mapping_it_was_handed() -> None:
+    """Builders pass module-level pinned tables in; holding the caller's dict would let a
+    later edit rewrite an already-built binary's environment."""
+    options = {"TSAN_OPTIONS": "history_size=7"}
+    binary = BuiltBinary(
+        path=Path("build/data_race_tsan"),
+        build_dir=Path("build"),
+        sanitizer=SanitizerKind.THREAD,
+        runtime_env=options,
+        compile_commands=None,
+        warnings=(),
+    )
+
+    options["TSAN_OPTIONS"] = "history_size=0"
+
+    assert binary.runtime_env["TSAN_OPTIONS"] == "history_size=7"
+
+
+def test_build_failure_defaults() -> None:
+    """A failed build reports facts: which step died and what the tool said."""
+    failure = a_build_failure()
+
+    assert failure.stage == "compile"
+    assert failure.output.startswith("a.cpp:1:1: error:")
+    assert failure.reason is None
+    assert failure.suggestion is None
+    assert failure.timed_out is False
+
+
+def test_build_failure_carries_a_diagnosis_when_there_is_one() -> None:
+    failure = BuildFailure(
+        stage="compile",
+        output="/usr/bin/ld: cannot find -ltsan",
+        reason="the sanitizer runtime is a separate package here and is not installed",
+        suggestion="sudo apt install libtsan0",
+        timed_out=False,
+    )
+
+    assert failure.reason == "the sanitizer runtime is a separate package here and is not installed"
+    assert failure.suggestion == "sudo apt install libtsan0"
+
+    with pytest.raises(FrozenInstanceError):
+        failure.stage = "build"  # type: ignore[misc]
 
 
 def test_hotspot_constructs() -> None:

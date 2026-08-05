@@ -37,6 +37,13 @@ CASES_BY_KEY: dict[tuple[str, str], Any] = {(case.tool, case.fixture): case for 
 # tool_stem.os-family.txt -- the stem carries underscores, so peel the suffix off the end
 GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux)-(?P<family>clang|gcc)\.txt$")
 
+# The capture script builds and runs programs, so it owns the runtime sanitizers only.
+# -Wthread-safety reports while compiling: there is nothing to run and no sanitizer to
+# name, so this fixture and its golden are captured by hand and the matrix does not
+# speak for them. They still follow every other rule below, marker included.
+COMPILE_TIME_FIXTURES = frozenset({"unguarded_write"})
+COMPILE_TIME_GOLDENS = frozenset({"thread_safety_unguarded_write.darwin-clang.txt"})
+
 
 def fixture_stems() -> list[str]:
     return sorted(path.stem for path in CPP_DIR.glob("*.cpp"))
@@ -70,7 +77,7 @@ def test_every_case_names_an_existing_source() -> None:
 
 
 def test_every_source_is_exercised_by_a_case() -> None:
-    covered = {case.fixture for case in SUPPORT}
+    covered = {case.fixture for case in SUPPORT} | COMPILE_TIME_FIXTURES
     orphans = [stem for stem in fixture_stems() if stem not in covered]
 
     assert not orphans, f"C++ fixtures no case exercises: {orphans}"
@@ -110,10 +117,34 @@ def test_golden_filenames_follow_the_convention() -> None:
         match = GOLDEN_NAME.match(path.name)
         if match is None:
             problems.append(f"{path.name}: expected {{tool}}_{{stem}}.{{os}}-{{family}}.txt")
+        elif path.name in COMPILE_TIME_GOLDENS:
+            # hand-captured: named by the same convention, but no matrix case owns it
+            continue
         elif match.group("pair") not in known_pairs:
             problems.append(f"{path.name}: no case in the support matrix produces it")
 
     assert not problems, "unexpected files in tests/fixtures/golden/:\n" + "\n".join(problems)
+
+
+def test_the_hand_captured_fixtures_are_all_there() -> None:
+    """The exemptions above must not become a way to lose a fixture or a golden quietly."""
+    missing: list[str] = []
+    empty: list[str] = []
+    for stem in sorted(COMPILE_TIME_FIXTURES):
+        source = cpp_source(stem)
+        if not source.is_file():
+            missing.append(str(source))
+        elif not source.read_text(encoding="utf-8").strip():
+            empty.append(source.name)
+    for name in sorted(COMPILE_TIME_GOLDENS):
+        path = GOLDEN_DIR / name
+        if not path.is_file():
+            missing.append(str(path))
+        elif not read_golden(path).strip():
+            empty.append(name)
+
+    assert not missing, f"hand-captured fixtures that do not exist: {missing}"
+    assert not empty, f"hand-captured goldens with nothing in them: {empty}"
 
 
 def test_goldens_contain_what_their_case_expects() -> None:

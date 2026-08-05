@@ -25,11 +25,11 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import PINNED_RUNTIME_ENV, Toolchain
 
@@ -203,19 +203,6 @@ PROBES: Mapping[Analysis, Probe] = {
         action="checked",
     ),
 }
-
-
-class Runner(Protocol):
-    """process.run's signature, named so a test can hand the probes a fake instead."""
-
-    def __call__(
-        self,
-        cmd: Sequence[str],
-        *,
-        timeout_s: int,
-        env: Mapping[str, str] | None = None,
-        cwd: Path | None = None,
-    ) -> process.RunResult: ...
 
 
 @dataclass(frozen=True, slots=True)
