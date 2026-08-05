@@ -44,7 +44,7 @@ def compile_file(
     compiling, so the compiler's own output is parsed into the returned warnings.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
-    binary = build_dir / source.stem
+    binary = build_dir / _binary_name(source, sanitizer)
 
     result = runner(
         _command(source, binary, toolchain=toolchain, platform=platform, sanitizer=sanitizer),
@@ -65,6 +65,16 @@ def compile_file(
         compile_commands=None,
         warnings=diagnostics.parse(result.output),
     )
+
+
+def _binary_name(source: Path, sanitizer: SanitizerKind | None) -> str:
+    """Name the output by source and variant, so one file's sanitized builds coexist.
+
+    A TSan and an ASan build of the same source into one directory must not overwrite
+    each other: the survivor would sit at the other's reported path, bound to the wrong
+    runtime environment.
+    """
+    return f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
 
 
 def _command(

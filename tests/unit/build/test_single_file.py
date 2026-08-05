@@ -51,6 +51,10 @@ GCC_PATH = "/usr/bin/g++"
 
 SOURCE_STEM = "data_race"
 
+# a sanitized build carries its variant in the name, so one source's builds coexist
+TSAN_BINARY = "data_race.thread"
+ASAN_BINARY = "data_race.address"
+
 # a real link failure and the honest explanation a platform pairs with it
 MISSING_TSAN_RUNTIME = "/usr/bin/ld: cannot find -ltsan: No such file or directory"
 RUNTIME_PACKAGE_REASON = "the sanitizer runtime is a separate package here and is not installed"
@@ -190,7 +194,7 @@ def test_clang_tsan_on_linux_composes_this_exact_command(tmp_path: Path) -> None
         *LINUX_COMPILE_EXTRAS,
         str(source),
         "-o",
-        str(build_dir / SOURCE_STEM),
+        str(build_dir / TSAN_BINARY),
     ]
 
 
@@ -243,7 +247,7 @@ def test_gcc_gets_no_thread_safety_flag(tmp_path: Path) -> None:
         *LINUX_COMPILE_EXTRAS,
         str(source),
         "-o",
-        str(build_dir / SOURCE_STEM),
+        str(build_dir / ASAN_BINARY),
     ]
     assert "-Wthread-safety" not in runner.command
 
@@ -444,6 +448,35 @@ def test_the_binary_lands_in_the_build_dir_under_the_source_stem(tmp_path: Path)
     assert binary.path == build_dir / SOURCE_STEM
     assert binary.build_dir == build_dir
     assert binary.compile_commands is None
+
+
+def test_two_sanitizers_builds_of_one_source_do_not_collide(tmp_path: Path) -> None:
+    """TSan then ASan into one directory: the first binary must survive the second build.
+
+    Overwriting would leave the first BuiltBinary's path holding the second's binary --
+    bound to the wrong runtime environment, which is the silent-run bug this layer exists
+    to make impossible.
+    """
+    build_dir = tmp_path / "build"
+    source = a_source(tmp_path)
+
+    def compiled(sanitizer: SanitizerKind) -> BuiltBinary:
+        result = compile_file(
+            source,
+            toolchain=a_clang(),
+            platform=a_linux(),
+            sanitizer=sanitizer,
+            build_dir=build_dir,
+            runner=FakeRunner(),
+        )
+        return built(result)
+
+    tsan = compiled(SanitizerKind.THREAD)
+    asan = compiled(SanitizerKind.ADDRESS)
+
+    assert tsan.path != asan.path
+    assert tsan.path == build_dir / TSAN_BINARY
+    assert asan.path == build_dir / ASAN_BINARY
 
 
 def test_a_missing_build_dir_is_created(tmp_path: Path) -> None:

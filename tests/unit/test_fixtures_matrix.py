@@ -39,10 +39,12 @@ GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux)-(?P<family>clang|
 
 # The capture script builds and runs programs, so it owns the runtime sanitizers only.
 # -Wthread-safety reports while compiling: there is nothing to run and no sanitizer to
-# name, so this fixture and its golden are captured by hand and the matrix does not
-# speak for them. They still follow every other rule below, marker included.
-COMPILE_TIME_FIXTURES = frozenset({"unguarded_write"})
-COMPILE_TIME_GOLDENS = frozenset({"thread_safety_unguarded_write.darwin-clang.txt"})
+# name, so these are captured by hand and the matrix does not speak for them. One mapping
+# registers each hand-captured golden to its fixture -- two independent lists could drift,
+# and an orphaned or mistyped name on either side would pass both.
+COMPILE_TIME_CAPTURES = {"unguarded_write": ("thread_safety_unguarded_write.darwin-clang.txt",)}
+COMPILE_TIME_FIXTURES = frozenset(COMPILE_TIME_CAPTURES)
+COMPILE_TIME_GOLDENS = frozenset(name for names in COMPILE_TIME_CAPTURES.values() for name in names)
 
 
 def fixture_stems() -> list[str]:
@@ -130,18 +132,19 @@ def test_the_hand_captured_fixtures_are_all_there() -> None:
     """The exemptions above must not become a way to lose a fixture or a golden quietly."""
     missing: list[str] = []
     empty: list[str] = []
-    for stem in sorted(COMPILE_TIME_FIXTURES):
+    # walked as pairs, so a golden is only ever checked under the fixture that owns it
+    for stem, goldens in sorted(COMPILE_TIME_CAPTURES.items()):
         source = cpp_source(stem)
         if not source.is_file():
             missing.append(str(source))
         elif not source.read_text(encoding="utf-8").strip():
             empty.append(source.name)
-    for name in sorted(COMPILE_TIME_GOLDENS):
-        path = GOLDEN_DIR / name
-        if not path.is_file():
-            missing.append(str(path))
-        elif not read_golden(path).strip():
-            empty.append(name)
+        for name in goldens:
+            path = GOLDEN_DIR / name
+            if not path.is_file():
+                missing.append(str(path))
+            elif not read_golden(path).strip():
+                empty.append(name)
 
     assert not missing, f"hand-captured fixtures that do not exist: {missing}"
     assert not empty, f"hand-captured goldens with nothing in them: {empty}"
