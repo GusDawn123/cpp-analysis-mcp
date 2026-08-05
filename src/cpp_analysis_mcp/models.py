@@ -147,6 +147,27 @@ class BuildFailure:
 
 
 @dataclass(frozen=True, slots=True)
+class AnalysisReport:
+    """What one analysis observed, and what makes its silence worth trusting.
+
+    An empty `findings` means a detector that was proved to work here saw nothing. The proof
+    is the capability probe, so `verified_by` and `limitations` travel with the result rather
+    than being looked up again later: read without them, an empty report cannot be told from
+    one produced by a detector that was never watching.
+    """
+
+    analysis: Analysis
+    findings: tuple[Finding, ...]
+    # compile-time findings from the build step, distinct from what the run observed
+    build_warnings: tuple[Finding, ...] = ()
+    # the program's own exit status: a crash with no sanitizer report is still a fact
+    exit_code: int | None = None
+    timed_out: bool = False
+    limitations: tuple[str, ...] = ()
+    verified_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Hotspot:
     """Where a profiler saw the program spend its time."""
 
