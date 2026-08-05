@@ -37,6 +37,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
       - run: make test
+      # Both runners ship a C++ toolchain, so the probes have something real to
+      # compile: ubuntu has clang++ and g++, macos has clang++.
+      - run: make integration
 
   fixtures:
     name: fixtures (${{ matrix.os }}, ${{ matrix.compiler }})

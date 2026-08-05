@@ -1,95 +1,48 @@
 ==================
-WARNING: ThreadSanitizer: data race (pid=4189)
-  Read of size 4 at 0xab3a5d730020 by thread T2:
-    #0 unlocked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:22 (race_with_lock_tsan+0x10b8) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
+WARNING: ThreadSanitizer: data race (pid=4063)
+  Write of size 4 at 0xaab073eb0024 by thread T2:
+    #0 unlocked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:34 (race_with_lock_tsan+0x11cc) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x1414) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x1414)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x1414)
+    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x1414)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x1414)
     #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
 
-  Previous write of size 4 at 0xab3a5d730020 by thread T1 (mutexes: write M0):
-    #0 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:17 (race_with_lock_tsan+0x114c) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
+  Previous write of size 4 at 0xaab073eb0024 by thread T1 (mutexes: write M0):
+    #0 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:27 (race_with_lock_tsan+0x125c) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x1414) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x1414)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x1414)
+    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x1414)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x1414)
     #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
 
-  Location is global '(anonymous namespace)::counter' of size 4 at 0xab3a5d730020 (race_with_lock_tsan+0x20020)
+  Location is global '(anonymous namespace)::counter' of size 4 at 0xaab073eb0024 (race_with_lock_tsan+0x20024)
 
-  Mutex M0 (0xab3a5d730028) created at:
+  Mutex M0 (0xaab073eb0028) created at:
     #0 pthread_mutex_lock ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1341 (libtsan.so.2+0x5cc14) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
-    #1 __gthread_mutex_lock /usr/include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749 (race_with_lock_tsan+0x1130) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::mutex::lock() /usr/include/c++/13/bits/std_mutex.h:113 (race_with_lock_tsan+0x1130)
-    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/include/c++/13/mutex:779 (race_with_lock_tsan+0x1130)
-    #4 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:16 (race_with_lock_tsan+0x1130)
-    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #7 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #8 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
+    #1 __gthread_mutex_lock /usr/include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749 (race_with_lock_tsan+0x1240) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #2 std::mutex::lock() /usr/include/c++/13/bits/std_mutex.h:113 (race_with_lock_tsan+0x1240)
+    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/include/c++/13/mutex:779 (race_with_lock_tsan+0x1240)
+    #4 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:26 (race_with_lock_tsan+0x1240)
+    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x1414) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
+    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x1414)
+    #7 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x1414)
+    #8 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x1414)
+    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x1414)
     #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
 
-  Thread T2 (tid=4192, running) created by main thread at:
+  Thread T2 (tid=4066, running) created by main thread at:
     #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
     #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:31 (race_with_lock_tsan+0x11d8) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
+    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:43 (race_with_lock_tsan+0x12ec) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
 
-  Thread T1 (tid=4191, running) created by main thread at:
+  Thread T1 (tid=4065, running) created by main thread at:
     #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
     #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:30 (race_with_lock_tsan+0x11c8) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
+    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:42 (race_with_lock_tsan+0x12dc) (BuildId: 2821f447263bad043aeb2309213b2d377b0c895d)
 
-SUMMARY: ThreadSanitizer: data race /w/tests/fixtures/cpp/race_with_lock.cpp:22 in unlocked_bump
+SUMMARY: ThreadSanitizer: data race /w/tests/fixtures/cpp/race_with_lock.cpp:34 in unlocked_bump
 ==================
-==================
-WARNING: ThreadSanitizer: data race (pid=4189)
-  Write of size 4 at 0xab3a5d730020 by thread T2:
-    #0 unlocked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:22 (race_with_lock_tsan+0x10e4) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
-    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-
-  Previous write of size 4 at 0xab3a5d730020 by thread T1 (mutexes: write M0):
-    #0 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:17 (race_with_lock_tsan+0x114c) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #3 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #4 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
-    #6 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-
-  Location is global '(anonymous namespace)::counter' of size 4 at 0xab3a5d730020 (race_with_lock_tsan+0x20020)
-
-  Mutex M0 (0xab3a5d730028) created at:
-    #0 pthread_mutex_lock ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1341 (libtsan.so.2+0x5cc14) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
-    #1 __gthread_mutex_lock /usr/include/aarch64-linux-gnu/c++/13/bits/gthr-default.h:749 (race_with_lock_tsan+0x1130) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #2 std::mutex::lock() /usr/include/c++/13/bits/std_mutex.h:113 (race_with_lock_tsan+0x1130)
-    #3 std::scoped_lock<std::mutex>::scoped_lock(std::mutex&) /usr/include/c++/13/mutex:779 (race_with_lock_tsan+0x1130)
-    #4 locked_bump /w/tests/fixtures/cpp/race_with_lock.cpp:16 (race_with_lock_tsan+0x1130)
-    #5 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/include/c++/13/bits/invoke.h:61 (race_with_lock_tsan+0x12ec) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-    #6 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/include/c++/13/bits/invoke.h:96 (race_with_lock_tsan+0x12ec)
-    #7 void std::thread::_Invoker<std::tuple<void (*)()> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/13/bits/std_thread.h:292 (race_with_lock_tsan+0x12ec)
-    #8 std::thread::_Invoker<std::tuple<void (*)()> >::operator()() /usr/include/c++/13/bits/std_thread.h:299 (race_with_lock_tsan+0x12ec)
-    #9 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()> > >::_M_run() /usr/include/c++/13/bits/std_thread.h:244 (race_with_lock_tsan+0x12ec)
-    #10 <null> <null> (libstdc++.so.6+0xe1adc) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-
-  Thread T2 (tid=4192, running) created by main thread at:
-    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
-    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:31 (race_with_lock_tsan+0x11d8) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-
-  Thread T1 (tid=4191, running) created by main thread at:
-    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1022 (libtsan.so.2+0x5dd98) (BuildId: dc0d657f42587fea53114ce058dbdfe5834e0205)
-    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xe1c64) (BuildId: 7c239d1743727054caa3df1ab866bfa72cd4dd93)
-    #2 main /w/tests/fixtures/cpp/race_with_lock.cpp:30 (race_with_lock_tsan+0x11c8) (BuildId: e2dc74e1c6dc2c53ed5d387f41b45c76512106b6)
-
-SUMMARY: ThreadSanitizer: data race /w/tests/fixtures/cpp/race_with_lock.cpp:22 in unlocked_bump
-==================
-ThreadSanitizer: reported 2 warnings
+ThreadSanitizer: reported 1 warnings

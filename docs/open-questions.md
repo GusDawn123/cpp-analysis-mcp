@@ -149,18 +149,64 @@ machines belonging to strangers who installed it from GitHub.
 That is a real risk surface and it deserves an explicit answer rather than an
 afterthought.
 
-**Established so far:**
-- A `workspace` confinement root; nothing executes outside it
-- Mandatory timeouts on every subprocess
-- Build directories are separate (`build-tsan/`), never the user's own build
+**Resolved 2026-08-05.** In one line: isolate files and processes, do **not**
+sandbox the sanitized program itself, and offer containers later as a
+cross-platform feature rather than a security wall.
 
-**Open:**
-- Should running a built binary require explicit user consent, separately from
-  building it? Building is comparatively safe; running is not.
-- What happens with a test program that spawns network connections or writes
-  outside the workspace? Do we care, or is that the user's problem since it is
-  their own code?
-- Is a container/sandbox mode worth offering for untrusted projects?
+### Start from the threat model
+
+The program this server runs is the **user's own code, on the user's own
+machine, at their request** — the same binary they build and run by hand all
+day. Heavy sandboxing would defend the user from themselves. The realistic
+risks are mundane — a hung process, runaway output, files written where they
+should not be — and two cheap layers cover them completely:
+
+1. **File isolation.** All builds go to scratch directories the server owns
+   (`build-tsan/` and friends) inside the `workspace` confinement root. The
+   user's source tree and their real build directory are never written to.
+2. **Process guardrails.** Every subprocess gets a mandatory timeout whose
+   expiry kills the whole process group, so a hung test cannot leave orphaned
+   children; a cleaned environment, so `ASAN_OPTIONS`/`LSAN_OPTIONS` inherited
+   from the user's shell cannot silently distort results; and output captured
+   to files rather than pipes that fill and stall. None of this is
+   speculative — it is already implemented and CI-tested in
+   `scripts/fixtures.py`; the build layer will promote that code, not invent
+   new code.
+
+### Why not a real sandbox?
+
+Because sandboxes break the detectors — measured, not guessed:
+
+- TSan under Docker's default seccomp profile **crashes on startup**: it calls
+  `personality()` to control address-space randomization, and the sandbox
+  blocks that syscall. Capturing the Linux golden files required
+  `--security-opt seccomp=unconfined`.
+- gcc's TSan runtime additionally required lowering the kernel's
+  `vm.mmap_rnd_bits` setting — a privileged operation no sandbox permits.
+
+Sanitizers work by rearranging the process's memory world and intercepting
+syscalls; sandboxes exist to forbid exactly that. A tightly sandboxed
+sanitizer run fails strangely, and a strange failure is one step from the
+false all-clear this project treats as its worst outcome.
+
+### The three open bullets, answered
+
+- **Separate consent for running vs. building?** No. Consent lives in the MCP
+  client: Claude Code and its peers already ask the user before a tool call
+  executes. A second permission system inside the server would double-prompt
+  the same action; the host's prompt is the real one.
+- **A test program that opens network connections or writes outside the
+  workspace?** It is the user's own code, and it could have done the same when
+  they ran it by hand. Not ours to prevent; timeouts and scratch directories
+  bound the blast radius of accidents.
+- **Container mode?** Yes — on the roadmap, but reframed. Its killer use is
+  not security, it is **capability**: a Linux container on a Mac unlocks the
+  Linux-only tools (LeakSanitizer, TSan's deadlock detector) that macOS cannot
+  run natively, and gives every platform a reproducible environment. The
+  golden files were captured exactly this way by hand; the feature would
+  automate it, including the two security relaxations TSan needs. It slots
+  into `platforms/` as one more answer to "where does this run?" — a new
+  backend behind an existing seam, not a redesign.
 
 ---
 
@@ -268,6 +314,12 @@ means the tool only does half of what it claims.
 ---
 
 ## Resolved
+
+**What is the safety model for executing user code?**
+Resolved 2026-08-05 — see [section 3](#3-safety-model) for the full reasoning.
+File and process isolation only; no sandbox around the sanitized program
+(sandboxes demonstrably break the sanitizers); containers later as a
+cross-platform capability unlock, not a security wall.
 
 **Should we support gcc, or clang only?**
 Both. Resolved 2026-08-04. gcc vendors LLVM's sanitizer runtime rather than

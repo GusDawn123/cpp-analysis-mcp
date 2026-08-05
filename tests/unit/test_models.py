@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp.models import (
+    SANITIZER_FOR,
     AccessOp,
+    Analysis,
     BuiltBinary,
     CapabilityStatus,
     Finding,
@@ -145,6 +147,40 @@ def test_capability_status_defaults() -> None:
     assert status.reason is None
     assert status.suggestion is None
     assert status.verified_by is None
+    assert status.limitations == ()
+
+
+def test_analysis_values_are_the_names_the_server_offers() -> None:
+    assert [analysis.value for analysis in Analysis] == [
+        "tsan",
+        "asan",
+        "lsan",
+        "ubsan",
+        "thread-safety",
+        "clang-tidy",
+    ]
+    assert Analysis("thread-safety") is Analysis.THREAD_SAFETY
+    assert f"{Analysis.TSAN}" == "tsan"
+
+
+def test_every_sanitizer_analysis_names_its_sanitizer() -> None:
+    assert SANITIZER_FOR == {
+        Analysis.TSAN: SanitizerKind.THREAD,
+        Analysis.ASAN: SanitizerKind.ADDRESS,
+        Analysis.LSAN: SanitizerKind.LEAK,
+        Analysis.UBSAN: SanitizerKind.UNDEFINED,
+    }
+    # every sanitizer is reachable, so no kind is left with no analysis offering it
+    assert set(SANITIZER_FOR.values()) == set(SanitizerKind)
+
+    for analysis, kind in SANITIZER_FOR.items():
+        assert SANITIZER_FOR[Analysis(analysis.value)] is kind
+
+
+def test_the_static_analyses_have_no_sanitizer() -> None:
+    """These two run at compile time; asking them for a -fsanitize= flag is a bug."""
+    assert Analysis.THREAD_SAFETY not in SANITIZER_FOR
+    assert Analysis.CLANG_TIDY not in SANITIZER_FOR
 
 
 def test_built_binary_takes_a_plain_dict_for_runtime_env() -> None:

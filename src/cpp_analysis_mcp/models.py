@@ -15,6 +15,26 @@ class SanitizerKind(StrEnum):
     LEAK = "leak"
 
 
+class Analysis(StrEnum):
+    """One analysis the server can offer."""
+
+    TSAN = "tsan"
+    ASAN = "asan"
+    LSAN = "lsan"
+    UBSAN = "ubsan"
+    THREAD_SAFETY = "thread-safety"
+    CLANG_TIDY = "clang-tidy"
+
+
+# which analyses need a binary built with a sanitizer; the two missing here run at compile time
+SANITIZER_FOR: Mapping[Analysis, SanitizerKind] = {
+    Analysis.TSAN: SanitizerKind.THREAD,
+    Analysis.ASAN: SanitizerKind.ADDRESS,
+    Analysis.LSAN: SanitizerKind.LEAK,
+    Analysis.UBSAN: SanitizerKind.UNDEFINED,
+}
+
+
 class Severity(StrEnum):
     """How serious a finding is."""
 
@@ -83,6 +103,8 @@ class CapabilityStatus:
     reason: str | None = None
     suggestion: str | None = None
     verified_by: str | None = None
+    # available but caveated, e.g. TSan runs on macOS yet cannot detect deadlocks there
+    limitations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -60,7 +60,7 @@ EXPECTED_REPORTS = {
     "tsan_data_race.linux-gcc.txt": 1,
     "tsan_race_with_lock.darwin-clang.txt": 1,
     "tsan_race_with_lock.linux-clang.txt": 1,
-    "tsan_race_with_lock.linux-gcc.txt": 2,
+    "tsan_race_with_lock.linux-gcc.txt": 1,
     "tsan_deadlock.linux-clang.txt": 1,
     "tsan_deadlock.linux-gcc.txt": 1,
 }
@@ -149,7 +149,7 @@ def test_race_with_lock_darwin_clang() -> None:
     finding = only(parse(golden("tsan_race_with_lock.darwin-clang.txt")))
 
     assert finding.category == "data-race"
-    assert finding.location == Location(file="race_with_lock.cpp", line=17)
+    assert finding.location == Location(file="race_with_lock.cpp", line=27)
     assert finding.symbol == COUNTER
 
     locked, unlocked = both(finding)
@@ -161,33 +161,29 @@ def test_race_with_lock_linux_clang() -> None:
     finding = only(parse(golden("tsan_race_with_lock.linux-clang.txt")))
 
     assert finding.category == "data-race"
-    assert finding.location == Location(file=RACE_WITH_LOCK_CPP, line=23, column=9)
+    assert finding.location == Location(file=RACE_WITH_LOCK_CPP, line=27, column=9)
+    assert finding.symbol == COUNTER
+
+    locked, unlocked = both(finding)
+    assert (locked.thread_id, locked.op, locked.size) == ("T1", AccessOp.WRITE, 4)
+    assert (unlocked.thread_id, unlocked.op, unlocked.size) == ("T2", AccessOp.WRITE, 4)
+    assert len(locked.frames) == 7
+    assert len(unlocked.frames) == 7
+
+
+def test_race_with_lock_linux_gcc() -> None:
+    """gcc names the for-statement line where clang names the increment, and drops the
+    namespace from the function -- same bug, different attribution."""
+    finding = only(parse(golden("tsan_race_with_lock.linux-gcc.txt")))
+
+    assert finding.category == "data-race"
+    assert finding.message == "data race"
+    assert finding.location == Location(file=RACE_WITH_LOCK_CPP, line=34)
     assert finding.symbol == COUNTER
 
     unlocked, locked = both(finding)
     assert (unlocked.thread_id, unlocked.op, unlocked.size) == ("T2", AccessOp.WRITE, 4)
     assert (locked.thread_id, locked.op, locked.size) == ("T1", AccessOp.WRITE, 4)
-    assert len(unlocked.frames) == 7
-    assert len(locked.frames) == 7
-
-
-def test_race_with_lock_linux_gcc() -> None:
-    """gcc reported the same bug twice -- once read/write, once write/write."""
-    findings = parse(golden("tsan_race_with_lock.linux-gcc.txt"))
-
-    assert len(findings) == 2
-    assert [finding.id for finding in findings] == ["tsan-1", "tsan-2"]
-
-    for finding in findings:
-        assert finding.category == "data-race"
-        assert finding.message == "data race"
-        assert finding.location == Location(file=RACE_WITH_LOCK_CPP, line=22)
-        assert finding.symbol == COUNTER
-
-    first_ops = [access.op for access in findings[0].threads]
-    second_ops = [access.op for access in findings[1].threads]
-    assert first_ops == [AccessOp.READ, AccessOp.WRITE]
-    assert second_ops == [AccessOp.WRITE, AccessOp.WRITE]
 
 
 # ------------------------------------------------------------------------- locks held
@@ -203,20 +199,18 @@ def test_locks_held_darwin_clang() -> None:
 
 
 def test_locks_held_linux_clang() -> None:
-    """Here the annotated access is the second one, not the first."""
     finding = only(parse(golden("tsan_race_with_lock.linux-clang.txt")))
-    unlocked, locked = both(finding)
+    locked, unlocked = both(finding)
 
-    assert unlocked.locks_held == ()
     assert locked.locks_held == ("M0",)
+    assert unlocked.locks_held == ()
 
 
 def test_locks_held_linux_gcc() -> None:
-    """Two reports, each annotating only its `Previous write` side."""
-    findings = parse(golden("tsan_race_with_lock.linux-gcc.txt"))
+    """Here the annotated access is the second one: only the previous write claims M0."""
+    finding = only(parse(golden("tsan_race_with_lock.linux-gcc.txt")))
 
-    assert [access.locks_held for access in findings[0].threads] == [(), ("M0",)]
-    assert [access.locks_held for access in findings[1].threads] == [(), ("M0",)]
+    assert [access.locks_held for access in finding.threads] == [(), ("M0",)]
 
 
 @pytest.mark.parametrize(
@@ -319,7 +313,7 @@ def test_only_the_first_access_block_sets_the_finding_location() -> None:
     first, second = both(finding)
 
     assert finding.location == first.frames[0].location
-    assert second.frames[0].location == Location(file=RACE_WITH_LOCK_CPP, line=17, column=9)
+    assert second.frames[0].location == Location(file=RACE_WITH_LOCK_CPP, line=35, column=9)
 
 
 # ------------------------------------------------------------------- report splitting
