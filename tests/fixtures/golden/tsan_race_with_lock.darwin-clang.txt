@@ -1,30 +1,30 @@
 ==================
-WARNING: ThreadSanitizer: data race (pid=30972)
-  Write of size 4 at 0x000104b08040 by thread T1 (mutexes: write M0):
-    #0 (anonymous namespace)::locked_bump() race_with_lock.cpp:17 (race_with_lock_tsan:arm64+0x100000834)
-    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000a5c)
+WARNING: ThreadSanitizer: data race (pid=60265)
+  Write of size 4 at 0x000100c3c040 by thread T1 (mutexes: write M0):
+    #0 (anonymous namespace)::locked_bump() race_with_lock.cpp:27 (race_with_lock_tsan:arm64+0x100000860)
+    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000aa0)
 
-  Previous write of size 4 at 0x000104b08040 by thread T2:
-    #0 (anonymous namespace)::unlocked_bump() race_with_lock.cpp:23 (race_with_lock_tsan:arm64+0x10000089c)
-    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000a5c)
+  Previous write of size 4 at 0x000100c3c040 by thread T2:
+    #0 (anonymous namespace)::unlocked_bump() race_with_lock.cpp:35 (race_with_lock_tsan:arm64+0x1000008e0)
+    #1 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000aa0)
 
-  Location is global '(anonymous namespace)::counter' at 0x000104b08040 (race_with_lock_tsan+0x100008040)
+  Location is global '(anonymous namespace)::counter' at 0x000100c3c040 (race_with_lock_tsan+0x100008040)
 
-  Mutex M0 (0x000104b08000) created at:
+  Mutex M0 (0x000100c3c000) created at:
     #0 pthread_mutex_lock <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x356bc)
     #1 std::__1::mutex::lock() <null> (libc++.1.dylib:arm64e+0x300c)
-    #2 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000a5c)
+    #2 void* std::__1::__thread_proxy[abi:nqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)()>>(void*) thread.h:168 (race_with_lock_tsan:arm64+0x100000aa0)
 
-  Thread T1 (tid=17465784, running) created by main thread at:
+  Thread T1 (tid=17912384, running) created by main thread at:
     #0 pthread_create <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x33834)
-    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (race_with_lock_tsan:arm64+0x100000944)
-    #2 main race_with_lock.cpp:30 (race_with_lock_tsan:arm64+0x100000774)
+    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (race_with_lock_tsan:arm64+0x100000988)
+    #2 main race_with_lock.cpp:42 (race_with_lock_tsan:arm64+0x100000774)
 
-  Thread T2 (tid=17465785, finished) created by main thread at:
+  Thread T2 (tid=17912385, finished) created by main thread at:
     #0 pthread_create <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x33834)
-    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (race_with_lock_tsan:arm64+0x100000944)
-    #2 main race_with_lock.cpp:31 (race_with_lock_tsan:arm64+0x100000784)
+    #1 std::__1::thread::thread[abi:nqe210106]<void (&)(), 0>(void (&)()) thread.h:216 (race_with_lock_tsan:arm64+0x100000988)
+    #2 main race_with_lock.cpp:43 (race_with_lock_tsan:arm64+0x100000784)
 
-SUMMARY: ThreadSanitizer: data race race_with_lock.cpp:17 in (anonymous namespace)::locked_bump()
+SUMMARY: ThreadSanitizer: data race race_with_lock.cpp:27 in (anonymous namespace)::locked_bump()
 ==================
 ThreadSanitizer: reported 1 warnings
