@@ -1,8 +1,9 @@
-"""Enforce the four layer rules from docs/architecture.md by reading the source tree.
+"""Enforce the layer rules from docs/architecture.md by reading the source tree.
 
-Each rule is checked by parsing the real files under src/cpp_analysis_mcp with ast,
-so a violation fails a test instead of relying on review discipline. Most of the
-package is still docstring stubs; these tests are the ratchet for what gets added.
+Each of the four rules is checked by parsing the real files under src/cpp_analysis_mcp
+with ast, so a violation fails a test instead of relying on review discipline. One
+narrower rule rides along: subprocess belongs to process.py alone. Most of the package
+is still docstring stubs; these tests are the ratchet for what gets added.
 """
 
 from __future__ import annotations
@@ -18,8 +19,11 @@ PIPELINES = f"{PACKAGE_NAME}.pipelines"
 
 # the layers below pipelines: they may be imported by a pipeline, never the reverse
 PRIMITIVE_PACKAGES = ("build", "parsers", "platforms", "toolchains")
+# primitives that are single modules rather than packages, so rglob does not reach them
+TOP_LEVEL_PRIMITIVES = (PACKAGE_DIR / "capabilities.py", PACKAGE_DIR / "process.py")
 
 SERVER = PACKAGE_DIR / "server.py"
+PROCESS = PACKAGE_DIR / "process.py"
 
 CONTROL_FLOW_NODES = (
     ast.If,
@@ -105,7 +109,7 @@ def test_layer_packages_exist() -> None:
 def test_primitives_do_not_import_pipelines() -> None:
     """Rule 1: layers only point downward -- no primitive imports an orchestrator."""
     violations: list[str] = []
-    for path in modules_in(*PRIMITIVE_PACKAGES):
+    for path in [*modules_in(*PRIMITIVE_PACKAGES), *TOP_LEVEL_PRIMITIVES]:
         package = package_of(path)
         for node, targets in imports_of(parse(path), package):
             offending = [target for target in targets if reaches(target, PIPELINES)]
@@ -175,6 +179,20 @@ def test_parsers_are_pure() -> None:
                 violations.append(f"{path}:{child.lineno} calls open()")
 
     assert not violations, "parsers must stay pure:\n" + "\n".join(violations)
+
+
+def test_only_process_may_spawn() -> None:
+    """process.py owns subprocess, so timeouts and env hygiene cannot be bypassed elsewhere."""
+    violations: list[str] = []
+    for path in sorted(PACKAGE_DIR.rglob("*.py")):
+        if path == PROCESS:
+            continue
+        package = package_of(path)
+        for node, targets in imports_of(parse(path), package):
+            if any(reaches(target, "subprocess") for target in targets):
+                violations.append(f"{path}:{node.lineno} imports subprocess")
+
+    assert not violations, "only process.py may import subprocess:\n" + "\n".join(violations)
 
 
 def _callee_name(func: ast.expr) -> str:
