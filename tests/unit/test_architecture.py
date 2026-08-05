@@ -9,9 +9,11 @@ is still docstring stubs; these tests are the ratchet for what gets added.
 from __future__ import annotations
 
 import ast
+import fnmatch
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from helpers import PACKAGE_DIR, SRC_DIR
 
 PACKAGE_NAME = PACKAGE_DIR.name
@@ -104,6 +106,20 @@ def test_layer_packages_exist() -> None:
     assert not missing, f"missing layer packages under {PACKAGE_DIR}: {missing}"
     assert SERVER.is_file(), f"missing {SERVER}"
     assert modules_in(*expected), f"no python modules found under {PACKAGE_DIR}"
+
+
+def test_every_layer_directory_under_tests_is_collected(pytestconfig: pytest.Config) -> None:
+    """pytest skips directories named "build" by default, and tests/unit/build/ is one.
+
+    Left at the default the build tests are never collected: no failures, no count, green.
+    A test that cannot run is worse than one that fails, so the exclusion is pinned here.
+    """
+    excluded = list(pytestconfig.getini("norecursedirs"))
+    # the entries are fnmatch patterns, so "build*" would skip the directory as surely
+    # as a literal "build" -- match the name against each, don't look for the string
+    matching = [pattern for pattern in excluded if fnmatch.fnmatchcase("build", pattern)]
+
+    assert not matching, f"tests/unit/build/ would not be collected: {matching} in {excluded}"
 
 
 def test_primitives_do_not_import_pipelines() -> None:

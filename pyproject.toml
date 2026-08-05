@@ -41,6 +41,10 @@ mypy_path = "src"
 testpaths = ["tests"]
 addopts = "-q"
 markers = ["integration: requires a real C++ toolchain"]
+# pytest's default list skips every directory named "build", which silently drops
+# tests/unit/build/ -- collected nothing and reported green. These are the defaults with
+# "build" removed, plus the macOS debug bundles under tests/fixtures/build/.
+norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}", "*.dSYM"]
 # don't depend on the editable-install .pth: sandboxed shells on macOS can
 # write it with the hidden flag set, which site.py (3.11.15+) silently skips
 pythonpath = ["src"]
