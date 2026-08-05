@@ -1,4 +1,4 @@
-.PHONY: lint fmt type test cov validate golden all
+.PHONY: lint fmt type test integration cov validate golden all
 
 lint:
 	uv run ruff check . && uv run ruff format --check .
@@ -11,6 +11,10 @@ type:
 
 test:
 	uv run pytest -m "not integration"
+
+# needs a real C++ toolchain: it compiles and runs the capability probes
+integration:
+	uv run pytest -m integration
 
 cov:
 	uv run pytest -m "not integration" --cov=cpp_analysis_mcp --cov-report=term-missing
