@@ -1,0 +1,101 @@
+"""Build the real fixture project with the real cmake on this machine, then run it.
+
+The unit suite fabricates the File API reply; this proves the reply is real -- that cmake
+still answers the query with a codemodel shaped the way build_project reads it, that the
+path it names is where the binary actually is, and that the flags reached the linker, since
+-fsanitize dropped at link time produces a binary that runs clean and reports nothing.
+
+The fixture holds one library and one executable, so target selection has something to
+filter out and the caller never has to name what it wants.
+"""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+import pytest
+from helpers import FIXTURES_DIR
+
+from cpp_analysis_mcp import platforms, process
+from cpp_analysis_mcp.build.cmake import build_project
+from cpp_analysis_mcp.capabilities import discover_toolchains
+from cpp_analysis_mcp.models import BuiltBinary, SanitizerKind
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.toolchains.base import Toolchain
+
+pytestmark = pytest.mark.integration
+
+# every test here shells out to cmake, so without it there is nothing to skip around
+if shutil.which("cmake") is None:
+    pytest.skip("no cmake on this machine", allow_module_level=True)
+
+PROJECT_DIR = FIXTURES_DIR / "cmake_project"
+
+RUN_TIMEOUT_S = 30
+
+ASAN_MARKER = "AddressSanitizer"
+OVERFLOW_MARKER = "heap-buffer-overflow"
+
+# the fixture's one executable, and the library that must not be mistaken for it
+EXECUTABLE_TARGET = "overflow_app"
+LIBRARY_TARGET = "helper"
+
+
+@pytest.fixture(scope="module")
+def host() -> Platform:
+    return platforms.detect()
+
+
+@pytest.fixture(scope="module")
+def toolchains() -> tuple[Toolchain, ...]:
+    found = discover_toolchains()
+    assert found, "no C++ compiler found; this suite needs a real toolchain"
+    return found
+
+
+def build(toolchain: Toolchain, host: Platform, tmp_path: Path) -> BuiltBinary:
+    """Build the fixture under ASan without naming a target, failing with what cmake said."""
+    result = build_project(
+        PROJECT_DIR,
+        toolchain=toolchain,
+        platform=host,
+        sanitizer=SanitizerKind.ADDRESS,
+        # one directory per compiler: a shared build tree would be reconfigured underneath
+        build_dir=tmp_path / toolchain.family,
+    )
+    assert isinstance(result, BuiltBinary), f"{toolchain.family} failed to build: {result}"
+    return result
+
+
+def test_the_project_builds_and_reports_its_planted_bug(
+    toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
+) -> None:
+    """The whole loop: configure, read the reply, build, run under what the build handed back."""
+    for chain in toolchains:
+        binary = build(chain, host, tmp_path)
+
+        assert binary.path.is_file(), f"{chain.family}: the File API named {binary.path}"
+        assert binary.sanitizer is SanitizerKind.ADDRESS
+        assert binary.compile_commands is not None, f"{chain.family}: no compilation database"
+        assert binary.compile_commands.is_file()
+
+        result = process.run(
+            [str(binary.path)],
+            timeout_s=RUN_TIMEOUT_S,
+            env=process.hygienic_env(dict(binary.runtime_env)),
+        )
+
+        assert ASAN_MARKER in result.output, f"{chain.family}: ASan said nothing: {result.output}"
+        assert OVERFLOW_MARKER in result.output, f"{chain.family}: wrong bug: {result.output}"
+
+
+def test_the_executable_is_found_without_being_named(
+    toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
+) -> None:
+    """Selection with target=None against a real reply: one executable, one library, no guess."""
+    for chain in toolchains:
+        binary = build(chain, host, tmp_path)
+
+        assert binary.path.name == EXECUTABLE_TARGET
+        assert LIBRARY_TARGET not in binary.path.name

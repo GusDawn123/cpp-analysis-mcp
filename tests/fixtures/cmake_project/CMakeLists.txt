@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(fixture_app CXX)
+project(fixture_project CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-add_executable(fixture_app src/main.cpp)
+# One library and one executable. The File API reply lists both, so a build that
+# forgot to filter on target type has a STATIC_LIBRARY here to trip over -- there
+# is no binary to run at the end of one.
+add_library(helper STATIC helper.cpp)
+add_executable(overflow_app main.cpp)
+target_link_libraries(overflow_app PRIVATE helper)
