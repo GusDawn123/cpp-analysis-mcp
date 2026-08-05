@@ -48,9 +48,13 @@ def detect() -> Platform:
 
 def env_facts() -> dict[str, str]:
     """Read the volatile host settings a capability result depends on."""
-    if not MMAP_RND_BITS.is_file():
+    try:
+        value = MMAP_RND_BITS.read_text(encoding="utf-8").strip()
+    except OSError:
+        # absent on non-Linux kernels, root-only on GitHub's runners -- either way the
+        # fact is unknown, and an unknown fact must not pretend to be a value
         return {}
-    return {MMAP_RND_BITS_FACT: MMAP_RND_BITS.read_text(encoding="utf-8").strip()}
+    return {MMAP_RND_BITS_FACT: value}
 
 
 def failure_signatures(mmap_rnd_bits: str | None) -> tuple[FailureSignature, ...]:
