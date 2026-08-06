@@ -438,6 +438,21 @@ def test_no_cache_directory_means_probe_every_time() -> None:
     assert len(runner.calls) == 2 * spawned
 
 
+def test_a_cache_that_cannot_be_written_still_answers_every_probe(tmp_path: Path) -> None:
+    """A home directory nobody can write to is ordinary -- containers, ProtectHome, a full
+    disk -- and by the time the write is tried every probe has already succeeded. Refusing to
+    start there would deny a machine every analysis it can actually do, over a shortcut."""
+    # a cache directory whose parent is a regular file: nothing can be created under it
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("", encoding="utf-8")
+    runner = FakeRunner(catches_every_planted_bug)
+
+    statuses = probe_all(a_clang(), a_darwin(), cache_dir=blocked / "cache", runner=runner)
+
+    assert set(statuses) == set(Analysis)
+    assert statuses[Analysis.TSAN].available
+
+
 def test_the_cache_directory_is_created_on_demand(tmp_path: Path) -> None:
     nested = tmp_path / "cache" / "capabilities"
     runner = FakeRunner(catches_every_planted_bug)

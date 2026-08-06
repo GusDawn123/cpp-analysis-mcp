@@ -523,10 +523,16 @@ def read_cache(path: Path) -> dict[Analysis, CapabilityStatus] | None:
 
 
 def write_cache(path: Path, statuses: Mapping[Analysis, CapabilityStatus]) -> None:
-    """Write the statuses under this machine's fingerprint."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write the statuses under this machine's fingerprint, or give up quietly."""
     payload = {analysis.value: _status_to_json(status) for analysis, status in statuses.items()}
-    path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+    except OSError:
+        # the cache is an optimization and every probe has already answered by now, so
+        # degrading to uncached beats refusing to start on a read-only home or a full disk.
+        # The next start simply probes again.
+        return
 
 
 def _status_to_json(status: CapabilityStatus) -> dict[str, object]:

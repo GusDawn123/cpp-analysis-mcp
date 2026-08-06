@@ -3,7 +3,13 @@ name = "cpp-analysis-mcp"
 version = "0.1.0"
 description = "MCP server exposing C++ sanitizers, static analysis, and profilers to AI agents"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "anyio>=4.14.2",
+    "mcp>=2.0.0",
+]
+
+[project.scripts]
+cpp-analysis-mcp = "cpp_analysis_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]
