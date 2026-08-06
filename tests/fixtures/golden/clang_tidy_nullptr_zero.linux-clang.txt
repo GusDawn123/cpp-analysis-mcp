@@ -1,0 +1,5 @@
+1 warning generated.
+/w/tests/fixtures/cpp/nullptr_zero.cpp:5:14: warning: use nullptr [modernize-use-nullptr]
+    5 |     int* p = 0;  // BUG: a null pointer spelled 0 rather than nullptr
+      |              ^
+      |              nullptr
