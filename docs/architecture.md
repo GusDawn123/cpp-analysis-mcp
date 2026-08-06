@@ -236,11 +236,19 @@ Note `warnings` — the build step already produces findings, because
 class Context:
     platform: Platform            # the OS does not change mid-run
     capabilities: Capabilities    # what this machine can actually do
-    workspace: Path               # nothing runs outside this directory
-    default_timeout_s: int
+    workspace: Path               # where every tool call builds and runs
 ```
 
-Prevents four separate arguments being threaded through every function.
+Prevents these being threaded through every function as separate arguments.
+
+An early draft carried a `default_timeout_s` here too. That was the wrong shape: a
+sanitized run is minutes and a syntax check is seconds, so one number is too tight for the
+first and meaningless for the second. Each pipeline knows what its own steps cost and owns
+its own.
+
+The workspace covers every *request*, which is not quite everything. Capability detection
+compiles and runs its probes at startup, before there is a request to attribute them to,
+and each of those gets its own scratch directory under the system temp dir.
 
 ---
 

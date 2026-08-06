@@ -45,6 +45,9 @@ DETECT = f"{PACKAGE_NAME}.platforms.detect"
 CONTROL_FLOW_NODES = (
     ast.If,
     ast.IfExp,
+    # `or` and `and` branch as surely as an `if`, and read as plumbing while doing it:
+    # `checks=checks or "bugprone-*"` is a handler deciding a default the caller left out
+    ast.BoolOp,
     ast.For,
     ast.AsyncFor,
     ast.While,
