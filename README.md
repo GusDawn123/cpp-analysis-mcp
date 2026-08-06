@@ -1,7 +1,9 @@
 # cpp-analysis-mcp
 
-**Status: design phase. Nothing is built yet.** These documents exist to get the
-architecture right before writing code.
+**Status: working.** Sanitizers and compile-time checks run end to end behind an
+MCP server; profilers are not built yet.
+[docs/getting-started.md](docs/getting-started.md) takes you from clone to first
+caught bug.
 
 A tool that lets an AI coding assistant actually *test* C++ programs for
 concurrency and memory bugs, instead of only reading the source.
@@ -150,10 +152,12 @@ program — you have to rebuild.
 
 Read in this order:
 
-1. **[docs/architecture.md](docs/architecture.md)** — how it is built and why
-2. **[docs/workflow-scenario.md](docs/workflow-scenario.md)** — a full worked
+1. **[docs/getting-started.md](docs/getting-started.md)** — install it, wire it
+   into an assistant, catch a first bug
+2. **[docs/architecture.md](docs/architecture.md)** — how it is built and why
+3. **[docs/workflow-scenario.md](docs/workflow-scenario.md)** — a full worked
    example of somebody using it
-3. **[docs/open-questions.md](docs/open-questions.md)** — decisions still open,
+4. **[docs/open-questions.md](docs/open-questions.md)** — decisions still open,
    where input is wanted
 
 ---
