@@ -446,7 +446,7 @@ def _probe_thread_safety(
 
 def _probe_clang_tidy(platform: Platform, source: Path, runner: Runner) -> CapabilityStatus:
     """Run the one check the snippet was written to trip."""
-    tidy = _find_clang_tidy(platform)
+    tidy = find_clang_tidy(platform)
     if tidy is None:
         return CapabilityStatus(
             available=False,
@@ -466,7 +466,7 @@ def _probe_clang_tidy(platform: Platform, source: Path, runner: Runner) -> Capab
     return classify(Analysis.CLANG_TIDY, platform, PROBES[Analysis.CLANG_TIDY], (checked,))
 
 
-def _find_clang_tidy(platform: Platform) -> Path | None:
+def find_clang_tidy(platform: Platform) -> Path | None:
     """PATH first, then wherever this OS keeps llvm: brew does not link it into PATH."""
     on_path = shutil.which(CLANG_TIDY)
     if on_path is not None:

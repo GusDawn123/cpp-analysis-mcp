@@ -42,7 +42,10 @@ GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux)-(?P<family>clang|
 # name, so these are captured by hand and the matrix does not speak for them. One mapping
 # registers each hand-captured golden to its fixture -- two independent lists could drift,
 # and an orphaned or mistyped name on either side would pass both.
-COMPILE_TIME_CAPTURES = {"unguarded_write": ("thread_safety_unguarded_write.darwin-clang.txt",)}
+COMPILE_TIME_CAPTURES = {
+    "unguarded_write": ("thread_safety_unguarded_write.darwin-clang.txt",),
+    "nullptr_zero": ("clang_tidy_nullptr_zero.linux-clang.txt",),
+}
 COMPILE_TIME_FIXTURES = frozenset(COMPILE_TIME_CAPTURES)
 COMPILE_TIME_GOLDENS = frozenset(name for names in COMPILE_TIME_CAPTURES.values() for name in names)
 

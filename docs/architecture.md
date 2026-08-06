@@ -348,7 +348,11 @@ cpp-analysis-mcp/
 │   ├── process.py          subprocess, timeouts, confinement
 │   │
 │   ├── pipelines/          the orchestrators
-│   │   └── sanitize · static_check · profile · snippet
+│   │   └── sanitize · static_check · profile
+│   │       (snippets are an entry point of each pipeline, not a pipeline of
+│   │        their own: a snippet is a source shape, and rule 1 -- no
+│   │        pipeline imports another -- would leave a snippet module
+│   │        rebuilding the same build-run-parse chain instead of reusing it)
 │   │
 │   ├── build/              cmake · single_file
 │   ├── parsers/            tsan · asan · ubsan · clang_tidy · perf · xctrace
