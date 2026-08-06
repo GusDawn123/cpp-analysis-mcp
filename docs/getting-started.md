@@ -43,15 +43,38 @@ make integration   # compiles and runs real programs with YOUR compiler
 Both green means the server can do its job here. If `make integration` fails,
 send back the failing output — it is the bug report.
 
-## Wire it into Claude Code
+## Wire it into an MCP client
 
-From inside the clone:
+This is a standard MCP server talking stdio — it has no opinion about which
+assistant is on the other end. The command any client needs to launch it is:
 
 ```sh
-claude mcp add cpp-analysis -- uv run --directory "$PWD" cpp-analysis-mcp
+uv run --directory /path/to/cpp-analysis-mcp cpp-analysis-mcp
 ```
 
-Then start a new Claude Code session and check the connection with `/mcp`.
+Most clients want that wrapped in JSON, keyed by whatever name you choose
+(`cpp-analysis` below), in a config file:
+
+```json
+{
+  "mcpServers": {
+    "cpp-analysis": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/cpp-analysis-mcp", "cpp-analysis-mcp"]
+    }
+  }
+}
+```
+
+- **Cursor** — that block goes in `.cursor/mcp.json` (project) or
+  `~/.cursor/mcp.json` (global).
+- **Claude Desktop** — same shape, in its `claude_desktop_config.json`.
+- **Claude Code** — skip the JSON and run
+  `claude mcp add cpp-analysis -- uv run --directory /path/to/cpp-analysis-mcp cpp-analysis-mcp`
+  from inside the clone.
+
+Check your client's docs for its exact config file location and reload
+mechanism — that part is the one thing that isn't standardized.
 
 The first start is slow **on purpose**: the server compiles and runs a small
 planted-bug program for each analysis to prove which ones actually work on your
