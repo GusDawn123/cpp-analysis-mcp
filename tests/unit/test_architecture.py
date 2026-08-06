@@ -4,6 +4,11 @@ Each of the four rules is checked by parsing the real files under src/cpp_analys
 with ast, so a violation fails a test instead of relying on review discipline. One
 narrower rule rides along: subprocess belongs to process.py alone. Most of the package
 is still docstring stubs; these tests are the ratchet for what gets added.
+
+Rule 3 is checked from its exception inwards. Something has to call platforms.detect(),
+and the rule is only worth anything while that something stays singular, so the tests
+below name the one sanctioned caller and refuse every other -- including the second-hand
+version, a pipeline importing the composition root to resolve a context of its own.
 """
 
 from __future__ import annotations
@@ -22,10 +27,20 @@ PIPELINES = f"{PACKAGE_NAME}.pipelines"
 # the layers below pipelines: they may be imported by a pipeline, never the reverse
 PRIMITIVE_PACKAGES = ("build", "parsers", "platforms", "toolchains")
 # primitives that are single modules rather than packages, so rglob does not reach them
-TOP_LEVEL_PRIMITIVES = (PACKAGE_DIR / "capabilities.py", PACKAGE_DIR / "process.py")
+TOP_LEVEL_PRIMITIVES = (
+    PACKAGE_DIR / "capabilities.py",
+    PACKAGE_DIR / "context.py",
+    PACKAGE_DIR / "process.py",
+)
 
 SERVER = PACKAGE_DIR / "server.py"
 PROCESS = PACKAGE_DIR / "process.py"
+# the composition root: the one module allowed to ask this machine what it is
+CONTEXT = PACKAGE_DIR / "context.py"
+PLATFORMS_INIT = PACKAGE_DIR / "platforms" / "__init__.py"
+
+CONTEXT_MODULE = f"{PACKAGE_NAME}.context"
+DETECT = f"{PACKAGE_NAME}.platforms.detect"
 
 CONTROL_FLOW_NODES = (
     ast.If,
@@ -99,6 +114,36 @@ def reaches(target: str, package: str) -> bool:
     return target == package or target.startswith(f"{package}.")
 
 
+def platform_lookups(tree: ast.Module) -> Iterator[ast.Attribute]:
+    """Yield every reference to platforms.detect, spelled bare or fully qualified.
+
+    An aliased import (`import ...platforms as p`) could still slip past; the ratchet is
+    aimed at honest drift in the spellings this package actually uses, not at evasion.
+    """
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "detect"
+            and _is_platforms(_dotted(node.value))
+        ):
+            yield node
+
+
+def _dotted(node: ast.expr) -> str:
+    """Flatten a Name/Attribute chain to its dotted text; anything else flattens to ""."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _dotted(node.value)
+        return f"{prefix}.{node.attr}" if prefix else ""
+    return ""
+
+
+def _is_platforms(dotted: str) -> bool:
+    """Match the platforms module as a whole trailing segment, so `myplatforms` cannot."""
+    return dotted == "platforms" or dotted.endswith(".platforms")
+
+
 def test_layer_packages_exist() -> None:
     """Guard the rules below: a renamed directory would make them pass vacuously."""
     expected = (*PRIMITIVE_PACKAGES, "pipelines")
@@ -168,6 +213,43 @@ def test_server_has_no_control_flow() -> None:
     ]
 
     assert not violations, "server.py must hold no control flow:\n" + "\n".join(violations)
+
+
+def test_only_the_composition_root_looks_the_platform_up() -> None:
+    """Rule 3's sanctioned exception, made structural rather than remembered.
+
+    Something has to call platforms.detect(), and context.resolve() is that something. A
+    second caller is how the rule erodes: code that looks the platform up itself always
+    finds this machine, so the Linux behaviour it decides can never be tested from here.
+    """
+    violations: list[str] = []
+    for path in sorted(PACKAGE_DIR.rglob("*.py")):
+        # the module that defines detect(), and the one module sanctioned to call it
+        if path in (PLATFORMS_INIT, CONTEXT):
+            continue
+        tree = parse(path)
+        for node, targets in imports_of(tree, package_of(path)):
+            if DETECT in targets:
+                violations.append(f"{path}:{node.lineno} imports {DETECT}")
+        violations.extend(
+            f"{path}:{node.lineno} references platforms.detect" for node in platform_lookups(tree)
+        )
+
+    assert not violations, "only context.py may look the platform up:\n" + "\n".join(violations)
+
+
+def test_no_pipeline_resolves_its_own_context() -> None:
+    """Rule 3 second-hand: a pipeline that built its own Context would be looking the platform
+    up through the composition root, and would need a whole host where it is handed a Platform
+    and a Toolchain today -- the same violation, one layer further from the test that names it.
+    """
+    violations: list[str] = []
+    for path in modules_in("pipelines"):
+        for node, targets in imports_of(parse(path), package_of(path)):
+            if any(reaches(target, CONTEXT_MODULE) for target in targets):
+                violations.append(f"{path}:{node.lineno} imports {CONTEXT_MODULE}")
+
+    assert not violations, f"no pipeline may import {CONTEXT_MODULE}:\n" + "\n".join(violations)
 
 
 def test_parsers_are_pure() -> None:
