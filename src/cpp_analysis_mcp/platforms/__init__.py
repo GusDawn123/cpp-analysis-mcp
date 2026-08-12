@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import platform
 
-from cpp_analysis_mcp.platforms import darwin, linux
+from cpp_analysis_mcp.platforms import darwin, linux, windows
 from cpp_analysis_mcp.platforms.base import Platform
 
 __all__ = ["Platform", "detect"]
 
-DETECTORS = {linux.NAME: linux.detect, darwin.NAME: darwin.detect}
+DETECTORS = {linux.NAME: linux.detect, darwin.NAME: darwin.detect, windows.NAME: windows.detect}
 
 
 def detect() -> Platform:

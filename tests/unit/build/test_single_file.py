@@ -46,8 +46,9 @@ UNRELATED_VAR = "CPP_ANALYSIS_MCP_UNRELATED"
 
 DEFAULT_TIMEOUT_S = 120
 
-CLANG_PATH = "/usr/bin/clang++"
-GCC_PATH = "/usr/bin/g++"
+# spelled through Path so the strings compare equal to str(Path(...)) on Windows too
+CLANG_PATH = str(Path("/usr/bin/clang++"))
+GCC_PATH = str(Path("/usr/bin/g++"))
 
 SOURCE_STEM = "data_race"
 

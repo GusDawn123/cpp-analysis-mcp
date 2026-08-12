@@ -78,8 +78,9 @@ SHAPE_PHRASES: Mapping[str, tuple[str, ...]] = {
 # client validates one of them as an error
 UNION_MEMBERS = frozenset({"AnalysisReport", "BuildFailure", "CapabilityStatus"})
 
-CLANG_PATH = "/usr/bin/clang++"
-TIDY_PATH = "/usr/bin/clang-tidy"
+# spelled through Path so the strings compare equal to str(Path(...)) on Windows too
+CLANG_PATH = str(Path("/usr/bin/clang++"))
+TIDY_PATH = str(Path("/usr/bin/clang-tidy"))
 CLANG_WARNING_FLAGS = ("-Wthread-safety",)
 DARWIN_COMPILE_EXTRAS = ("-fcolor-diagnostics",)
 
@@ -629,8 +630,10 @@ async def test_the_target_the_caller_named_is_the_one_cmake_is_told_to_build(
     assert runner.spawns[1].cmd[:2] == ["cmake", "--build"]
     assert "--target" in runner.spawns[1].cmd
     assert runner.spawns[1].cmd[runner.spawns[1].cmd.index("--target") + 1] == OTHER_NAME
-    # and the binary that ran is the one that target names, not the other one
-    assert runner.ran.cmd[0].endswith(OTHER_ARTIFACT)
+    # and the binary that ran is the one that target names, not the other one. Through
+    # Path: cmake's File API reports the artifact with forward slashes, the run command
+    # prints the platform's own separator
+    assert runner.ran.cmd[0].endswith(str(Path(OTHER_ARTIFACT)))
 
 
 @pytest.mark.anyio

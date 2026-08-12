@@ -32,10 +32,12 @@ from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
-# where the fake PATH puts everything discovery and the probes go looking for
-BIN_DIR = "/usr/bin"
-CLANG_PATH = "/usr/bin/clang++"
-GCC_PATH = "/usr/bin/g++"
+# where the fake PATH puts everything discovery and the probes go looking for. Spelled
+# through Path so the strings compare equal to str(Path(...)) on Windows too, where the
+# separator flips
+BIN_DIR = Path("/usr/bin")
+CLANG_PATH = str(BIN_DIR / "clang++")
+GCC_PATH = str(BIN_DIR / "g++")
 
 # first lines of --version, copied from the real thing
 APPLE_CLANG = "Apple clang version 17.0.0 (clang-1700.0.13.3)\nTarget: arm64-apple-darwin24.6.0\n"
@@ -48,8 +50,8 @@ VERSIONS = {"clang++": APPLE_CLANG, "g++": UBUNTU_GCC}
 # a machine really can hand back its gcc-family toolchain first
 SWAPPED_VERSIONS = {"clang++": UBUNTU_GCC, "g++": APPLE_CLANG}
 
-# the two supported operating systems: resolve() reads whichever one this machine is
-SUPPORTED_PLATFORMS = ("darwin", "linux")
+# the supported operating systems: resolve() reads whichever one this machine is
+SUPPORTED_PLATFORMS = ("darwin", "linux", "windows")
 
 # a cache file is named after capabilities.fingerprint, which is sha256 written as hex
 FINGERPRINT_LENGTH = 64
@@ -115,9 +117,13 @@ class RefusingRunner:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names."""
+    """Read which probe a command belongs to off the scratch file it names.
+
+    .exe comes off as well as .cpp: on a real Windows host the probes name their
+    binaries with the platform's executable suffix.
+    """
     for arg in cmd:
-        stem = Path(arg).name.removesuffix(".cpp")
+        stem = Path(arg).name.removesuffix(".cpp").removesuffix(".exe")
         if stem.startswith(PROBE_STEM):
             return Analysis(stem.removeprefix(PROBE_STEM))
     return None
@@ -157,7 +163,7 @@ def a_host_where_each_binary_reports_the_other_family(cmd: list[str]) -> RunResu
 
 def both_compilers_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Put clang++, g++ and clang-tidy where discovery and the probes look for them."""
-    monkeypatch.setattr(shutil, "which", lambda name: f"{BIN_DIR}/{name}")
+    monkeypatch.setattr(shutil, "which", lambda name: str(BIN_DIR / name))
 
 
 def a_clang() -> Toolchain:
@@ -207,7 +213,9 @@ def test_resolve_binds_the_host_the_compiler_and_the_probes_into_one_value(
     # both compilers answered, and the preference picked between them
     assert str(context.toolchain.compiler) == CLANG_PATH
     assert set(context.capabilities) == set(Analysis)
-    assert context.capabilities[Analysis.TSAN].available
+    # ASan rather than TSan: it is the one analysis no supported OS denies, so the fake
+    # detector's catch reads as available on every machine this test runs on
+    assert context.capabilities[Analysis.ASAN].available
     assert context.workspace.is_dir()
     assert context.runner is runner
     shutil.rmtree(context.workspace)

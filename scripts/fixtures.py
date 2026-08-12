@@ -66,6 +66,7 @@ SUPPORT: list[Case] = [
         sanitizer="thread",
         tool="tsan",
         expect=("WARNING: ThreadSanitizer: data race",),
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="race_with_lock",
@@ -74,6 +75,7 @@ SUPPORT: list[Case] = [
         # The second marker guarantees goldens carry mutex annotations, which
         # the tsan parser's locks_held extraction is tested against.
         expect=("WARNING: ThreadSanitizer: data race", "(mutexes:"),
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="deadlock",
@@ -92,12 +94,14 @@ SUPPORT: list[Case] = [
         sanitizer="address",
         tool="asan",
         expect=("ERROR: AddressSanitizer: heap-buffer-overflow",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="use_after_free",
         sanitizer="address",
         tool="asan",
         expect=("ERROR: AddressSanitizer: heap-use-after-free",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="leak",
@@ -105,13 +109,14 @@ SUPPORT: list[Case] = [
         tool="lsan",
         expect=("detected memory leaks",),
         platforms=frozenset({"linux"}),
-        skip_reason="LeakSanitizer is Linux-only; it does not run on macOS arm64",
+        skip_reason="LeakSanitizer is Linux-only; it runs on neither macOS arm64 nor Windows",
     ),
     Case(
         fixture="signed_overflow",
         sanitizer="undefined",
         tool="ubsan",
         expect=("runtime error: signed integer overflow",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     # The control: three runs that must all come back silent AND exit 0.
     Case(
@@ -120,6 +125,7 @@ SUPPORT: list[Case] = [
         tool="tsan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="clean",
@@ -127,6 +133,7 @@ SUPPORT: list[Case] = [
         tool="asan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="clean",
@@ -134,12 +141,13 @@ SUPPORT: list[Case] = [
         tool="ubsan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
 ]
 
 
 def current_os() -> str:
-    """Return darwin or linux."""
+    """Return darwin, linux or windows."""
     return platform.system().lower()
 
 
@@ -181,17 +189,28 @@ def run_command(
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        # start_new_session made the child its own group leader, so its pid is
+        # POSIX: start_new_session made the child its own group leader, so its pid is
         # the pgid; it may also exit on its own between the timeout and the kill.
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        # Windows has no groups to signal, so taskkill /T walks the tree instead.
+        # sys.platform rather than os.name because mypy only narrows the former.
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                check=False,
+            )
+        else:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
         output, _ = proc.communicate()
         return None, (output or "") + f"\n[killed after {timeout}s timeout]\n"
     return proc.returncode, output
 
 
 def binary_path(case: Case) -> Path:
-    return BUILD_DIR / f"{case.fixture}_{case.tool}"
+    # Windows will only execute a file that ends in .exe
+    suffix = ".exe" if current_os() == "windows" else ""
+    return BUILD_DIR / f"{case.fixture}_{case.tool}{suffix}"
 
 
 def compile_case(case: Case, compiler: str) -> tuple[bool, str]:

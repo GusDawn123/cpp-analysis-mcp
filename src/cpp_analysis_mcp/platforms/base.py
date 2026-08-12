@@ -36,8 +36,10 @@ class FailureSignature:
 class Platform:
     """One operating system's differences, as data."""
 
-    name: str  # "linux" or "darwin"
+    name: str  # "linux", "darwin" or "windows"
     compile_extras: tuple[str, ...] = ()
+    # what a runnable binary's name must end in: ".exe" on Windows, "" elsewhere
+    executable_suffix: str = ""
     # searched on top of PATH: brew installs llvm outside it on macOS
     extra_tool_dirs: tuple[Path, ...] = ()
     denied: Mapping[Analysis, Denial] = field(default_factory=dict)

@@ -44,7 +44,7 @@ def compile_file(
     compiling, so the compiler's own output is parsed into the returned warnings.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
-    binary = build_dir / _binary_name(source, sanitizer)
+    binary = build_dir / _binary_name(source, sanitizer, platform.executable_suffix)
 
     result = runner(
         _command(source, binary, toolchain=toolchain, platform=platform, sanitizer=sanitizer),
@@ -67,14 +67,16 @@ def compile_file(
     )
 
 
-def _binary_name(source: Path, sanitizer: SanitizerKind | None) -> str:
+def _binary_name(source: Path, sanitizer: SanitizerKind | None, suffix: str) -> str:
     """Name the output by source and variant, so one file's sanitized builds coexist.
 
     A TSan and an ASan build of the same source into one directory must not overwrite
     each other: the survivor would sit at the other's reported path, bound to the wrong
-    runtime environment.
+    runtime environment. The platform's executable suffix goes on last: Windows will
+    only execute a file that ends in .exe.
     """
-    return f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
+    stem = f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
+    return f"{stem}{suffix}"
 
 
 def _command(

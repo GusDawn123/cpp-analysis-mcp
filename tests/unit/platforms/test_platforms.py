@@ -14,7 +14,7 @@ import pytest
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.models import Analysis
-from cpp_analysis_mcp.platforms import darwin, linux
+from cpp_analysis_mcp.platforms import darwin, linux, windows
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
 
 # vm.mmap_rnd_bits as Ubuntu 24.04 ships it -- the value the mapping crash was measured at
@@ -185,6 +185,46 @@ def test_linux_detect_carries_its_tables() -> None:
     assert detected.limitations == {}
 
 
+# ---------------------------------------------------------------------------------- windows
+
+
+def a_windows() -> Platform:
+    """Build Windows's tables without asking what machine this is."""
+    return Platform(
+        name="windows",
+        executable_suffix=".exe",
+        denied=windows.DENIED,
+        install_hints=windows.INSTALL_HINTS,
+    )
+
+
+def test_windows_denies_both_missing_runtimes_with_a_way_out() -> None:
+    """No compiler ships TSan or LSan for Windows; both denials must say so and point at WSL."""
+    denied = a_windows().denied
+
+    assert "ThreadSanitizer" in denied[Analysis.TSAN].reason
+    assert "LeakSanitizer" in denied[Analysis.LSAN].reason
+    for denial in denied.values():
+        assert denial.suggestion is not None
+        assert "WSL" in denial.suggestion
+
+
+def test_windows_binaries_carry_the_exe_suffix() -> None:
+    """CreateProcess only executes .exe; a suffixless binary would build and then not run."""
+    assert a_windows().executable_suffix == ".exe"
+    assert windows.detect().executable_suffix == ".exe"
+
+
+def test_windows_says_how_to_install_clang_tidy() -> None:
+    assert a_windows().install_hints[Analysis.CLANG_TIDY] == "winget install LLVM.LLVM"
+
+
+def test_windows_looks_for_llvm_where_its_installer_leaves_it() -> None:
+    """The LLVM installer's PATH checkbox is off by default, so its bin is searched by hand."""
+    assert windows.LLVM_DIR.name == "bin"
+    assert all(path.is_dir() for path in windows.detect().extra_tool_dirs)
+
+
 # --------------------------------------------------------------------------- the base shape
 
 
@@ -246,7 +286,7 @@ def test_detect_returns_this_hosts_platform() -> None:
 
 
 def test_an_unsupported_os_is_named_rather_than_guessed_at(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(host_platform, "system", lambda: "Windows")
+    monkeypatch.setattr(host_platform, "system", lambda: "FreeBSD")
 
-    with pytest.raises(NotImplementedError, match="windows"):
+    with pytest.raises(NotImplementedError, match="freebsd"):
         platforms.detect()

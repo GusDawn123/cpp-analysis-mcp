@@ -530,7 +530,9 @@ def test_two_real_compilers_are_both_kept(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert [chain.family for chain in found] == ["clang", "gcc"]
     assert found[1].unsupported_reason(Analysis.THREAD_SAFETY) is not None
-    assert [str(chain.compiler) for chain in found] == ["/usr/bin/clang++", "/usr/bin/g++"]
+    # through Path: the fake which answers with forward slashes, discovery stores a Path,
+    # and on Windows that Path prints with the separator flipped
+    assert [chain.compiler for chain in found] == [Path("/usr/bin/clang++"), Path("/usr/bin/g++")]
 
 
 def test_a_compiler_that_is_not_installed_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:

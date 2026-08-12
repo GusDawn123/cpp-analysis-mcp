@@ -393,7 +393,8 @@ def _probe_sanitizer(
 ) -> CapabilityStatus:
     """Build the buggy program under its sanitizer, run it, and look for the report."""
     kind = SANITIZER_FOR[analysis]
-    binary = source.with_suffix("")
+    # "" on POSIX, ".exe" on Windows -- with_suffix covers both spellings
+    binary = source.with_suffix(platform.executable_suffix)
     compiled = Stage(
         name="compile",
         timeout_s=COMPILE_TIMEOUT_S,

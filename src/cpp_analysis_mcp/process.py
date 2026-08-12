@@ -15,6 +15,7 @@ import contextlib
 import os
 import signal
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,16 +61,37 @@ def run(
     try:
         output, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        # start_new_session made the child its own group leader, so its pid is the pgid;
-        # it may also exit on its own between the timeout and the kill.
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        _kill_tree(proc.pid)
         output, _ = proc.communicate()
         return RunResult(
             exit_code=None,
             output=(output or "") + f"\n[killed after {timeout_s}s timeout]\n",
         )
     return RunResult(exit_code=proc.returncode, output=output)
+
+
+def _kill_tree(pid: int) -> None:
+    """Take down a timed-out process and its children, in each OS's own words.
+
+    POSIX: start_new_session made the child its own group leader, so its pid is the pgid;
+    it may also exit on its own between the timeout and the kill. Windows has no process
+    groups to signal (start_new_session is inert there), so taskkill /T walks the child's
+    process tree instead -- same semantics, and a tree already gone exits nonzero, which
+    is the ProcessLookupError case and is ignored the same way.
+
+    The branch is on sys.platform rather than os.name because mypy narrows the former:
+    killpg and SIGKILL do not exist in Windows stubs, and only this spelling lets each
+    OS type-check the code it will actually run.
+    """
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            capture_output=True,
+            check=False,
+        )
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGKILL)
 
 
 class Runner(Protocol):
