@@ -80,9 +80,18 @@ def test_discovery_finds_a_working_compiler(probed: Probed) -> None:
         assert chain.version
 
 
+def expected_for(chain: Toolchain) -> dict[Analysis, bool]:
+    """This OS's expectations, less what this compiler cannot do here: MinGW gcc ships
+    no sanitizer runtimes on Windows, so every sanitizer reads unavailable for it."""
+    expected = expected_here()
+    if host_platform.system().lower() == "windows" and chain.family == "gcc":
+        return dict.fromkeys(expected, False)
+    return expected
+
+
 def test_the_sanitizers_agree_with_the_capture_script(probed: Probed) -> None:
     for chain, statuses in probed:
-        for analysis, expected in expected_here().items():
+        for analysis, expected in expected_for(chain).items():
             status = statuses[analysis]
             where = f"{chain.family} {analysis}"
 

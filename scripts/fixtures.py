@@ -28,6 +28,17 @@ DEFAULT_OUT_DIR = REPO_ROOT / "tests" / "fixtures" / "golden"
 
 RUN_TIMEOUT_S = 30
 
+# Where LLVM on Windows keeps the sanitizer runtimes, one directory per clang version.
+# Two measured quirks live there: UBSan's libraries must be linked by full path (the
+# linker otherwise takes MSVC's incompatible copy, searched first), and ASan's runtime
+# is a DLL the loader only finds beside the binary.
+LLVM_ROOT = Path(r"C:\Program Files\LLVM")
+UBSAN_LIBS = (
+    "clang_rt.ubsan_standalone-x86_64.lib",
+    "clang_rt.ubsan_standalone_cxx-x86_64.lib",
+)
+ASAN_DLL = "clang_rt.asan_dynamic-x86_64.dll"
+
 # Pin the sanitizer runtime options so goldens match what validation saw.
 # ASAN_OPTIONS is deliberately absent -- ASan runs on its defaults.
 PINNED_ENV = {
@@ -213,6 +224,16 @@ def binary_path(case: Case) -> Path:
     return BUILD_DIR / f"{case.fixture}_{case.tool}{suffix}"
 
 
+def windows_runtime_dir() -> Path | None:
+    """Return the newest clang runtime directory of a Windows LLVM install, or None."""
+    versioned = [
+        (int(path.parts[-3]), path)
+        for path in LLVM_ROOT.glob("lib/clang/*/lib/windows")
+        if path.parts[-3].isdigit()
+    ]
+    return max(versioned)[1] if versioned else None
+
+
 def compile_case(case: Case, compiler: str) -> tuple[bool, str]:
     """Compile one fixture under its sanitizer. Returns (ok, compiler output)."""
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
@@ -227,7 +248,14 @@ def compile_case(case: Case, compiler: str) -> tuple[bool, str]:
     if current_os() == "linux":
         cmd.append("-pthread")
     cmd += [str(CPP_DIR / f"{case.fixture}.cpp"), "-o", str(binary_path(case))]
+    runtime = windows_runtime_dir() if current_os() == "windows" else None
+    if runtime is not None and case.sanitizer == "undefined":
+        # by full path, or the link takes MSVC's incompatible copy of the runtime
+        cmd += [str(runtime / lib) for lib in UBSAN_LIBS]
     code, output = run_command(cmd, run_env(), timeout=120)
+    if code == 0 and runtime is not None and case.sanitizer == "address":
+        # beside the binary, the one place the Windows loader always looks
+        shutil.copy2(runtime / ASAN_DLL, BUILD_DIR)
     return code == 0, output
 
 

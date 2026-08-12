@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import platforms
-from cpp_analysis_mcp.models import Analysis
+from cpp_analysis_mcp.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.platforms import darwin, linux, windows
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
 
@@ -225,6 +225,60 @@ def test_windows_looks_for_llvm_where_its_installer_leaves_it() -> None:
     assert all(path.is_dir() for path in windows.detect().extra_tool_dirs)
 
 
+def test_the_newest_llvm_runtime_directory_wins(tmp_path: Path) -> None:
+    """ "9" sorts after "22" as text; the machine with both wants what its clang links."""
+    for version in ("9", "22"):
+        (tmp_path / "lib" / "clang" / version / "lib" / "windows").mkdir(parents=True)
+
+    chosen = windows.runtime_dir(tmp_path)
+
+    assert chosen is not None
+    assert chosen.parts[-3] == "22"
+
+
+def test_no_llvm_install_means_empty_runtime_tables(tmp_path: Path) -> None:
+    """Without LLVM the tables stay empty and the capability probes explain what is missing;
+    inventing paths here would turn that honest failure into a mystery about a file."""
+    assert windows.runtime_dir(tmp_path) is None
+    assert windows.link_extras(None) == {}
+    assert windows.runtime_dlls(None) == {}
+
+
+def test_ubsan_is_linked_against_llvms_own_runtime_by_full_path(tmp_path: Path) -> None:
+    """Left as a bare name the linker takes MSVC's copy -- searched first, built for a
+    different compiler -- and fails on symbols only MSVC's own objects define."""
+    named = windows.link_extras(tmp_path)[SanitizerKind.UNDEFINED]
+
+    assert [Path(library).parent for library in named] == [tmp_path, tmp_path]
+    assert [Path(library).name for library in named] == list(windows.UBSAN_LIBS)
+
+
+def test_cmake_on_windows_is_forced_onto_the_ninja_generator(tmp_path: Path) -> None:
+    """cmake's Windows default generator ignores CMAKE_CXX_COMPILER and builds with cl.exe;
+    naming Ninja is what makes the chosen compiler the one that actually compiles."""
+    ninja = tmp_path / "ninja.exe"
+
+    extras = windows.cmake_extras(ninja)
+
+    assert extras[:2] == ("-G", "Ninja")
+    assert extras[2] == f"-DCMAKE_MAKE_PROGRAM={ninja}"
+
+
+def test_without_a_ninja_the_cmake_default_stands() -> None:
+    """No generator argument is better than one naming a program that is not there."""
+    assert windows.cmake_extras(None) == ()
+
+
+def test_asan_names_its_dll_only_when_the_install_carries_it(tmp_path: Path) -> None:
+    """A promised DLL that is not there would fail every build's copy step; an absent one
+    leaves the run to fail and the probe to report what it saw."""
+    assert windows.runtime_dlls(tmp_path) == {}
+
+    (tmp_path / windows.ASAN_DLL).write_bytes(b"present")
+
+    assert windows.runtime_dlls(tmp_path) == {SanitizerKind.ADDRESS: (tmp_path / windows.ASAN_DLL,)}
+
+
 # --------------------------------------------------------------------------- the base shape
 
 
@@ -232,7 +286,11 @@ def test_a_bare_platform_denies_nothing() -> None:
     bare = Platform(name="linux")
 
     assert bare.compile_extras == ()
+    assert bare.executable_suffix == ""
     assert bare.extra_tool_dirs == ()
+    assert bare.sanitize_link_extras == {}
+    assert bare.runtime_dlls == {}
+    assert bare.cmake_extras == ()
     assert bare.denied == {}
     assert bare.limitations == {}
     assert bare.failure_signatures == ()

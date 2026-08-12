@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cpp_analysis_mcp import process
+from cpp_analysis_mcp.build.single_file import place_runtime_dlls
 from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
@@ -135,9 +136,11 @@ def build_project(
     if built.exit_code != 0:
         return _failure(BUILD_STAGE, platform, built.output)
 
+    binary = build_dir / chosen.artifact
+    place_runtime_dlls(platform, sanitizer, binary.parent)
     compile_commands = build_dir / COMPILE_COMMANDS
     return BuiltBinary(
-        path=build_dir / chosen.artifact,
+        path=binary,
         build_dir=build_dir,
         sanitizer=sanitizer,
         runtime_env=PINNED_RUNTIME_ENV[sanitizer] if sanitizer is not None else {},
@@ -165,7 +168,12 @@ def _configure_command(
 ) -> list[str]:
     """Compose the configure: sanitizer flags or the base ones, warnings, then this OS's."""
     flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else BASE_FLAGS
-    every_flag = " ".join([*flags, *toolchain.warning_flags, *platform.compile_extras])
+    extras = platform.sanitize_link_extras.get(sanitizer, ()) if sanitizer is not None else ()
+    # CMAKE_CXX_FLAGS is one space-separated string; a runtime library under
+    # "C:\Program Files" must be quoted inside it or cmake splits the path in two
+    every_flag = " ".join(
+        [*flags, *toolchain.warning_flags, *platform.compile_extras, *map(_quoted, extras)]
+    )
     return [
         "cmake",
         "-S",
@@ -180,7 +188,15 @@ def _configure_command(
         # cmake passes these to the linker as well as the compiler, which is what carries
         # -fsanitize through to the link -- a compile-only flag would build and then not link
         f"-DCMAKE_CXX_FLAGS={every_flag}",
+        # the OS's own configure needs, e.g. Windows forcing a generator that obeys
+        # CMAKE_CXX_COMPILER
+        *platform.cmake_extras,
     ]
+
+
+def _quoted(flag: str) -> str:
+    """Quote a flag that carries spaces, so a joined flags string keeps it as one word."""
+    return f'"{flag}"' if " " in flag else flag
 
 
 def _build_command(build_dir: Path, target: str, configuration: str) -> list[str]:
