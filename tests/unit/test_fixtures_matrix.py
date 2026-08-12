@@ -35,7 +35,7 @@ SUPPORT: list[Any] = list(FIXTURES.SUPPORT)
 CASES_BY_KEY: dict[tuple[str, str], Any] = {(case.tool, case.fixture): case for case in SUPPORT}
 
 # tool_stem.os-family.txt -- the stem carries underscores, so peel the suffix off the end
-GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux)-(?P<family>clang|gcc)\.txt$")
+GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux|windows)-(?P<family>clang|gcc)\.txt$")
 
 # The capture script builds and runs programs, so it owns the runtime sanitizers only.
 # -Wthread-safety reports while compiling: there is nothing to run and no sanitizer to

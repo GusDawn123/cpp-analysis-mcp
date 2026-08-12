@@ -7,18 +7,30 @@ it waiting on installs.
 
 ## What you need
 
-- **uv** — runs the Python side. `brew install uv` on macOS, or
+- **uv** — runs the Python side. `brew install uv` on macOS,
+  `winget install astral-sh.uv` on Windows, or
   `curl -LsSf https://astral.sh/uv/install.sh | sh` anywhere.
 - **A C++ toolchain** — macOS: `xcode-select --install` gives you clang.
   Linux: `sudo apt install clang` (gcc works too).
-- **CMake** — `brew install cmake` / `sudo apt install cmake`.
+  Windows: `winget install LLVM.LLVM` **and** Visual Studio (or its Build
+  Tools) with the "Desktop development with C++" workload — clang borrows
+  MSVC's headers and linker. Put `C:\Program Files\LLVM\bin` on PATH; the
+  LLVM installer does not do it for you.
+- **CMake** — `brew install cmake` / `sudo apt install cmake` /
+  `winget install Kitware.CMake`.
 - **Claude Code** — the assistant you will wire the server into.
   [Install docs](https://docs.anthropic.com/en/docs/claude-code) if you do not
   have the `claude` command yet.
 
 clang-tidy is optional. Stock macOS does not ship it; the server notices and
 says so instead of failing. On Linux, `sudo apt install clang-tidy` if you want
-that check.
+that check. On Windows it arrives with LLVM.
+
+Windows runs four of the six checks natively — AddressSanitizer, UBSan,
+`-Wthread-safety`, clang-tidy. ThreadSanitizer and LeakSanitizer have no
+Windows runtime in any compiler; the `capabilities` tool says so and points at
+WSL. MinGW gcc (MSYS2) cannot link any sanitizer on Windows — the server picks
+clang when both are installed.
 
 ## Download and set up
 

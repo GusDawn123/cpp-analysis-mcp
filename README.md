@@ -175,5 +175,5 @@ Read in this order:
 | Language | Python | The work is running command-line tools and parsing their text output. Python is best-in-class at both. |
 | Build system | CMake first | Covers most real C++ projects. Bazel/Meson/Make deferred. |
 | Compiler | clang default, gcc supported | clang is the only compiler on all three platforms and `-Wthread-safety` is clang-only. But gcc vendors LLVM's sanitizer runtime, so gcc support costs almost nothing. See [architecture.md](docs/architecture.md#operating-system-and-compiler-are-separate-axes). |
-| Platforms | Linux + macOS first, Windows later | Windows has no ThreadSanitizer at all and needs its own story. |
+| Platforms | Linux + macOS + Windows | Windows runs natively with LLVM clang: ASan, UBSan, `-Wthread-safety` and clang-tidy work; TSan and LSan have no Windows runtime in any compiler and report WSL as the way out. |
 | Distribution | Public GitHub, installed via `uvx` | No existing MCP server wraps these tools. |

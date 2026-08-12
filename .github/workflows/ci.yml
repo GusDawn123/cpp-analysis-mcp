@@ -31,15 +31,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
-      - run: make test
-      # Both runners ship a C++ toolchain, so the probes have something real to
-      # compile: ubuntu has clang++ and g++, macos has clang++.
-      - run: make integration
+      # The pytest lines make test/make integration run, spelled out because the
+      # windows runner has no make; one code path for all three.
+      - run: uv run pytest -m "not integration"
+      # All three runners ship a C++ toolchain, so the probes have something real
+      # to compile: ubuntu has clang++ and g++, macos has clang++, windows has
+      # LLVM clang and Visual Studio behind it.
+      - run: uv run pytest -m integration
 
   fixtures:
     name: fixtures (${{ matrix.os }}, ${{ matrix.compiler }})
@@ -51,12 +54,18 @@ jobs:
         include:
           - os: ubuntu-24.04
             compiler: clang++
+            python: python3
           - os: ubuntu-24.04
             compiler: g++
+            python: python3
           - os: macos-15
             compiler: clang++
+            python: python3
+          - os: windows-2025
+            compiler: clang++
+            python: python
     steps:
       - uses: actions/checkout@v7
       # Skip uv on purpose: the script is stdlib-only and this job proves it
       # still runs bare. It SKIPs the cases its platform cannot support.
-      - run: python3 scripts/fixtures.py --compiler ${{ matrix.compiler }} validate
+      - run: ${{ matrix.python }} scripts/fixtures.py --compiler ${{ matrix.compiler }} validate

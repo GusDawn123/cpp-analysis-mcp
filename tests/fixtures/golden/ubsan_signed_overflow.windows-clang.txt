@@ -1,0 +1,8 @@
+C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\signed_overflow.cpp:10:11: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+    #0 0x7ff637fd1040 in main C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\signed_overflow.cpp:10
+    #1 0x7ff637fed993 in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
+    #2 0x7ff637fed993 in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
+    #3 0x7ffa48fce956  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002e956)
+    #4 0x7ffa49f8ad6b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x1800aad6b)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\signed_overflow.cpp:10:11 

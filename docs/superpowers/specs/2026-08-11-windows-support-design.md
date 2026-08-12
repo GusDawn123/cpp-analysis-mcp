@@ -107,6 +107,28 @@ No new mechanisms. Denials, limitations, and failure signatures are the
 existing `Platform` vocabulary; a Windows-specific crash gets a measured
 `FailureSignature` when first seen, not a speculative one now.
 
+## Measured amendments (2026-08-11, during implementation)
+
+Three quirks the design predicted abstractly, pinned down by measurement and
+carried as `Platform` data:
+
+1. **UBSan links MSVC's runtime by accident.** clang embeds the runtime's bare
+   name; the linker searches MSVC's lib directories first and finds their
+   incompatible copy (fails on `__coe_win::*` symbols). Fix:
+   `Platform.sanitize_link_extras` hands the link LLVM's own libraries by full
+   path.
+2. **ASan's runtime is a DLL the loader cannot find.** A sanitized binary dies
+   on STATUS_DLL_NOT_FOUND printing nothing. Fix: `Platform.runtime_dlls` +
+   `place_runtime_dlls()` copy it beside every sanitized binary.
+3. **cmake's Windows default generator ignores the chosen compiler.** The
+   Visual Studio generator hands the build to cl.exe, which rejects
+   `-Wthread-safety`. Fix: `Platform.cmake_extras` forces the Ninja generator,
+   finding ninja on PATH or inside Visual Studio.
+
+Also measured: MinGW (MSYS2) gcc ships no sanitizer runtimes on Windows at
+all — now a `FailureSignature` naming clang as the way out, and the
+integration suite expects gcc's sanitizers to read unavailable on Windows.
+
 ## Success criteria (all verifiable)
 
 1. `uv run pytest -m "not integration"` — green on this Windows machine.
