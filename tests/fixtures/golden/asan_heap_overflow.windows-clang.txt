@@ -1,34 +1,34 @@
 =================================================================
-==27428==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x1184944a0120 at pc 0x7ff63d8829d8 bp 0x0002aa94faf0 sp 0x0002aa94fb38
-WRITE of size 4 at 0x1184944a0120 thread T0
-    #0 0x7ff63d8829d7 in main C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\heap_overflow.cpp:10
-    #1 0x7ff63d882c7b in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
-    #2 0x7ff63d882c7b in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
-    #3 0x7ffa48fce956  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002e956)
-    #4 0x7ffa49f8ad6b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x1800aad6b)
+==16632==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x12580b1a0140 at pc 0x7ff762bf29d8 bp 0x00eb8579fcf0 sp 0x00eb8579fd38
+WRITE of size 4 at 0x12580b1a0140 thread T0
+    #0 0x7ff762bf29d7 in main C:\w\tests\fixtures\cpp\heap_overflow.cpp:10
+    #1 0x7ff762bf2c7b in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
+    #2 0x7ff762bf2c7b in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
+    #3 0x7ffa3582ccb6  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002ccb6)
+    #4 0x7ffa3678ad6b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x1800aad6b)
 
-0x1184944a0120 is located 0 bytes after 16-byte region [0x1184944a0110,0x1184944a0120)
+0x12580b1a0140 is located 0 bytes after 16-byte region [0x12580b1a0130,0x12580b1a0140)
 allocated by thread T0 here:
-    #0 0x7ff969e6e51f  (C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\build\clang_rt.asan_dynamic-x86_64.dll+0x18005e51f)
-    #1 0x7ff63d882983 in main C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\heap_overflow.cpp:8
-    #2 0x7ff63d882c7b in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
-    #3 0x7ff63d882c7b in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
-    #4 0x7ffa48fce956  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002e956)
-    #5 0x7ffa49f8ad6b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x1800aad6b)
+    #0 0x7ff90fafe51f  (C:\w\tests\fixtures\build\clang_rt.asan_dynamic-x86_64.dll+0x18005e51f)
+    #1 0x7ff762bf2983 in main C:\w\tests\fixtures\cpp\heap_overflow.cpp:8
+    #2 0x7ff762bf2c7b in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
+    #3 0x7ff762bf2c7b in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
+    #4 0x7ffa3582ccb6  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002ccb6)
+    #5 0x7ffa3678ad6b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x1800aad6b)
 
-SUMMARY: AddressSanitizer: heap-buffer-overflow C:\Users\grosa\Desktop\cpp-analysis-mcp\tests\fixtures\cpp\heap_overflow.cpp:10 in main
+SUMMARY: AddressSanitizer: heap-buffer-overflow C:\w\tests\fixtures\cpp\heap_overflow.cpp:10 in main
 Shadow bytes around the buggy address:
-  0x11849449fe80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x11849449ff00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x11849449ff80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x1184944a0000: fa fa 00 05 fa fa 00 05 fa fa 00 00 fa fa 00 05
-  0x1184944a0080: fa fa 00 03 fa fa 00 06 fa fa 00 07 fa fa 00 07
-=>0x1184944a0100: fa fa 00 00[fa]fa fa fa fa fa fa fa fa fa fa fa
-  0x1184944a0180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
-  0x1184944a0200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
-  0x1184944a0280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
-  0x1184944a0300: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
-  0x1184944a0380: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x12580b19fe80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x12580b19ff00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x12580b19ff80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x12580b1a0000: fa fa 00 05 fa fa 00 00 fa fa 00 05 fa fa 00 00
+  0x12580b1a0080: fa fa 00 05 fa fa 00 03 fa fa 00 06 fa fa 00 07
+=>0x12580b1a0100: fa fa 00 07 fa fa 00 00[fa]fa fa fa fa fa fa fa
+  0x12580b1a0180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x12580b1a0200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x12580b1a0280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x12580b1a0300: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x12580b1a0380: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
 Shadow byte legend (one shadow byte represents 8 application bytes):
   Addressable:           00
   Partially addressable: 01 02 03 04 05 06 07 
@@ -48,4 +48,4 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
   ASan internal:           fe
   Left alloca redzone:     ca
   Right alloca redzone:    cb
-==27428==ABORTING
+==16632==ABORTING

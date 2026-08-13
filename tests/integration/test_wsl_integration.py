@@ -16,6 +16,7 @@ from helpers import bug_line, cpp_source
 
 from cpp_analysis_mcp import wsl
 from cpp_analysis_mcp.capabilities import probe_all
+from cpp_analysis_mcp.context import resolve
 from cpp_analysis_mcp.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file
 
@@ -102,6 +103,30 @@ def test_lsan_finds_the_leak_from_inside_the_distro(
     )
 
     assert LEAK_CATEGORY in [finding.category for finding in report.findings]
+
+
+def test_resolve_routes_tsan_onto_this_bridge_end_to_end(tmp_path: Path) -> None:
+    """The contract a real server start relies on, with nothing handed in: resolve() must
+    discover this same bridge on its own, reroute the denied analyses onto it, and the
+    engine it picked must catch a real race. Covers the seam the direct tests above skip
+    -- a regression in the routing itself would pass them and fail here."""
+    context = resolve(cache_dir=None, workspace=tmp_path / "workspace")
+    engine = context.engines[Analysis.TSAN]
+    if engine.platform.name != "wsl":
+        pytest.skip("resolve() found no bridge on this machine")
+
+    result = analyze_file(
+        cpp_source(DATA_RACE),
+        Analysis.TSAN,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
+        capabilities=context.capabilities,
+        build_dir=tmp_path / "routed",
+        runner=engine.runner,
+    )
+
+    assert isinstance(result, AnalysisReport), f"the routed build failed: {result}"
+    assert RACE_CATEGORY in [finding.category for finding in result.findings]
 
 
 def test_a_clean_program_comes_back_clean_through_the_bridge(

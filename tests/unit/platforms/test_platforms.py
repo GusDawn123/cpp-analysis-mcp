@@ -8,6 +8,7 @@ signatures below are exercised on macOS, where none of those crashes can happen.
 from __future__ import annotations
 
 import platform as host_platform
+import shutil
 from pathlib import Path
 
 import pytest
@@ -223,6 +224,39 @@ def test_windows_looks_for_llvm_where_its_installer_leaves_it() -> None:
     """The LLVM installer's PATH checkbox is off by default, so its bin is searched by hand."""
     assert windows.LLVM_DIR.name == "bin"
     assert all(path.is_dir() for path in windows.detect().extra_tool_dirs)
+
+
+def test_the_runtime_tables_follow_the_clang_discovery_will_find(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two LLVMs on one machine: toolchain discovery takes the clang++ PATH offers, so the
+    runtime the probes link must come from that same install, not the installer default --
+    bound apart, ASan and UBSan link a different version's runtime than their compiler."""
+    (tmp_path / "lib" / "clang" / "22" / "lib" / "windows").mkdir(parents=True)
+    on_path = tmp_path / "bin" / "clang++.exe"
+    monkeypatch.setattr(
+        shutil, "which", lambda name: str(on_path) if name == windows.COMPILER else None
+    )
+
+    assert windows.llvm_root() == tmp_path
+
+
+def test_a_path_clang_with_no_runtime_beside_it_falls_back_to_the_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A clang in a layout the table does not know (MSVC's bundled one) must not erase the
+    default: the installer's runtime is still the best guess there is."""
+    monkeypatch.setattr(shutil, "which", lambda name: str(tmp_path / "bin" / "clang++.exe"))
+
+    assert windows.llvm_root() == windows.LLVM_ROOT
+
+
+def test_no_clang_on_path_leaves_the_installer_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    assert windows.llvm_root() == windows.LLVM_ROOT
 
 
 def test_the_newest_llvm_runtime_directory_wins(tmp_path: Path) -> None:

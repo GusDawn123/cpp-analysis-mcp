@@ -21,6 +21,9 @@ NAME = "windows"
 LLVM_ROOT = Path(r"C:\Program Files\LLVM")
 LLVM_DIR = LLVM_ROOT / "bin"
 
+# the compiler toolchain discovery looks for; the runtime tables must track the same one
+COMPILER = "clang++"
+
 # where LLVM keeps the sanitizer runtimes, one directory per clang major version
 RUNTIME_DIRS = "lib/clang/*/lib/windows"
 
@@ -46,7 +49,8 @@ NINJA_GLOB = "*/*/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
 WSL_SUGGESTION = (
     "install a WSL distro with clang and restart this server -- it will run this check "
     "through WSL automatically: wsl --install -d Ubuntu; then wsl -d Ubuntu -- sudo "
-    "apt-get install -y clang llvm cmake ninja-build"
+    "apt-get update; then wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake "
+    "ninja-build"
 )
 
 NO_THREAD_SANITIZER = Denial(
@@ -82,7 +86,7 @@ FAILURE_SIGNATURES = tuple(
 
 def detect() -> Platform:
     """Read this host. The only place that does -- everything else takes a Platform."""
-    runtime = runtime_dir(LLVM_ROOT)
+    runtime = runtime_dir(llvm_root())
     return Platform(
         name=NAME,
         executable_suffix=".exe",
@@ -94,6 +98,23 @@ def detect() -> Platform:
         runtime_dlls=runtime_dlls(runtime),
         cmake_extras=cmake_extras(find_ninja()),
     )
+
+
+def llvm_root() -> Path:
+    """The LLVM installation whose clang++ toolchain discovery will find, or the default.
+
+    Discovery resolves clang++ through PATH, so the runtime tables must come from that
+    same installation: on a machine with two LLVMs, binding the installer default would
+    hand ASan and UBSan a different version's runtime than the compiler that builds with
+    them. The default stands when nothing on PATH answers, and when the PATH clang++
+    carries no runtime directory in the layout this table knows -- the probes then
+    report whatever is actually true of what got linked.
+    """
+    on_path = shutil.which(COMPILER)
+    if on_path is None:
+        return LLVM_ROOT
+    root = Path(on_path).parent.parent
+    return root if any(root.glob(RUNTIME_DIRS)) else LLVM_ROOT
 
 
 def find_ninja() -> Path | None:

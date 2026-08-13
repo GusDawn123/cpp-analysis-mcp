@@ -1,6 +1,12 @@
 # Windows support — design
 
-Date: 2026-08-11. Status: approved approach, pending user review of this spec.
+Date: 2026-08-11. Status: implemented and measured.
+
+> **Superseded in one respect (2026-08-12):** the "Native only, no WSL bridge"
+> decision below was revisited the next day at the user's request. TSan and
+> LSan now route through a WSL distro when one qualifies; the denials remain
+> the behavior on machines without one. See
+> [2026-08-12-wsl-bridge-design.md](2026-08-12-wsl-bridge-design.md).
 
 ## Goal
 

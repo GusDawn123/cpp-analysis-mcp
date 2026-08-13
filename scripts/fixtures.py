@@ -205,8 +205,13 @@ def run_command(
         # Windows has no groups to signal, so taskkill /T walks the tree instead.
         # sys.platform rather than os.name because mypy only narrows the former.
         if sys.platform == "win32":
+            # by full path: bare "taskkill" is resolved through a search that can
+            # reach the current directory, which this script does not control
+            taskkill = (
+                Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
+            )
             subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                [str(taskkill), "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True,
                 check=False,
             )
@@ -328,6 +333,18 @@ def golden_name(case: Case, compiler: str) -> str:
     return f"{case.tool}_{case.fixture}.{current_os()}-{compiler_family(compiler)}.txt"
 
 
+def scrubbed(output: str) -> str:
+    """Drop this checkout's own location from output that is about to be committed.
+
+    Sanitizer frames carry absolute paths, and those begin at wherever the capturing
+    machine keeps the repo -- which on Windows includes a username. The machine-specific
+    head is replaced with the neutral root the Linux goldens already carry (/w, C:\\w),
+    keeping the tail that parsers and readers actually use.
+    """
+    neutral = r"C:\w" if current_os() == "windows" else "/w"
+    return output.replace(str(REPO_ROOT), neutral)
+
+
 def cmd_capture(args: argparse.Namespace) -> int:
     """Write raw sanitizer output to the golden directory."""
     out_dir = Path(args.out_dir)
@@ -349,7 +366,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
             continue
 
         target = out_dir / golden_name(case, args.compiler)
-        target.write_text(output)
+        target.write_text(scrubbed(output))
         written += 1
         print(f"WROTE {label(case)} {target.name} ({len(output)} bytes)")
 

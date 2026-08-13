@@ -13,11 +13,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job runs repository code (tests, fixture compiles); none of them writes
+# back. Read-only token, and no credentials persisted into the checkout's git
+# config for that code to find.
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # v7 is the newest floating major tag setup-uv publishes; later releases
       # are exact-version tags only, so @v8/@v9 will not resolve.
       - uses: astral-sh/setup-uv@v7
@@ -34,6 +42,8 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
       # The pytest lines make test/make integration run, spelled out because the
@@ -66,6 +76,8 @@ jobs:
             python: python
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Skip uv on purpose: the script is stdlib-only and this job proves it
       # still runs bare. It SKIPs the cases its platform cannot support.
       - run: ${{ matrix.python }} scripts/fixtures.py --compiler ${{ matrix.compiler }} validate

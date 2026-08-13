@@ -112,6 +112,7 @@ restart the server, and the bridge picks it up on its own.
 
 ```powershell
 wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get update
 wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build
 ```
 

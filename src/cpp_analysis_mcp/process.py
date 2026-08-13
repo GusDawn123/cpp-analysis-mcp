@@ -84,8 +84,12 @@ def _kill_tree(pid: int) -> None:
     OS type-check the code it will actually run.
     """
     if sys.platform == "win32":
+        # by full path: bare "taskkill" is resolved through a search that can reach the
+        # process's current directory, and this server is launched from directories it
+        # does not control
+        taskkill = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
         subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            [str(taskkill), "/F", "/T", "/PID", str(pid)],
             capture_output=True,
             check=False,
         )

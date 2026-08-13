@@ -33,6 +33,7 @@ itself the moment a distro there can compile. One-time setup, all six checks:
 
 ```powershell
 wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get update
 wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build
 ```
 
@@ -60,12 +61,15 @@ runtime dependencies.
 ## Check it works on your machine
 
 ```sh
-make test          # unit tests: no toolchain touched, everything simulated
-make integration   # compiles and runs real programs with YOUR compiler
+uv run pytest -m "not integration"   # unit tests: no toolchain touched, everything simulated
+uv run pytest -m integration         # compiles and runs real programs with YOUR compiler
 ```
 
-Both green means the server can do its job here. If `make integration` fails,
-send back the failing output — it is the bug report.
+(`make test` and `make integration` are the same two commands, if you have
+make — Windows does not, which is why the guide spells them out.)
+
+Both green means the server can do its job here. If the integration suite
+fails, send back the failing output — it is the bug report.
 
 ## Wire it into an MCP client
 
@@ -151,6 +155,14 @@ tool is the honest list for the machine you are on.
 make fmt           # format and autofix lint
 make all           # lint + types + unit tests — what CI runs on every PR
 make integration   # the real-toolchain suite, run it before pushing
+```
+
+On Windows (no make), the same steps spelled out:
+
+```powershell
+uv run ruff format .; uv run ruff check --fix .
+uv run ruff check .; uv run mypy; uv run pytest -m "not integration"
+uv run pytest -m integration
 ```
 
 The layout is four layers, each only allowed to talk downward — `server.py`

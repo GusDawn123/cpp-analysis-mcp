@@ -133,6 +133,21 @@ def test_distros_without_clang_leave_no_bridge(monkeypatch: pytest.MonkeyPatch) 
     assert wsl.discover(runner=FakeRunner(reply)) is None
 
 
+def test_a_distro_whose_clang_answers_as_something_else_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exit 0 alone proves nothing: a clang++ that is really a gcc shim answers politely
+    and must still fail the question -- the version text is the evidence, not the exit."""
+    wsl_on_path(monkeypatch)
+
+    def reply(cmd: list[str]) -> RunResult:
+        if cmd[1:3] == ["-l", "-q"]:
+            return RunResult(exit_code=0, output="Legacy\n")
+        return RunResult(exit_code=0, output="g++ (Ubuntu 13.2.0-23ubuntu4) 13.2.0\n")
+
+    assert wsl.discover(runner=FakeRunner(reply)) is None
+
+
 def test_the_first_distro_that_answers_for_clang_becomes_the_bridge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
