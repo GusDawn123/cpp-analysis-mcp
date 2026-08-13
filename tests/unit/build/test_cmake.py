@@ -62,7 +62,8 @@ UNRELATED_VAR = "CPP_ANALYSIS_MCP_UNRELATED"
 
 DEFAULT_TIMEOUT_S = 600
 
-CLANG_PATH = "/usr/bin/clang++"
+# spelled through Path so the string compares equal to str(Path(...)) on Windows too
+CLANG_PATH = str(Path("/usr/bin/clang++"))
 
 # the target the fabricated reply describes, and where cmake said its binary lands: a
 # subdirectory, so a build that returned the bare name instead of joining would fail here

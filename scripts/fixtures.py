@@ -28,6 +28,21 @@ DEFAULT_OUT_DIR = REPO_ROOT / "tests" / "fixtures" / "golden"
 
 RUN_TIMEOUT_S = 30
 
+# how long the cleanup after a timeout may itself take: the tree kill and the final read
+# of the pipe are each bound by this, because neither is guaranteed to finish on its own
+KILL_GRACE_S = 10
+
+# Where LLVM on Windows keeps the sanitizer runtimes, one directory per clang version.
+# Two measured quirks live there: UBSan's libraries must be linked by full path (the
+# linker otherwise takes MSVC's incompatible copy, searched first), and ASan's runtime
+# is a DLL the loader only finds beside the binary.
+LLVM_ROOT = Path(r"C:\Program Files\LLVM")
+UBSAN_LIBS = (
+    "clang_rt.ubsan_standalone-x86_64.lib",
+    "clang_rt.ubsan_standalone_cxx-x86_64.lib",
+)
+ASAN_DLL = "clang_rt.asan_dynamic-x86_64.dll"
+
 # Pin the sanitizer runtime options so goldens match what validation saw.
 # ASAN_OPTIONS is deliberately absent -- ASan runs on its defaults.
 PINNED_ENV = {
@@ -66,6 +81,7 @@ SUPPORT: list[Case] = [
         sanitizer="thread",
         tool="tsan",
         expect=("WARNING: ThreadSanitizer: data race",),
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="race_with_lock",
@@ -74,6 +90,7 @@ SUPPORT: list[Case] = [
         # The second marker guarantees goldens carry mutex annotations, which
         # the tsan parser's locks_held extraction is tested against.
         expect=("WARNING: ThreadSanitizer: data race", "(mutexes:"),
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="deadlock",
@@ -92,12 +109,14 @@ SUPPORT: list[Case] = [
         sanitizer="address",
         tool="asan",
         expect=("ERROR: AddressSanitizer: heap-buffer-overflow",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="use_after_free",
         sanitizer="address",
         tool="asan",
         expect=("ERROR: AddressSanitizer: heap-use-after-free",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="leak",
@@ -105,13 +124,14 @@ SUPPORT: list[Case] = [
         tool="lsan",
         expect=("detected memory leaks",),
         platforms=frozenset({"linux"}),
-        skip_reason="LeakSanitizer is Linux-only; it does not run on macOS arm64",
+        skip_reason="LeakSanitizer is Linux-only; it runs on neither macOS arm64 nor Windows",
     ),
     Case(
         fixture="signed_overflow",
         sanitizer="undefined",
         tool="ubsan",
         expect=("runtime error: signed integer overflow",),
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     # The control: three runs that must all come back silent AND exit 0.
     Case(
@@ -120,6 +140,7 @@ SUPPORT: list[Case] = [
         tool="tsan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        skip_reason="no compiler ships a ThreadSanitizer runtime for Windows",
     ),
     Case(
         fixture="clean",
@@ -127,6 +148,7 @@ SUPPORT: list[Case] = [
         tool="asan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
     Case(
         fixture="clean",
@@ -134,12 +156,13 @@ SUPPORT: list[Case] = [
         tool="ubsan",
         forbid=SANITIZER_MARKERS,
         require_exit_zero=True,
+        platforms=frozenset({"darwin", "linux", "windows"}),
     ),
 ]
 
 
 def current_os() -> str:
-    """Return darwin or linux."""
+    """Return darwin, linux or windows."""
     return platform.system().lower()
 
 
@@ -181,17 +204,57 @@ def run_command(
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        # start_new_session made the child its own group leader, so its pid is
+        # POSIX: start_new_session made the child its own group leader, so its pid is
         # the pgid; it may also exit on its own between the timeout and the kill.
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        output, _ = proc.communicate()
+        # Windows has no groups to signal, so taskkill /T walks the tree instead.
+        # sys.platform rather than os.name because mypy only narrows the former.
+        if sys.platform == "win32":
+            # by full path: bare "taskkill" is resolved through a search that can
+            # reach the current directory, which this script does not control.
+            # Bounded, so the cleanup cannot hang the way its target did.
+            taskkill = (
+                Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
+            )
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                subprocess.run(
+                    [str(taskkill), "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    check=False,
+                    timeout=KILL_GRACE_S,
+                )
+        else:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+        # The kill is not guaranteed (an elevated child, a grandchild in its own
+        # session); a survivor holds the pipe open, so the final read is bound too and
+        # the root is killed directly when it expires.
+        try:
+            output, _ = proc.communicate(timeout=KILL_GRACE_S)
+        except subprocess.TimeoutExpired as undead:
+            proc.kill()
+            salvaged = undead.output if isinstance(undead.output, str) else ""
+            return None, (
+                salvaged + f"\n[killed after {timeout}s timeout; parts of its process tree"
+                " may have survived]\n"
+            )
         return None, (output or "") + f"\n[killed after {timeout}s timeout]\n"
     return proc.returncode, output
 
 
 def binary_path(case: Case) -> Path:
-    return BUILD_DIR / f"{case.fixture}_{case.tool}"
+    # Windows will only execute a file that ends in .exe
+    suffix = ".exe" if current_os() == "windows" else ""
+    return BUILD_DIR / f"{case.fixture}_{case.tool}{suffix}"
+
+
+def windows_runtime_dir() -> Path | None:
+    """Return the newest clang runtime directory of a Windows LLVM install, or None."""
+    versioned = [
+        (int(path.parts[-3]), path)
+        for path in LLVM_ROOT.glob("lib/clang/*/lib/windows")
+        if path.parts[-3].isdigit()
+    ]
+    return max(versioned)[1] if versioned else None
 
 
 def compile_case(case: Case, compiler: str) -> tuple[bool, str]:
@@ -208,7 +271,14 @@ def compile_case(case: Case, compiler: str) -> tuple[bool, str]:
     if current_os() == "linux":
         cmd.append("-pthread")
     cmd += [str(CPP_DIR / f"{case.fixture}.cpp"), "-o", str(binary_path(case))]
+    runtime = windows_runtime_dir() if current_os() == "windows" else None
+    if runtime is not None and case.sanitizer == "undefined":
+        # by full path, or the link takes MSVC's incompatible copy of the runtime
+        cmd += [str(runtime / lib) for lib in UBSAN_LIBS]
     code, output = run_command(cmd, run_env(), timeout=120)
+    if code == 0 and runtime is not None and case.sanitizer == "address":
+        # beside the binary, the one place the Windows loader always looks
+        shutil.copy2(runtime / ASAN_DLL, BUILD_DIR)
     return code == 0, output
 
 
@@ -281,6 +351,18 @@ def golden_name(case: Case, compiler: str) -> str:
     return f"{case.tool}_{case.fixture}.{current_os()}-{compiler_family(compiler)}.txt"
 
 
+def scrubbed(output: str) -> str:
+    """Drop this checkout's own location from output that is about to be committed.
+
+    Sanitizer frames carry absolute paths, and those begin at wherever the capturing
+    machine keeps the repo -- which on Windows includes a username. The machine-specific
+    head is replaced with the neutral root the Linux goldens already carry (/w, C:\\w),
+    keeping the tail that parsers and readers actually use.
+    """
+    neutral = r"C:\w" if current_os() == "windows" else "/w"
+    return output.replace(str(REPO_ROOT), neutral)
+
+
 def cmd_capture(args: argparse.Namespace) -> int:
     """Write raw sanitizer output to the golden directory."""
     out_dir = Path(args.out_dir)
@@ -302,7 +384,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
             continue
 
         target = out_dir / golden_name(case, args.compiler)
-        target.write_text(output)
+        target.write_text(scrubbed(output))
         written += 1
         print(f"WROTE {label(case)} {target.name} ({len(output)} bytes)")
 

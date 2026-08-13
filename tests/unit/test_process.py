@@ -7,11 +7,14 @@ failure mode worth paying for.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
+from typing import cast
 
 import pytest
 
+from cpp_analysis_mcp import process
 from cpp_analysis_mcp.process import SANITIZER_ENV_VARS, RunResult, hygienic_env, run
 
 PYTHON = sys.executable
@@ -46,7 +49,30 @@ def test_a_command_that_hangs_is_killed_and_says_so() -> None:
     assert time.monotonic() - started < 30
 
 
-def test_exit_code_survives() -> None:
+class UndeadProc:
+    """A process whose pipe never closes: what a survivor of the tree kill looks like."""
+
+    def __init__(self) -> None:
+        self.killed = False
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        raise subprocess.TimeoutExpired(cmd="undead", timeout=timeout or 0, output="partial")
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+def test_a_kill_that_fails_still_returns_with_what_was_read() -> None:
+    """taskkill cannot touch an elevated child, and a grandchild that made its own session
+    escapes the POSIX group; either survivor holds the pipe open. Waiting on it with no
+    bound would turn one timed-out analysis into a request that never comes back."""
+    proc = UndeadProc()
+
+    output = process._drained(cast("subprocess.Popen[str]", proc), timeout_s=1)
+
+    assert proc.killed
+    assert "partial" in output
+    assert "may have survived" in output
     result = run([PYTHON, "-c", "raise SystemExit(66)"], timeout_s=30)
 
     assert result.exit_code == 66

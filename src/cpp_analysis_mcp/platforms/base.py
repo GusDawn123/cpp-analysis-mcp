@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.models import Analysis
+from cpp_analysis_mcp.models import Analysis, SanitizerKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +36,22 @@ class FailureSignature:
 class Platform:
     """One operating system's differences, as data."""
 
-    name: str  # "linux" or "darwin"
+    name: str  # "linux", "darwin" or "windows"
     compile_extras: tuple[str, ...] = ()
+    # what a runnable binary's name must end in: ".exe" on Windows, "" elsewhere
+    executable_suffix: str = ""
+    # extra link inputs a sanitized build needs, per sanitizer. Measured on Windows: the
+    # linker resolves the runtime by bare name through the MSVC lib directories first,
+    # which hands the link a library built for a different compiler and fails on symbols
+    # only MSVC's own objects define; the full path pins LLVM's own runtime instead
+    sanitize_link_extras: Mapping[SanitizerKind, tuple[str, ...]] = field(default_factory=dict)
+    # DLLs a sanitized binary needs found at load time, per sanitizer. Windows looks
+    # beside the executable first, so builds copy these next to what they produce
+    runtime_dlls: Mapping[SanitizerKind, tuple[Path, ...]] = field(default_factory=dict)
+    # extra cmake configure arguments this OS needs. Measured on Windows: cmake's default
+    # there is the Visual Studio generator, which ignores CMAKE_CXX_COMPILER and hands the
+    # build to cl.exe, so the configure must name a generator that obeys the choice
+    cmake_extras: tuple[str, ...] = ()
     # searched on top of PATH: brew installs llvm outside it on macOS
     extra_tool_dirs: tuple[Path, ...] = ()
     denied: Mapping[Analysis, Denial] = field(default_factory=dict)
@@ -55,6 +69,10 @@ class Platform:
         object.__setattr__(self, "limitations", MappingProxyType(dict(self.limitations)))
         object.__setattr__(self, "install_hints", MappingProxyType(dict(self.install_hints)))
         object.__setattr__(self, "env_facts", MappingProxyType(dict(self.env_facts)))
+        object.__setattr__(
+            self, "sanitize_link_extras", MappingProxyType(dict(self.sanitize_link_extras))
+        )
+        object.__setattr__(self, "runtime_dlls", MappingProxyType(dict(self.runtime_dlls)))
 
     def diagnose(self, output: str) -> FailureSignature | None:
         """Return the first signature whose marker appears in tool output."""

@@ -52,6 +52,11 @@ def family(toolchains: tuple[Toolchain, ...], name: str) -> list[Toolchain]:
     return [chain for chain in toolchains if chain.family == name]
 
 
+def can_sanitize(host: Platform, chain: Toolchain) -> bool:
+    """MinGW gcc ships no sanitizer runtimes on Windows; every sanitized link fails there."""
+    return not (host.name == "windows" and chain.family == "gcc")
+
+
 def build(
     stem: str,
     *,
@@ -78,6 +83,8 @@ def test_an_asan_build_runs_and_reports_its_planted_bug(
 ) -> None:
     """The whole point of the layer: build, run under the environment it returned, detect."""
     for chain in toolchains:
+        if not can_sanitize(host, chain):
+            continue
         binary = build(
             HEAP_OVERFLOW,
             toolchain=chain,

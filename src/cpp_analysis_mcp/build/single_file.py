@@ -13,6 +13,7 @@ is an ordinary thing to observe. The Platform and Toolchain always arrive as arg
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from cpp_analysis_mcp import process
@@ -44,7 +45,7 @@ def compile_file(
     compiling, so the compiler's own output is parsed into the returned warnings.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
-    binary = build_dir / _binary_name(source, sanitizer)
+    binary = build_dir / _binary_name(source, sanitizer, platform.executable_suffix)
 
     result = runner(
         _command(source, binary, toolchain=toolchain, platform=platform, sanitizer=sanitizer),
@@ -57,6 +58,7 @@ def compile_file(
     if result.exit_code != 0:
         return _failure(platform, result.output)
 
+    place_runtime_dlls(platform, sanitizer, binary.parent)
     return BuiltBinary(
         path=binary,
         build_dir=build_dir,
@@ -67,14 +69,29 @@ def compile_file(
     )
 
 
-def _binary_name(source: Path, sanitizer: SanitizerKind | None) -> str:
+def _binary_name(source: Path, sanitizer: SanitizerKind | None, suffix: str) -> str:
     """Name the output by source and variant, so one file's sanitized builds coexist.
 
     A TSan and an ASan build of the same source into one directory must not overwrite
     each other: the survivor would sit at the other's reported path, bound to the wrong
-    runtime environment.
+    runtime environment. The platform's executable suffix goes on last: Windows will
+    only execute a file that ends in .exe.
     """
-    return f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
+    stem = f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
+    return f"{stem}{suffix}"
+
+
+def place_runtime_dlls(platform: Platform, sanitizer: SanitizerKind | None, beside: Path) -> None:
+    """Copy the DLLs a sanitized binary needs into the directory it will run from.
+
+    Windows resolves a DLL from the executable's own directory first, and ASan's runtime
+    lives nowhere else the loader looks; on the other platforms the table is empty and
+    this is a no-op.
+    """
+    if sanitizer is None:
+        return
+    for dll in platform.runtime_dlls.get(sanitizer, ()):
+        shutil.copy2(dll, beside)
 
 
 def _command(
@@ -87,6 +104,7 @@ def _command(
 ) -> list[str]:
     """Compose the invocation: sanitizer flags or the base ones, warnings, then this OS's."""
     flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else BASE_FLAGS
+    extras = platform.sanitize_link_extras.get(sanitizer, ()) if sanitizer is not None else ()
     return [
         str(toolchain.compiler),
         *flags,
@@ -95,6 +113,8 @@ def _command(
         str(source),
         "-o",
         str(binary),
+        # link inputs last, where a linker expects libraries to follow the objects
+        *extras,
     ]
 
 

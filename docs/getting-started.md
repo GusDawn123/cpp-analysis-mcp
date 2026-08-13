@@ -7,18 +7,43 @@ it waiting on installs.
 
 ## What you need
 
-- **uv** — runs the Python side. `brew install uv` on macOS, or
+- **uv** — runs the Python side. `brew install uv` on macOS,
+  `winget install astral-sh.uv` on Windows, or
   `curl -LsSf https://astral.sh/uv/install.sh | sh` anywhere.
 - **A C++ toolchain** — macOS: `xcode-select --install` gives you clang.
   Linux: `sudo apt install clang` (gcc works too).
-- **CMake** — `brew install cmake` / `sudo apt install cmake`.
+  Windows: `winget install LLVM.LLVM` **and** Visual Studio (or its Build
+  Tools) with the "Desktop development with C++" workload — clang borrows
+  MSVC's headers and linker. Put `C:\Program Files\LLVM\bin` on PATH; the
+  LLVM installer does not do it for you.
+- **CMake** — `brew install cmake` / `sudo apt install cmake` /
+  `winget install Kitware.CMake`.
 - **Claude Code** — the assistant you will wire the server into.
   [Install docs](https://docs.anthropic.com/en/docs/claude-code) if you do not
   have the `claude` command yet.
 
 clang-tidy is optional. Stock macOS does not ship it; the server notices and
 says so instead of failing. On Linux, `sudo apt install clang-tidy` if you want
-that check.
+that check. On Windows it arrives with LLVM.
+
+Windows runs four of the six checks natively — AddressSanitizer, UBSan,
+`-Wthread-safety`, clang-tidy. ThreadSanitizer and LeakSanitizer have no
+Windows runtime in any compiler — but the server bridges them into WSL by
+itself the moment a distro there can compile. One-time setup, all six checks:
+
+```powershell
+wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get update
+wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build
+```
+
+(`llvm` matters: without `llvm-symbolizer` the two detectors still catch bugs
+but report `<null>` frames instead of file and line.) Restart the server and
+`capabilities` reports all six. You keep passing ordinary `C:\` paths; findings
+from the two bridged checks name files in WSL form, `/mnt/c/...` meaning
+`C:\...`. Without WSL, the denials stand and carry these same setup commands.
+MinGW gcc (MSYS2) cannot link any sanitizer on Windows — the server picks
+clang when both are installed.
 
 ## Download and set up
 
@@ -36,12 +61,15 @@ runtime dependencies.
 ## Check it works on your machine
 
 ```sh
-make test          # unit tests: no toolchain touched, everything simulated
-make integration   # compiles and runs real programs with YOUR compiler
+uv run pytest -m "not integration"   # unit tests: no toolchain touched, everything simulated
+uv run pytest -m integration         # compiles and runs real programs with YOUR compiler
 ```
 
-Both green means the server can do its job here. If `make integration` fails,
-send back the failing output — it is the bug report.
+(`make test` and `make integration` are the same two commands, if you have
+make — Windows does not, which is why the guide spells them out.)
+
+Both green means the server can do its job here. If the integration suite
+fails, send back the failing output — it is the bug report.
 
 ## Wire it into an MCP client
 
@@ -127,6 +155,14 @@ tool is the honest list for the machine you are on.
 make fmt           # format and autofix lint
 make all           # lint + types + unit tests — what CI runs on every PR
 make integration   # the real-toolchain suite, run it before pushing
+```
+
+On Windows (no make), the same steps spelled out:
+
+```powershell
+uv run ruff format .; uv run ruff check --fix .
+uv run ruff check .; uv run mypy; uv run pytest -m "not integration"
+uv run pytest -m integration
 ```
 
 The layout is four layers, each only allowed to talk downward — `server.py`

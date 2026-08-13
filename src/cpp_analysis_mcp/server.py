@@ -187,16 +187,17 @@ def sanitize_file(
     analysis: Sanitizer,
     ctx: ServerContext[Context],
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the sanitize pipeline, in a build directory of this call's own."""
+    """Delegate to the sanitize pipeline, on the engine this analysis was resolved onto."""
     app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis(analysis)]
     return sanitize.analyze_file(
         Path(source),
         Analysis(analysis),
-        toolchain=app.toolchain,
-        platform=app.platform,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
         capabilities=app.capabilities,
         build_dir=context.scratch(app.workspace),
-        runner=app.runner,
+        runner=engine.runner,
     )
 
 
@@ -206,17 +207,18 @@ def sanitize_project(
     ctx: ServerContext[Context],
     target: str | None = None,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the sanitize pipeline, in a build directory of this call's own."""
+    """Delegate to the sanitize pipeline, on the engine this analysis was resolved onto."""
     app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis(analysis)]
     return sanitize.analyze_project(
         Path(source),
         Analysis(analysis),
-        toolchain=app.toolchain,
-        platform=app.platform,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
         capabilities=app.capabilities,
         build_dir=context.scratch(app.workspace),
         target=target,
-        runner=app.runner,
+        runner=engine.runner,
     )
 
 
@@ -225,16 +227,17 @@ def sanitize_snippet(
     analysis: Sanitizer,
     ctx: ServerContext[Context],
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the sanitize pipeline, in a build directory of this call's own."""
+    """Delegate to the sanitize pipeline, on the engine this analysis was resolved onto."""
     app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis(analysis)]
     return sanitize.analyze_snippet(
         text,
         Analysis(analysis),
-        toolchain=app.toolchain,
-        platform=app.platform,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
         capabilities=app.capabilities,
         build_dir=context.scratch(app.workspace),
-        runner=app.runner,
+        runner=engine.runner,
     )
 
 
@@ -250,14 +253,15 @@ def static_check_file(
     whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis(analysis)]
     return static_check.check_file(
         Path(source),
         Analysis(analysis),
-        toolchain=app.toolchain,
-        platform=app.platform,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
         capabilities=app.capabilities,
         checks=checks,
-        runner=app.runner,
+        runner=engine.runner,
     )
 
 
@@ -273,15 +277,16 @@ def static_check_snippet(
     whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis(analysis)]
     return static_check.check_snippet(
         text,
         Analysis(analysis),
-        toolchain=app.toolchain,
-        platform=app.platform,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
         capabilities=app.capabilities,
         build_dir=context.scratch(app.workspace),
         checks=checks,
-        runner=app.runner,
+        runner=engine.runner,
     )
 
 

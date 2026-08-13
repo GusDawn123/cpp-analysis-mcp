@@ -54,6 +54,11 @@ def toolchains() -> tuple[Toolchain, ...]:
     return found
 
 
+def can_sanitize(host: Platform, chain: Toolchain) -> bool:
+    """MinGW gcc ships no sanitizer runtimes on Windows; every sanitized link fails there."""
+    return not (host.name == "windows" and chain.family == "gcc")
+
+
 def build(toolchain: Toolchain, host: Platform, tmp_path: Path) -> BuiltBinary:
     """Build the fixture under ASan without naming a target, failing with what cmake said."""
     result = build_project(
@@ -73,6 +78,8 @@ def test_the_project_builds_and_reports_its_planted_bug(
 ) -> None:
     """The whole loop: configure, read the reply, build, run under what the build handed back."""
     for chain in toolchains:
+        if not can_sanitize(host, chain):
+            continue
         binary = build(chain, host, tmp_path)
 
         assert binary.path.is_file(), f"{chain.family}: the File API named {binary.path}"
@@ -95,7 +102,10 @@ def test_the_executable_is_found_without_being_named(
 ) -> None:
     """Selection with target=None against a real reply: one executable, one library, no guess."""
     for chain in toolchains:
+        if not can_sanitize(host, chain):
+            continue
         binary = build(chain, host, tmp_path)
 
-        assert binary.path.name == EXECUTABLE_TARGET
+        # cmake appends the platform's own executable suffix, .exe on Windows
+        assert binary.path.name == EXECUTABLE_TARGET + host.executable_suffix
         assert LIBRARY_TARGET not in binary.path.name

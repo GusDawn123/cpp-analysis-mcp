@@ -30,7 +30,8 @@ from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations
 
-CLANG_PATH = "/usr/bin/clang++"
+# spelled through Path so the string compares equal to str(Path(...)) on Windows too
+CLANG_PATH = str(Path("/usr/bin/clang++"))
 CLANG_WARNING_FLAGS = ("-Wthread-safety",)
 LINUX_COMPILE_EXTRAS = ("-pthread",)
 

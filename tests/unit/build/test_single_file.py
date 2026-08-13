@@ -46,8 +46,9 @@ UNRELATED_VAR = "CPP_ANALYSIS_MCP_UNRELATED"
 
 DEFAULT_TIMEOUT_S = 120
 
-CLANG_PATH = "/usr/bin/clang++"
-GCC_PATH = "/usr/bin/g++"
+# spelled through Path so the strings compare equal to str(Path(...)) on Windows too
+CLANG_PATH = str(Path("/usr/bin/clang++"))
+GCC_PATH = str(Path("/usr/bin/g++"))
 
 SOURCE_STEM = "data_race"
 
@@ -153,6 +154,21 @@ def a_darwin() -> Platform:
     return Platform(name="darwin")
 
 
+def a_windows(tmp_path: Path) -> Platform:
+    """Windows's two measured link quirks: UBSan's libs by path, ASan's DLL beside the exe."""
+    dll = tmp_path / "runtime" / "clang_rt.asan_dynamic-x86_64.dll"
+    dll.parent.mkdir(parents=True, exist_ok=True)
+    dll.write_bytes(b"not a real dll")
+    return Platform(
+        name="windows",
+        executable_suffix=".exe",
+        sanitize_link_extras={
+            SanitizerKind.UNDEFINED: (str(dll.parent / "clang_rt.ubsan_standalone-x86_64.lib"),)
+        },
+        runtime_dlls={SanitizerKind.ADDRESS: (dll,)},
+    )
+
+
 def a_source(tmp_path: Path) -> Path:
     source = tmp_path / f"{SOURCE_STEM}.cpp"
     source.write_text("int main() { return 0; }\n", encoding="utf-8")
@@ -250,6 +266,63 @@ def test_gcc_gets_no_thread_safety_flag(tmp_path: Path) -> None:
         str(build_dir / ASAN_BINARY),
     ]
     assert "-Wthread-safety" not in runner.command
+
+
+def test_windows_names_the_binary_exe_and_links_its_own_runtime(tmp_path: Path) -> None:
+    """The platform's link extras ride at the end of the command, where a linker expects
+    libraries; without them Windows resolves the runtime to MSVC's incompatible copy."""
+    source = a_source(tmp_path)
+    build_dir = tmp_path / "build"
+    windows = a_windows(tmp_path)
+    runner = FakeRunner()
+
+    compile_file(
+        source,
+        toolchain=a_clang(),
+        platform=windows,
+        sanitizer=SanitizerKind.UNDEFINED,
+        build_dir=build_dir,
+        runner=runner,
+    )
+
+    expected_extras = list(windows.sanitize_link_extras[SanitizerKind.UNDEFINED])
+    assert runner.command[-len(expected_extras) :] == expected_extras
+    assert str(build_dir / f"{SOURCE_STEM}.undefined.exe") in runner.command
+
+
+def test_the_asan_dll_lands_beside_a_built_binary(tmp_path: Path) -> None:
+    """ASan's runtime is a DLL the Windows loader only finds next to the executable; a
+    build that succeeded without placing it dies before main with nothing printed."""
+    source = a_source(tmp_path)
+    build_dir = tmp_path / "build"
+
+    compile_file(
+        source,
+        toolchain=a_clang(),
+        platform=a_windows(tmp_path),
+        sanitizer=SanitizerKind.ADDRESS,
+        build_dir=build_dir,
+        runner=FakeRunner(),
+    )
+
+    assert (build_dir / "clang_rt.asan_dynamic-x86_64.dll").is_file()
+
+
+def test_a_failed_build_places_no_dll(tmp_path: Path) -> None:
+    """The DLL travels with a binary; a build that produced nothing gets nothing."""
+    source = a_source(tmp_path)
+    build_dir = tmp_path / "build"
+
+    compile_file(
+        source,
+        toolchain=a_clang(),
+        platform=a_windows(tmp_path),
+        sanitizer=SanitizerKind.ADDRESS,
+        build_dir=build_dir,
+        runner=FakeRunner(result=RunResult(exit_code=1, output=SYNTAX_ERROR)),
+    )
+
+    assert not (build_dir / "clang_rt.asan_dynamic-x86_64.dll").exists()
 
 
 def test_macos_adds_no_compile_extras(tmp_path: Path) -> None:

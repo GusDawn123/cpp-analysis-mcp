@@ -15,6 +15,7 @@ import contextlib
 import os
 import signal
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,10 @@ from typing import Protocol
 
 # a sanitized run inherits these from the developer's shell and then reports something else
 SANITIZER_ENV_VARS = ("ASAN_OPTIONS", "LSAN_OPTIONS", "TSAN_OPTIONS", "UBSAN_OPTIONS")
+
+# how long the cleanup after a timeout may itself take: the tree kill and the final read
+# of the pipe are each bound by this, because neither is guaranteed to finish on its own
+KILL_GRACE_S = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,16 +65,62 @@ def run(
     try:
         output, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        # start_new_session made the child its own group leader, so its pid is the pgid;
-        # it may also exit on its own between the timeout and the kill.
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        output, _ = proc.communicate()
-        return RunResult(
-            exit_code=None,
-            output=(output or "") + f"\n[killed after {timeout_s}s timeout]\n",
-        )
+        _kill_tree(proc.pid)
+        return RunResult(exit_code=None, output=_drained(proc, timeout_s))
     return RunResult(exit_code=proc.returncode, output=output)
+
+
+def _kill_tree(pid: int) -> None:
+    """Take down a timed-out process and its children, in each OS's own words.
+
+    POSIX: start_new_session made the child its own group leader, so its pid is the pgid;
+    it may also exit on its own between the timeout and the kill. Windows has no process
+    groups to signal (start_new_session is inert there), so taskkill /T walks the child's
+    process tree instead -- same semantics, and a tree already gone exits nonzero, which
+    is the ProcessLookupError case and is ignored the same way.
+
+    The branch is on sys.platform rather than os.name because mypy narrows the former:
+    killpg and SIGKILL do not exist in Windows stubs, and only this spelling lets each
+    OS type-check the code it will actually run.
+    """
+    if sys.platform == "win32":
+        # by full path: bare "taskkill" is resolved through a search that can reach the
+        # process's current directory, and this server is launched from directories it
+        # does not control. Bounded, because the cleanup after a timeout must not be
+        # able to hang the way the thing it is cleaning up did.
+        taskkill = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(
+                [str(taskkill), "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                check=False,
+                timeout=KILL_GRACE_S,
+            )
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGKILL)
+
+
+def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
+    """Collect what a killed process left in its pipe, refusing to wait forever for it.
+
+    The tree kill is not guaranteed: taskkill cannot touch an elevated child, and a
+    grandchild that started its own session escapes the POSIX group. A survivor keeps
+    the pipe's write end open, and a communicate() with no timeout then blocks on it --
+    one timed-out analysis becoming a request that never returns. So the read is bound,
+    the root is killed directly when it expires, and whatever output was gathered before
+    giving up still comes back, with the note saying what happened.
+    """
+    try:
+        output, _ = proc.communicate(timeout=KILL_GRACE_S)
+    except subprocess.TimeoutExpired as undead:
+        proc.kill()
+        salvaged = undead.output if isinstance(undead.output, str) else ""
+        return (
+            salvaged + f"\n[killed after {timeout_s}s timeout; parts of its process tree"
+            " may have survived]\n"
+        )
+    return (output or "") + f"\n[killed after {timeout_s}s timeout]\n"
 
 
 class Runner(Protocol):

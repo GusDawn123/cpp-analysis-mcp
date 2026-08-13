@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cpp_analysis_mcp import process
+from cpp_analysis_mcp.build.single_file import place_runtime_dlls
 from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
@@ -393,7 +394,8 @@ def _probe_sanitizer(
 ) -> CapabilityStatus:
     """Build the buggy program under its sanitizer, run it, and look for the report."""
     kind = SANITIZER_FOR[analysis]
-    binary = source.with_suffix("")
+    # "" on POSIX, ".exe" on Windows -- with_suffix covers both spellings
+    binary = source.with_suffix(platform.executable_suffix)
     compiled = Stage(
         name="compile",
         timeout_s=COMPILE_TIMEOUT_S,
@@ -406,12 +408,16 @@ def _probe_sanitizer(
                 str(source),
                 "-o",
                 str(binary),
+                # link inputs last, where a linker expects libraries to follow the objects
+                *platform.sanitize_link_extras.get(kind, ()),
             ],
             timeout_s=COMPILE_TIMEOUT_S,
         ),
     )
     if compiled.result.exit_code != 0:
         return classify(analysis, platform, PROBES[analysis], (compiled,))
+
+    place_runtime_dlls(platform, kind, binary.parent)
 
     # the sanitizer's options are half the decision to compile with it: a run without them
     # reports less than the build promised
