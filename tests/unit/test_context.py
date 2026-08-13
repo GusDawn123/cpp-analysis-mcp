@@ -25,9 +25,12 @@ from pathlib import Path
 
 import pytest
 
+from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import PROBE_STEM
-from cpp_analysis_mcp.context import prefer, resolve, scratch
+from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
 from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
+from cpp_analysis_mcp.platforms import linux, windows
+from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
@@ -475,6 +478,174 @@ def test_two_scratch_directories_never_collide(tmp_path: Path) -> None:
     assert second.is_dir()
     assert first.parent == tmp_path
     assert second.parent == tmp_path
+
+
+# ------------------------------------------------------------------------------ the WSL bridge
+
+# where the fake PATH puts wsl.exe: both_compilers_on_path answers which() for any name
+WSL_PATH = str(BIN_DIR / "wsl")
+
+UBUNTU_CLANG = "Ubuntu clang version 21.1.8 (6ubuntu1)\nTarget: x86_64-pc-linux-gnu\n"
+
+
+def a_windows_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the detected platform to Windows, whatever OS this test host happens to be.
+
+    The bridge exists for exactly one platform, and these tests have to hold on the other
+    two as well -- so this is the one section that fakes detect() rather than reading the
+    real host, in order to stand on the platform whose behaviour it pins.
+    """
+    both_compilers_on_path(monkeypatch)
+    monkeypatch.setattr(platforms, "detect", windows.detect)
+
+
+def a_windows_host_with_a_wsl_ubuntu(cmd: list[str]) -> RunResult:
+    """Answer as the measured machine does: native probes, plus one Ubuntu that has clang."""
+    if cmd[0] != WSL_PATH:
+        return a_host_where_every_detector_works(cmd)
+    if cmd[1:3] == ["-l", "-q"]:
+        return RunResult(exit_code=0, output="Ubuntu\n")
+    if cmd[-1] == "--version":
+        return RunResult(exit_code=0, output=UBUNTU_CLANG)
+    if cmd[-1].endswith("mmap_rnd_bits"):
+        return RunResult(exit_code=0, output="28\n")
+    analysis = probe_analysis(cmd)
+    if analysis is not None and "-o" not in cmd:
+        # a wrapped probe binary running inside the distro, and its detector reporting
+        exit_code, report = CAUGHT[analysis]
+        return RunResult(exit_code=exit_code, output=report)
+    return RunResult(exit_code=0, output="")
+
+
+def test_resolve_routes_the_windows_denials_through_a_willing_wsl_distro(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The point of the bridge: TSan and LSan stop being denials when a distro passes their
+    probes, and only those two move -- everything Windows runs natively stays native."""
+    a_windows_machine(monkeypatch)
+    runner = FakeRunner(a_windows_host_with_a_wsl_ubuntu)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    for analysis in (Analysis.TSAN, Analysis.LSAN):
+        status = context.capabilities[analysis]
+        assert status.available
+        # the one surprise a caller meets is /mnt/c paths, and this is where it is explained
+        assert any("Ubuntu" in note for note in status.limitations)
+        engine = context.engines[analysis]
+        assert engine.platform.name == "wsl"
+        # the bridge spawns through its wrapping runner, not the caller's bare one
+        assert engine.runner is not runner
+    assert context.engines[Analysis.ASAN].platform.name == "windows"
+    assert context.engines[Analysis.ASAN].runner is runner
+    shutil.rmtree(context.workspace)
+
+
+def test_without_a_wsl_distro_the_denials_keep_standing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Most Windows machines. The denial must survive untouched, suggestion and all --
+    it is the only place a user learns the setup that would light the bridge up."""
+    a_windows_machine(monkeypatch)
+
+    def reply(cmd: list[str]) -> RunResult:
+        if cmd[0] == WSL_PATH:
+            return RunResult(exit_code=1, output="WSL is not installed.")
+        return a_host_where_every_detector_works(cmd)
+
+    context = resolve(cache_dir=None, runner=FakeRunner(reply))
+
+    status = context.capabilities[Analysis.TSAN]
+    assert not status.available
+    assert status.suggestion is not None
+    assert "wsl --install" in status.suggestion
+    assert context.engines[Analysis.TSAN].platform.name == "windows"
+    shutil.rmtree(context.workspace)
+
+
+def test_a_bridged_probe_that_fails_leaves_the_native_denial_standing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distro whose clang builds the probe but whose detector stays silent must not be
+    routed to: silence from it reads exactly like clean code. The caller keeps the native
+    denial, whose suggestion is actionable, rather than the probe's own words."""
+    a_windows_machine(monkeypatch)
+
+    def reply(cmd: list[str]) -> RunResult:
+        analysis = probe_analysis(cmd)
+        if cmd[0] == WSL_PATH and analysis is not None and "-o" not in cmd:
+            return RunResult(exit_code=0, output="")  # ran, exited clean, saw nothing
+        return a_windows_host_with_a_wsl_ubuntu(cmd)
+
+    context = resolve(cache_dir=None, runner=FakeRunner(reply))
+
+    for analysis in (Analysis.TSAN, Analysis.LSAN):
+        status = context.capabilities[analysis]
+        assert not status.available
+        assert status.suggestion is not None
+        assert "wsl --install" in status.suggestion
+        assert context.engines[analysis].platform.name == "windows"
+    shutil.rmtree(context.workspace)
+
+
+def test_no_wsl_question_is_asked_anywhere_but_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Linux and macOS run everything natively; a wsl.exe spawn there would be startup cost
+    paid on every machine for a bridge only one OS can need."""
+    both_compilers_on_path(monkeypatch)
+    monkeypatch.setattr(platforms, "detect", linux.detect)
+    runner = FakeRunner(a_host_where_every_detector_works)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    assert all(cmd[0] != WSL_PATH for cmd in runner.calls)
+    shutil.rmtree(context.workspace)
+
+
+def test_bridged_probes_cache_under_their_own_fingerprint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two machines answered for this host -- Windows and the distro -- so two cache files,
+    and a second start compiles nothing on either of them."""
+    a_windows_machine(monkeypatch)
+    cache_dir = tmp_path / "cache"
+    runner = FakeRunner(a_windows_host_with_a_wsl_ubuntu)
+
+    first = resolve(cache_dir=cache_dir, runner=runner)
+    probed = probe_calls(runner)
+    second = resolve(cache_dir=cache_dir, runner=runner)
+
+    assert len(list(cache_dir.glob("*.json"))) == 2
+    assert probe_calls(runner) == probed
+    assert second.capabilities[Analysis.TSAN].available
+    shutil.rmtree(first.workspace)
+    shutil.rmtree(second.workspace)
+
+
+def test_a_context_built_without_engines_runs_everything_on_the_native_host(
+    tmp_path: Path,
+) -> None:
+    """Every constructor that predates the bridge -- and every machine without one -- gets
+    the same shape: one engine per analysis, all of them the host's own. The default fill
+    is what keeps "no bridge" from being a special case anyone has to remember to spell."""
+    runner = FakeRunner(a_host_where_every_detector_works)
+    context = Context(
+        platform=Platform(name="linux"),
+        toolchain=a_clang(),
+        capabilities={analysis: CapabilityStatus(available=True) for analysis in Analysis},
+        workspace=tmp_path,
+        runner=runner,
+    )
+
+    assert set(context.engines) == set(Analysis)
+    engine = context.engines[Analysis.TSAN]
+    assert engine.toolchain is context.toolchain
+    assert engine.platform is context.platform
+    assert engine.runner is runner
+
+    with pytest.raises(TypeError):
+        context.engines[Analysis.TSAN] = engine  # type: ignore[index]
 
 
 # --------------------------------------------------------------------- resolved once, shared

@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp import capabilities, platforms, process
+from cpp_analysis_mcp import capabilities, platforms, process, wsl
 from cpp_analysis_mcp.models import Analysis, CapabilityStatus
+from cpp_analysis_mcp.platforms import windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains.base import Toolchain
@@ -47,6 +48,20 @@ NO_COMPILER = (
 
 
 @dataclass(frozen=True, slots=True)
+class Engine:
+    """What one analysis actually runs on: a compiler, an OS's data, and a way to spawn.
+
+    Almost every analysis runs on the host's own engine. A bridged one -- TSan on a
+    Windows with a WSL distro -- runs on the bridge's, and deciding that here at startup
+    is what keeps the pipelines free of any idea that a second machine exists.
+    """
+
+    toolchain: Toolchain
+    platform: Platform
+    runner: Runner
+
+
+@dataclass(frozen=True, slots=True)
 class Context:
     """What one server process resolved once at startup and hands down to every call.
 
@@ -68,12 +83,24 @@ class Context:
     # they compile and run in their own scratch directories under the system temp dir
     workspace: Path
     runner: Runner
+    # which engine each analysis runs on. Constructed sparse: entries only where an
+    # analysis runs somewhere other than the host, and __post_init__ fills the rest in,
+    # so "no bridge" is the default shape rather than a special case
+    engines: Mapping[Analysis, Engine] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # frozen= stops rebinding but not editing inside the mapping, and this one is shared
         # by every request the process serves: an edit would change what a later call is told
         # this machine can do, with nothing probed to back it
         object.__setattr__(self, "capabilities", MappingProxyType(dict(self.capabilities)))
+        native = Engine(toolchain=self.toolchain, platform=self.platform, runner=self.runner)
+        object.__setattr__(
+            self,
+            "engines",
+            MappingProxyType(
+                {analysis: self.engines.get(analysis, native) for analysis in Analysis}
+            ),
+        )
 
 
 def prefer(toolchains: Sequence[Toolchain]) -> Toolchain:
@@ -121,14 +148,35 @@ def resolve(
         raise RuntimeError(NO_COMPILER)
 
     toolchain = prefer(toolchains)
+    statuses = capabilities.probe_all(toolchain, platform, cache_dir=cache_dir, runner=runner)
+
+    # Windows is the one OS with analyses it structurally cannot run and a Linux nearby
+    # that can. When a WSL distro answers for clang, the bridged analyses are probed
+    # through it -- same planted bugs, same cache, its own fingerprint -- and each one
+    # whose probe passed is rerouted: the bridged status replaces the denial and the
+    # engine points into the distro. A bridged probe that failed changes nothing: the
+    # native denial's suggestion already says what to fix, and no analysis is ever routed
+    # somewhere its probe did not pass.
+    engines: dict[Analysis, Engine] = {}
+    bridge = wsl.discover(runner=runner) if platform.name == windows.NAME else None
+    if bridge is not None:
+        bridged = capabilities.probe_all(
+            bridge.toolchain, bridge.platform, cache_dir=cache_dir, runner=bridge.runner
+        )
+        for analysis in bridge.analyses:
+            if bridged[analysis].available:
+                statuses[analysis] = bridged[analysis]
+                engines[analysis] = Engine(
+                    toolchain=bridge.toolchain, platform=bridge.platform, runner=bridge.runner
+                )
+
     return Context(
         platform=platform,
         toolchain=toolchain,
-        capabilities=capabilities.probe_all(
-            toolchain, platform, cache_dir=cache_dir, runner=runner
-        ),
+        capabilities=statuses,
         workspace=workspace,
         runner=runner,
+        engines=engines,
     )
 
 

@@ -41,7 +41,13 @@ ASAN_DLL = "clang_rt.asan_dynamic-x86_64.dll"
 VS_ROOT = Path(r"C:\Program Files\Microsoft Visual Studio")
 NINJA_GLOB = "*/*/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
 
-WSL_SUGGESTION = "run this check under WSL (a Linux environment inside Windows), where it works"
+# actionable because the server bridges into WSL by itself once a distro can compile:
+# context.resolve() discovers it at the next start and this denial disappears
+WSL_SUGGESTION = (
+    "install a WSL distro with clang and restart this server -- it will run this check "
+    "through WSL automatically: wsl --install -d Ubuntu; then wsl -d Ubuntu -- sudo "
+    "apt-get install -y clang llvm cmake ninja-build"
+)
 
 NO_THREAD_SANITIZER = Denial(
     reason="no compiler ships a ThreadSanitizer runtime for Windows; races need Linux or macOS",

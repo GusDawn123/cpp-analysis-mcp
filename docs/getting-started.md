@@ -28,8 +28,20 @@ that check. On Windows it arrives with LLVM.
 
 Windows runs four of the six checks natively — AddressSanitizer, UBSan,
 `-Wthread-safety`, clang-tidy. ThreadSanitizer and LeakSanitizer have no
-Windows runtime in any compiler; the `capabilities` tool says so and points at
-WSL. MinGW gcc (MSYS2) cannot link any sanitizer on Windows — the server picks
+Windows runtime in any compiler — but the server bridges them into WSL by
+itself the moment a distro there can compile. One-time setup, all six checks:
+
+```powershell
+wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build
+```
+
+(`llvm` matters: without `llvm-symbolizer` the two detectors still catch bugs
+but report `<null>` frames instead of file and line.) Restart the server and
+`capabilities` reports all six. You keep passing ordinary `C:\` paths; findings
+from the two bridged checks name files in WSL form, `/mnt/c/...` meaning
+`C:\...`. Without WSL, the denials stand and carry these same setup commands.
+MinGW gcc (MSYS2) cannot link any sanitizer on Windows — the server picks
 clang when both are installed.
 
 ## Download and set up

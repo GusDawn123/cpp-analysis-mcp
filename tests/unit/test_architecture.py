@@ -31,6 +31,7 @@ TOP_LEVEL_PRIMITIVES = (
     PACKAGE_DIR / "capabilities.py",
     PACKAGE_DIR / "context.py",
     PACKAGE_DIR / "process.py",
+    PACKAGE_DIR / "wsl.py",
 )
 
 SERVER = PACKAGE_DIR / "server.py"
