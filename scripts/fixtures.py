@@ -28,6 +28,10 @@ DEFAULT_OUT_DIR = REPO_ROOT / "tests" / "fixtures" / "golden"
 
 RUN_TIMEOUT_S = 30
 
+# how long the cleanup after a timeout may itself take: the tree kill and the final read
+# of the pipe are each bound by this, because neither is guaranteed to finish on its own
+KILL_GRACE_S = 10
+
 # Where LLVM on Windows keeps the sanitizer runtimes, one directory per clang version.
 # Two measured quirks live there: UBSan's libraries must be linked by full path (the
 # linker otherwise takes MSVC's incompatible copy, searched first), and ASan's runtime
@@ -206,19 +210,33 @@ def run_command(
         # sys.platform rather than os.name because mypy only narrows the former.
         if sys.platform == "win32":
             # by full path: bare "taskkill" is resolved through a search that can
-            # reach the current directory, which this script does not control
+            # reach the current directory, which this script does not control.
+            # Bounded, so the cleanup cannot hang the way its target did.
             taskkill = (
                 Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
             )
-            subprocess.run(
-                [str(taskkill), "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True,
-                check=False,
-            )
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                subprocess.run(
+                    [str(taskkill), "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    check=False,
+                    timeout=KILL_GRACE_S,
+                )
         else:
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGKILL)
-        output, _ = proc.communicate()
+        # The kill is not guaranteed (an elevated child, a grandchild in its own
+        # session); a survivor holds the pipe open, so the final read is bound too and
+        # the root is killed directly when it expires.
+        try:
+            output, _ = proc.communicate(timeout=KILL_GRACE_S)
+        except subprocess.TimeoutExpired as undead:
+            proc.kill()
+            salvaged = undead.output if isinstance(undead.output, str) else ""
+            return None, (
+                salvaged + f"\n[killed after {timeout}s timeout; parts of its process tree"
+                " may have survived]\n"
+            )
         return None, (output or "") + f"\n[killed after {timeout}s timeout]\n"
     return proc.returncode, output
 

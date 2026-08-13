@@ -24,6 +24,10 @@ from typing import Protocol
 # a sanitized run inherits these from the developer's shell and then reports something else
 SANITIZER_ENV_VARS = ("ASAN_OPTIONS", "LSAN_OPTIONS", "TSAN_OPTIONS", "UBSAN_OPTIONS")
 
+# how long the cleanup after a timeout may itself take: the tree kill and the final read
+# of the pipe are each bound by this, because neither is guaranteed to finish on its own
+KILL_GRACE_S = 10
+
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
@@ -62,11 +66,7 @@ def run(
         output, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         _kill_tree(proc.pid)
-        output, _ = proc.communicate()
-        return RunResult(
-            exit_code=None,
-            output=(output or "") + f"\n[killed after {timeout_s}s timeout]\n",
-        )
+        return RunResult(exit_code=None, output=_drained(proc, timeout_s))
     return RunResult(exit_code=proc.returncode, output=output)
 
 
@@ -86,16 +86,41 @@ def _kill_tree(pid: int) -> None:
     if sys.platform == "win32":
         # by full path: bare "taskkill" is resolved through a search that can reach the
         # process's current directory, and this server is launched from directories it
-        # does not control
+        # does not control. Bounded, because the cleanup after a timeout must not be
+        # able to hang the way the thing it is cleaning up did.
         taskkill = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
-        subprocess.run(
-            [str(taskkill), "/F", "/T", "/PID", str(pid)],
-            capture_output=True,
-            check=False,
-        )
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(
+                [str(taskkill), "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                check=False,
+                timeout=KILL_GRACE_S,
+            )
         return
     with contextlib.suppress(ProcessLookupError):
         os.killpg(pid, signal.SIGKILL)
+
+
+def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
+    """Collect what a killed process left in its pipe, refusing to wait forever for it.
+
+    The tree kill is not guaranteed: taskkill cannot touch an elevated child, and a
+    grandchild that started its own session escapes the POSIX group. A survivor keeps
+    the pipe's write end open, and a communicate() with no timeout then blocks on it --
+    one timed-out analysis becoming a request that never returns. So the read is bound,
+    the root is killed directly when it expires, and whatever output was gathered before
+    giving up still comes back, with the note saying what happened.
+    """
+    try:
+        output, _ = proc.communicate(timeout=KILL_GRACE_S)
+    except subprocess.TimeoutExpired as undead:
+        proc.kill()
+        salvaged = undead.output if isinstance(undead.output, str) else ""
+        return (
+            salvaged + f"\n[killed after {timeout_s}s timeout; parts of its process tree"
+            " may have survived]\n"
+        )
+    return (output or "") + f"\n[killed after {timeout_s}s timeout]\n"
 
 
 class Runner(Protocol):
