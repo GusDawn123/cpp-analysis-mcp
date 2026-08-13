@@ -56,7 +56,9 @@ class UndeadProc:
         self.killed = False
 
     def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-        raise subprocess.TimeoutExpired(cmd="undead", timeout=timeout or 0, output="partial")
+        # bytes on purpose: text=True notwithstanding, that is what a timed-out
+        # communicate() actually attaches on POSIX
+        raise subprocess.TimeoutExpired(cmd="undead", timeout=timeout or 0, output=b"partial")
 
     def kill(self) -> None:
         self.killed = True

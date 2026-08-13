@@ -115,12 +115,22 @@ def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
         output, _ = proc.communicate(timeout=KILL_GRACE_S)
     except subprocess.TimeoutExpired as undead:
         proc.kill()
-        salvaged = undead.output if isinstance(undead.output, str) else ""
         return (
-            salvaged + f"\n[killed after {timeout_s}s timeout; parts of its process tree"
-            " may have survived]\n"
+            _salvaged(undead) + f"\n[killed after {timeout_s}s timeout; parts of its"
+            " process tree may have survived]\n"
         )
     return (output or "") + f"\n[killed after {timeout_s}s timeout]\n"
+
+
+def _salvaged(undead: subprocess.TimeoutExpired) -> str:
+    """Read the partial output off a timed-out communicate(), whatever shape it took.
+
+    text=True notwithstanding, communicate() attaches what it had read as bytes on
+    POSIX and attaches nothing at all on Windows -- only run() re-raises with str.
+    """
+    if isinstance(undead.output, bytes):
+        return undead.output.decode(errors="replace")
+    return undead.output if isinstance(undead.output, str) else ""
 
 
 class Runner(Protocol):
