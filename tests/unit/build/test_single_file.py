@@ -11,13 +11,14 @@ does it, so the Linux command line is exercised on macOS (rule 3).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp.build.single_file import compile_file
+from cpp_analysis_mcp.build.single_file import compile_file, with_runtime_on_path
 from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.platforms.base import FailureSignature, Platform
 from cpp_analysis_mcp.process import RunResult
@@ -599,3 +600,48 @@ def test_a_successful_build_still_reports_its_warnings(tmp_path: Path) -> None:
     assert warnings[0].category == "thread-safety-analysis"
     assert warnings[0].location is not None
     assert (warnings[0].location.line, warnings[0].location.column) == (21, 5)
+
+
+# --------------------------------------------------------------- the runtime a build must find
+
+
+def test_the_runtime_directory_goes_on_path_for_a_build_that_runs_what_it_links(
+    tmp_path: Path,
+) -> None:
+    """Copying the DLL beside the binary covers running it afterwards and nothing else.
+
+    gtest_discover_tests executes each freshly linked test program during the build to
+    enumerate the tests in it, before anything has been copied anywhere. The loader then
+    cannot find ASan's runtime and the program dies on STATUS_DLL_NOT_FOUND printing nothing,
+    which reads as a build broken inside a test framework.
+    """
+    runtime = tmp_path / "llvm" / "windows"
+    platform = Platform(
+        name="windows",
+        runtime_dlls={SanitizerKind.ADDRESS: (runtime / "clang_rt.asan_dynamic-x86_64.dll",)},
+    )
+
+    env = with_runtime_on_path(platform, SanitizerKind.ADDRESS, {"PATH": "C:\\already"})
+
+    assert env["PATH"].split(os.pathsep)[0] == str(runtime)
+    assert "C:\\already" in env["PATH"]
+
+
+def test_a_platform_with_no_runtime_dlls_is_left_alone(tmp_path: Path) -> None:
+    """Linux and macOS keep their sanitizer runtimes where the loader already looks."""
+    env = {"PATH": "/usr/bin"}
+
+    assert with_runtime_on_path(a_linux(), SanitizerKind.ADDRESS, env) == env
+    assert with_runtime_on_path(a_linux(), None, env) == env
+
+
+def test_an_environment_with_no_path_gets_one(tmp_path: Path) -> None:
+    """hygienic_env copies the real environment, but a caller may hand over anything."""
+    runtime = tmp_path / "windows"
+    platform = Platform(
+        name="windows", runtime_dlls={SanitizerKind.ADDRESS: (runtime / "asan.dll",)}
+    )
+
+    env = with_runtime_on_path(platform, SanitizerKind.ADDRESS, {})
+
+    assert env["PATH"] == str(runtime)

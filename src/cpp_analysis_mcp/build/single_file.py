@@ -13,6 +13,7 @@ is an ordinary thing to observe. The Platform and Toolchain always arrive as arg
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -36,6 +37,7 @@ def compile_file(
     platform: Platform,
     sanitizer: SanitizerKind | None,
     build_dir: Path,
+    base_flags: tuple[str, ...] = BASE_FLAGS,
     timeout_s: int = COMPILE_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> BuiltBinary | BuildFailure:
@@ -43,12 +45,23 @@ def compile_file(
 
     A build that succeeded can still carry findings: -Wthread-safety reports while
     compiling, so the compiler's own output is parsed into the returned warnings.
+
+    `base_flags` is what an unsanitized build compiles with, and a sanitized one ignores it:
+    every sanitizer flag set is built on BASE_FLAGS already. It exists so the profiler can
+    ask for its own optimization level without a second build module.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
     binary = build_dir / _binary_name(source, sanitizer, platform.executable_suffix)
 
     result = runner(
-        _command(source, binary, toolchain=toolchain, platform=platform, sanitizer=sanitizer),
+        _command(
+            source,
+            binary,
+            toolchain=toolchain,
+            platform=platform,
+            sanitizer=sanitizer,
+            base_flags=base_flags,
+        ),
         timeout_s=timeout_s,
         # a compile must not inherit the developer's sanitizer options
         env=process.hygienic_env({}),
@@ -94,6 +107,32 @@ def place_runtime_dlls(platform: Platform, sanitizer: SanitizerKind | None, besi
         shutil.copy2(dll, beside)
 
 
+def with_runtime_on_path(
+    platform: Platform, sanitizer: SanitizerKind | None, env: dict[str, str]
+) -> dict[str, str]:
+    """Return `env` with the directories holding this sanitizer's runtime DLLs on PATH.
+
+    Copying the DLL beside the binary covers running that binary afterwards, and nothing
+    else. A build can run a binary too, and one common thing does: gtest_discover_tests
+    executes each freshly linked test program as a POST_BUILD step to enumerate the tests
+    inside it. That happens while the build is still going, before anything has been copied
+    anywhere, so the loader cannot find the ASan runtime and the program dies immediately on
+    STATUS_DLL_NOT_FOUND (0xC0000135), printing nothing. What the caller sees is a build
+    that failed inside a test framework, which explains none of it.
+
+    A no-op everywhere but Windows, where the runtime_dlls table is the only non-empty one.
+    """
+    if sanitizer is None:
+        return env
+    directories = sorted({str(dll.parent) for dll in platform.runtime_dlls.get(sanitizer, ())})
+    if not directories:
+        return env
+    # prepended, not appended: another copy of the same runtime earlier on PATH is exactly
+    # the mismatch the full-path link extras exist to avoid
+    existing = env.get("PATH", "")
+    return {**env, "PATH": os.pathsep.join([*directories, existing] if existing else directories)}
+
+
 def _command(
     source: Path,
     binary: Path,
@@ -101,9 +140,10 @@ def _command(
     toolchain: Toolchain,
     platform: Platform,
     sanitizer: SanitizerKind | None,
+    base_flags: tuple[str, ...],
 ) -> list[str]:
     """Compose the invocation: sanitizer flags or the base ones, warnings, then this OS's."""
-    flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else BASE_FLAGS
+    flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else base_flags
     extras = platform.sanitize_link_extras.get(sanitizer, ()) if sanitizer is not None else ()
     return [
         str(toolchain.compiler),

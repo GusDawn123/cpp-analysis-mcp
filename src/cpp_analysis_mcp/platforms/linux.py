@@ -31,7 +31,29 @@ RUNTIME_PACKAGES = {
     "cannot find -llsan": "liblsan0",
 }
 
-INSTALL_HINTS = {Analysis.CLANG_TIDY: "sudo apt install clang-tidy"}
+PERF_INSTALL = "sudo apt install linux-perf || sudo apt install linux-tools-generic"
+
+INSTALL_HINTS = {
+    Analysis.CLANG_TIDY: "sudo apt install clang-tidy",
+    # split out of linux-tools on newer Debian-family releases, still inside it on older
+    # ones; the second command is harmless where the first already worked
+    Analysis.PROFILE: PERF_INSTALL,
+}
+
+# both spellings of "perf is not installed": the first is what this package's own spawn
+# reports when the binary is not on PATH, the second is what `env` says when the same
+# command is run one machine over through the WSL bridge
+PERF_MISSING = ("No such file or directory: 'perf'", "env: 'perf'")
+
+# perf refuses to open a counter for an unprivileged user above this setting. Distributions
+# ship 4 (nothing allowed) or 2 (userspace allowed) and containers commonly inherit neither.
+PERF_PARANOID = Path("/proc/sys/kernel/perf_event_paranoid")
+PERF_PARANOID_FACT = "kernel.perf_event_paranoid"
+PERF_DENIED_MARKER = "perf_event_paranoid"
+
+# the volatile host settings a capability result depends on: change either and a cached
+# answer about this machine stops being about this machine
+HOST_SETTINGS = {MMAP_RND_BITS_FACT: MMAP_RND_BITS, PERF_PARANOID_FACT: PERF_PARANOID}
 
 
 def detect() -> Platform:
@@ -47,14 +69,22 @@ def detect() -> Platform:
 
 
 def env_facts() -> dict[str, str]:
-    """Read the volatile host settings a capability result depends on."""
-    try:
-        value = MMAP_RND_BITS.read_text(encoding="utf-8").strip()
-    except OSError:
-        # absent on non-Linux kernels, root-only on GitHub's runners -- either way the
-        # fact is unknown, and an unknown fact must not pretend to be a value
-        return {}
-    return {MMAP_RND_BITS_FACT: value}
+    """Read the volatile host settings a capability result depends on.
+
+    Each is read on its own: one being unreadable says nothing about the other, and dropping
+    both because of one would retire a cache entry that is still valid.
+    """
+    facts: dict[str, str] = {}
+    for name, path in HOST_SETTINGS.items():
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            # absent on non-Linux kernels, root-only on GitHub's runners -- either way the
+            # fact is unknown, and an unknown fact must not pretend to be a value
+            continue
+        if value:
+            facts[name] = value
+    return facts
 
 
 def failure_signatures(mmap_rnd_bits: str | None) -> tuple[FailureSignature, ...]:
@@ -79,6 +109,29 @@ def failure_signatures(mmap_rnd_bits: str | None) -> tuple[FailureSignature, ...
                 suggestion=f"sudo apt install {package}",
             )
             for marker, package in RUNTIME_PACKAGES.items()
+        ),
+        *(
+            FailureSignature(
+                marker=marker,
+                reason=(
+                    "perf is not installed, so there is nothing here to sample with; it "
+                    "ships separately from the compiler and from the kernel"
+                ),
+                suggestion=PERF_INSTALL,
+            )
+            for marker in PERF_MISSING
+        ),
+        FailureSignature(
+            marker=PERF_DENIED_MARKER,
+            reason=(
+                "the kernel refused to open a performance counter for this user: "
+                "perf_event_paranoid is set high enough to forbid it, which is the default "
+                "in most containers and on some hardened distributions"
+            ),
+            suggestion=(
+                "sudo sysctl -w kernel.perf_event_paranoid=1, or run the container with "
+                "--cap-add SYS_ADMIN"
+            ),
         ),
     )
 

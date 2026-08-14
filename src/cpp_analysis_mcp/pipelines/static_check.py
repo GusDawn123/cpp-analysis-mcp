@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from cpp_analysis_mcp import process
+from cpp_analysis_mcp import compile_db, process
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
 from cpp_analysis_mcp.models import (
     Analysis,
@@ -52,6 +52,39 @@ STANDARD = "-std=c++20"
 THREAD_SAFETY_STAGE = "thread-safety"
 CLANG_TIDY_STAGE = "clang-tidy"
 
+# the files clang-tidy itself looks for above a source file, in its own order
+TIDY_CONFIG_NAMES = (".clang-tidy", "_clang-tidy")
+
+# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy above the
+# file, clang-tidy 22 exits 1 printing "Error: no checks enabled." and its whole usage text,
+# which parses to no findings and reads as a broken tool. Measured. So a project that has
+# committed no configuration gets one, and is told that it did.
+#
+# Correctness and cost, not style: these are the families whose findings are worth acting on
+# without knowing anything about a project's conventions. readability-* and modernize-* are
+# deliberately absent -- they are opinions about how code should look, and handing someone a
+# hundred of them unasked buries the four that matter.
+DEFAULT_CHECKS = "bugprone-*,clang-analyzer-*,performance-*,portability-*"
+
+DEFAULT_CHECKS_NOTE = (
+    f"this project committed no .clang-tidy, so a default check set was used: "
+    f"{DEFAULT_CHECKS}. Pass `checks` to choose your own, or commit a .clang-tidy file"
+)
+
+NO_DATABASE_NOTE = (
+    "no compile_commands.json was found near this file, so the check ran with no project "
+    "include directories; a file that includes a project header will fail to parse"
+)
+
+# what clang says when an include could not be resolved, and the only case where the missing
+# database is the explanation rather than a guess about someone else's compile error
+MISSING_INCLUDE = "file not found"
+
+NO_DATABASE_SUGGESTION = (
+    "generate a compilation database and this check will find it by itself: configure with "
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, or run bear -- <your build> for a non-CMake build"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class _Checked:
@@ -60,6 +93,12 @@ class _Checked:
     stage: str
     result: process.RunResult
     findings: tuple[Finding, ...]
+    # what the caller has to know to read this result, beyond what the platform already said:
+    # the check set nobody chose, the include paths that were never found
+    notes: tuple[str, ...] = ()
+    # whether a compilation database was behind the flags, which decides whether a parse
+    # failure is explained by its absence or by the code
+    database: Path | None = None
 
 
 class _Check(Protocol):
@@ -159,6 +198,7 @@ def _check_thread_safety(
     runner: Runner,
 ) -> _Checked | CapabilityStatus:
     """Compile the file and read the compiler's own output; `checks` is clang-tidy's alone."""
+    database, project = _project_flags(source)
     result = runner(
         [
             str(toolchain.compiler),
@@ -168,6 +208,9 @@ def _check_thread_safety(
             "-fsyntax-only",
             *toolchain.warning_flags,
             *platform.compile_extras,
+            # after ours, so a project that builds at a different language standard wins:
+            # last -std= on a clang command line is the one that takes effect
+            *project,
             str(source),
         ],
         timeout_s=timeout_s,
@@ -177,6 +220,8 @@ def _check_thread_safety(
         stage=THREAD_SAFETY_STAGE,
         result=result,
         findings=diagnostics.parse(result.output),
+        notes=() if database is not None else (NO_DATABASE_NOTE,),
+        database=database,
     )
 
 
@@ -200,17 +245,21 @@ def _check_clang_tidy(
             suggestion=platform.install_hints.get(Analysis.CLANG_TIDY),
         )
 
+    database, project = _project_flags(source)
+    effective, chosen_note = _tidy_checks(source, checks)
     result = runner(
         [
             str(tidy),
-            # no --checks at all means clang-tidy's own defaults, which is what lets a
-            # project's committed .clang-tidy file decide instead of this argument
-            *((f"--checks={checks}",) if checks is not None else ()),
+            # omitted only when the project committed a .clang-tidy: that file is then what
+            # decides, which is what a project asking for its own checks means
+            *((f"--checks={effective}",) if effective is not None else ()),
             str(source),
             # everything past -- is the compilation this file would have had
             "--",
             STANDARD,
             *platform.compile_extras,
+            # and what it really did have, when a build wrote that down
+            *project,
         ],
         timeout_s=timeout_s,
         env=process.hygienic_env({}),
@@ -219,7 +268,38 @@ def _check_clang_tidy(
         stage=CLANG_TIDY_STAGE,
         result=result,
         findings=clang_tidy.parse(result.output),
+        notes=(*chosen_note, *(() if database is not None else (NO_DATABASE_NOTE,))),
+        database=database,
     )
+
+
+def _project_flags(source: Path) -> tuple[Path | None, tuple[str, ...]]:
+    """Find this file's compilation database and take the flags it needs to parse.
+
+    Both checks want the same thing and neither can do its job without it: a file that
+    includes a project header is unparseable until something says where that header lives,
+    and the build already wrote it down.
+    """
+    database = compile_db.find(source)
+    if database is None:
+        return None, ()
+    return database, compile_db.flags_for(database, source)
+
+
+def _tidy_checks(source: Path, checks: str | None) -> tuple[str | None, tuple[str, ...]]:
+    """Decide what to enable, and what the caller has to be told about that decision.
+
+    Three cases and only the last of them chooses anything. An explicit `checks` is the
+    caller's. A committed .clang-tidy is the project's, and is left to decide by passing no
+    --checks at all. Nothing at all is the case that used to come back as usage text.
+    """
+    if checks is not None:
+        return checks, ()
+    if any(
+        (directory / name).is_file() for directory in source.parents for name in TIDY_CONFIG_NAMES
+    ):
+        return None, ()
+    return DEFAULT_CHECKS, (DEFAULT_CHECKS_NOTE,)
 
 
 def _outcome(
@@ -233,7 +313,16 @@ def _outcome(
     # text blob. A nonzero exit with nothing parsed is the tool itself failing, and that
     # output is the only thing that explains it.
     if checked.result.exit_code != 0 and not checked.findings:
-        return BuildFailure(stage=checked.stage, output=checked.result.output)
+        # an unresolved include with no database behind the check is the one failure this
+        # pipeline can explain and fix; every other one belongs to the code and the tool's
+        # own words are the answer, so no reason is invented for it
+        unresolved = checked.database is None and MISSING_INCLUDE in checked.result.output
+        return BuildFailure(
+            stage=checked.stage,
+            output=checked.result.output,
+            reason=NO_DATABASE_NOTE if unresolved else None,
+            suggestion=NO_DATABASE_SUGGESTION if unresolved else None,
+        )
 
     return AnalysisReport(
         analysis=analysis,
@@ -241,7 +330,9 @@ def _outcome(
         build_warnings=(),
         exit_code=checked.result.exit_code,
         timed_out=False,
-        limitations=status.limitations,
+        # the platform's caveats and this run's own, which are about what was decided for
+        # the caller rather than about the machine
+        limitations=(*status.limitations, *checked.notes),
         verified_by=status.verified_by,
     )
 

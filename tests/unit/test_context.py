@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp import platforms
+from cpp_analysis_mcp import platforms, profiler
 from cpp_analysis_mcp.capabilities import PROBE_STEM
 from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
 from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
@@ -76,6 +76,11 @@ CAUGHT: Mapping[Analysis, tuple[int, str]] = {
         0,
         "probe_clang-tidy.cpp:2:14: warning: use nullptr [modernize-use-nullptr]",
     ),
+    Analysis.PROFILE: (
+        0,
+        "# Samples: 640  of event 'cpu/cycles/P'\n"
+        " 99.06% ; 99.06% ;[.] probe_hot_spot();probe_profile.cpp:4;-      -\n",
+    ),
 }
 
 Reply = Callable[[list[str]], RunResult]
@@ -119,12 +124,30 @@ class RefusingRunner:
         raise AssertionError(f"a startup that cannot succeed spawned {list(cmd)}")
 
 
+def perf_step(cmd: Sequence[str]) -> str | None:
+    """Return which perf subcommand a command runs, or None when it does not run perf.
+
+    Found by position rather than at argv[0], because a bridged spawn buries the real
+    command behind `wsl.exe -d Ubuntu --exec env` and the step still has to be readable.
+    """
+    names = [Path(arg).name for arg in cmd]
+    if profiler.PERF not in names:
+        return None
+    after = names.index(profiler.PERF) + 1
+    return names[after] if after < len(names) else None
+
+
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
     """Read which probe a command belongs to off the scratch file it names.
 
     .exe comes off as well as .cpp: on a real Windows host the probes name their
     binaries with the platform's executable suffix.
+
+    perf is recognized by name instead: its report step names only the trace and its own
+    flags, none of which carry the probe's stem, and one analysis reaches for perf.
     """
+    if perf_step(cmd) is not None:
+        return Analysis.PROFILE
     for arg in cmd:
         stem = Path(arg).name.removesuffix(".cpp").removesuffix(".exe")
         if stem.startswith(PROBE_STEM):
@@ -141,8 +164,12 @@ def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
     """Say whether this is the step whose output has to carry the marker.
 
     A sanitizer probe detects when its binary runs, which is a bare one-element command;
-    the compile-time checks detect in the only step they have.
+    the compile-time checks detect in the only step they have. Profiling has three steps
+    and detects in the last: recording writes a binary trace that says nothing readable,
+    so only the report can name the function the probe planted.
     """
+    if analysis is Analysis.PROFILE:
+        return perf_step(cmd) == "report"
     return len(cmd) == 1 or analysis not in SANITIZER_FOR
 
 
@@ -509,6 +536,8 @@ def a_windows_host_with_a_wsl_ubuntu(cmd: list[str]) -> RunResult:
         return RunResult(exit_code=0, output=UBUNTU_CLANG)
     if cmd[-1].endswith("mmap_rnd_bits"):
         return RunResult(exit_code=0, output="28\n")
+    if cmd[-1].endswith("perf_event_paranoid"):
+        return RunResult(exit_code=0, output="2\n")
     analysis = probe_analysis(cmd)
     if analysis is not None and "-o" not in cmd:
         # a wrapped probe binary running inside the distro, and its detector reporting

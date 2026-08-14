@@ -14,6 +14,7 @@ many times something was called.
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -23,7 +24,12 @@ import pytest
 from helpers import GOLDEN_DIR, bug_line
 
 from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
-from cpp_analysis_mcp.pipelines.static_check import CHECK_TIMEOUT_S, check_file, check_snippet
+from cpp_analysis_mcp.pipelines.static_check import (
+    CHECK_TIMEOUT_S,
+    DEFAULT_CHECKS,
+    check_file,
+    check_snippet,
+)
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.toolchains.base import Toolchain
@@ -442,11 +448,138 @@ def test_the_asked_for_checks_reach_tidy_before_the_file_and_the_compiler_flags_
     assert cmd.index("--") < cmd.index("-std=c++20")
 
 
-def test_no_checks_asked_for_leaves_tidy_on_its_own_defaults(
+def a_database_for(source: Path, include: Path) -> None:
+    """Write the compilation database a build of this file would have left behind."""
+    build = source.parent / "build"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "compile_commands.json").write_text(
+        json.dumps(
+            [
+                {
+                    "directory": str(build),
+                    "file": str(source),
+                    "command": f"clang++ -I{include} -DFROM_THE_BUILD -c {source}",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_a_thread_safety_check_uses_the_include_paths_the_build_recorded(
+    tmp_path: Path,
+) -> None:
+    """Without them the file stops at its first #include of a project header, and what comes
+    back is "file not found" -- which says nothing about the code and made this rung of the
+    ladder unusable on any project with subdirectories."""
+    include = tmp_path / "include"
+    include.mkdir()
+    a_database_for(a_source(tmp_path), include)
+    runner = ScriptedRunner([CLEAN])
+
+    check(tmp_path, runner, analysis=Analysis.THREAD_SAFETY)
+
+    assert f"-I{include}" in runner.checked.cmd
+    assert "-DFROM_THE_BUILD" in runner.checked.cmd
+
+
+def test_a_clang_tidy_check_uses_them_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same file, same includes; tidy parses the translation unit exactly as the compiler does."""
+    tidy = install_tidy(monkeypatch, tmp_path)
+    include = tmp_path / "include"
+    include.mkdir()
+    a_database_for(a_source(tmp_path), include)
+    runner = ScriptedRunner([CLEAN])
+
+    check(tmp_path, runner, analysis=Analysis.CLANG_TIDY, platform=a_platform_with(tidy.parent))
+
+    command = runner.checked.cmd
+    assert f"-I{include}" in command
+    # after the -- separator, which is where a compilation goes
+    assert command.index("--") < command.index(f"-I{include}")
+
+
+def test_project_flags_come_after_the_pipelines_own(tmp_path: Path) -> None:
+    """A project that builds at a different language standard has to win: the last -std= on a
+    clang command line is the one that takes effect, and the project's is the true one."""
+    include = tmp_path / "include"
+    include.mkdir()
+    source = a_source(tmp_path)
+    build = source.parent / "build"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "compile_commands.json").write_text(
+        json.dumps(
+            [
+                {
+                    "directory": str(build),
+                    "file": str(source),
+                    "command": f"clang++ -std=c++23 -c {source}",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runner = ScriptedRunner([CLEAN])
+
+    check(tmp_path, runner, analysis=Analysis.THREAD_SAFETY)
+
+    command = runner.checked.cmd
+    assert command.index("-std=c++20") < command.index("-std=c++23")
+
+
+def test_a_file_with_no_database_says_so_on_the_report(tmp_path: Path) -> None:
+    """An empty result from a check that could not see the project's headers is not the same
+    answer as an empty result from one that could, and nothing else distinguishes them."""
+    runner = ScriptedRunner([CLEAN])
+
+    report = reported(check(tmp_path, runner, analysis=Analysis.THREAD_SAFETY))
+
+    assert any("compile_commands.json" in note for note in report.limitations)
+
+
+def test_an_unresolved_include_with_no_database_says_how_to_fix_it(tmp_path: Path) -> None:
+    """The one failure this pipeline can explain and repair. Every other compile error
+    belongs to the code, and the tool's own words are the answer."""
+    runner = ScriptedRunner(
+        [
+            RunResult(
+                exit_code=1,
+                output="widget.cpp:1:10: fatal error: 'orderbook/OrderBook.hpp' file not found\n",
+            )
+        ]
+    )
+
+    failure = failed(check(tmp_path, runner, analysis=Analysis.THREAD_SAFETY))
+
+    assert failure.reason is not None
+    assert "compile_commands.json" in failure.reason
+    assert failure.suggestion is not None
+    assert "CMAKE_EXPORT_COMPILE_COMMANDS" in failure.suggestion
+
+
+def test_an_ordinary_failure_is_not_blamed_on_a_missing_database(tmp_path: Path) -> None:
+    """Inventing that reason would explain someone else's broken toolchain wrongly and
+    confidently. Only an unresolved include is the missing database's doing."""
+    runner = ScriptedRunner(
+        [RunResult(exit_code=1, output="clang++: error: unable to execute command: Killed\n")]
+    )
+
+    failure = failed(check(tmp_path, runner, analysis=Analysis.THREAD_SAFETY))
+
+    assert failure.reason is None
+    assert failure.suggestion is None
+
+
+def test_a_committed_clang_tidy_is_left_in_charge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A --checks= of any shape overrules a project's committed .clang-tidy file."""
+    """A --checks= of any shape overrules a project's committed .clang-tidy file.
+
+    So when the project has one, nothing may be passed: a repository that curated its own
+    check list would otherwise silently be given someone else's.
+    """
     tidy = install_tidy(monkeypatch, tmp_path)
+    (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
     runner = ScriptedRunner([CLEAN])
 
     check(
@@ -458,7 +591,54 @@ def test_no_checks_asked_for_leaves_tidy_on_its_own_defaults(
     )
 
     passed = [arg for arg in runner.checked.cmd if arg.startswith("--checks")]
-    assert passed == [], f"tidy was told what to check when nobody asked: {passed}"
+    assert passed == [], f"tidy was told what to check when the project already had: {passed}"
+
+
+def test_a_project_with_no_clang_tidy_gets_a_default_rather_than_usage_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """clang-tidy enables nothing of its own accord.
+
+    Given neither --checks nor a .clang-tidy above the file it exits 1 and prints its usage
+    text, which parses to no findings and reads as a tool that is broken. Measured on
+    clang-tidy 22. The default is chosen for the caller, and the caller is told it was.
+    """
+    tidy = install_tidy(monkeypatch, tmp_path)
+    runner = ScriptedRunner([CLEAN])
+
+    report = reported(
+        check(
+            tmp_path,
+            runner,
+            analysis=Analysis.CLANG_TIDY,
+            platform=a_platform_with(tidy.parent),
+            checks=None,
+        )
+    )
+
+    assert f"--checks={DEFAULT_CHECKS}" in runner.checked.cmd
+    # a check set nobody chose is not a detail: it decides what the empty result means
+    assert any("no .clang-tidy" in note for note in report.limitations)
+
+
+def test_an_explicit_check_set_beats_both(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The caller asked for something specific, so neither the project nor the default runs."""
+    tidy = install_tidy(monkeypatch, tmp_path)
+    (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
+    runner = ScriptedRunner([CLEAN])
+
+    report = reported(
+        check(
+            tmp_path,
+            runner,
+            analysis=Analysis.CLANG_TIDY,
+            platform=a_platform_with(tidy.parent),
+            checks="bugprone-use-after-move",
+        )
+    )
+
+    assert "--checks=bugprone-use-after-move" in runner.checked.cmd
+    assert not any("no .clang-tidy" in note for note in report.limitations)
 
 
 def test_code_that_does_not_compile_comes_back_as_findings(

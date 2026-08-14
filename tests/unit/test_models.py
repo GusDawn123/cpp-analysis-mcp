@@ -164,6 +164,7 @@ def test_analysis_values_are_the_names_the_server_offers() -> None:
         "ubsan",
         "thread-safety",
         "clang-tidy",
+        "profile",
     ]
     assert Analysis("thread-safety") is Analysis.THREAD_SAFETY
     assert f"{Analysis.TSAN}" == "tsan"
@@ -183,10 +184,15 @@ def test_every_sanitizer_analysis_names_its_sanitizer() -> None:
         assert SANITIZER_FOR[Analysis(analysis.value)] is kind
 
 
-def test_the_static_analyses_have_no_sanitizer() -> None:
-    """These two run at compile time; asking them for a -fsanitize= flag is a bug."""
+def test_the_analyses_that_instrument_nothing_have_no_sanitizer() -> None:
+    """Two run at compile time and one builds optimized; none takes a -fsanitize= flag.
+
+    The profiler is the one worth stating outright: instrumenting a build would change the
+    very thing it is measuring, so it is not a sanitizer that happens to lack a flag.
+    """
     assert Analysis.THREAD_SAFETY not in SANITIZER_FOR
     assert Analysis.CLANG_TIDY not in SANITIZER_FOR
+    assert Analysis.PROFILE not in SANITIZER_FOR
 
 
 def test_built_binary_takes_a_plain_dict_for_runtime_env() -> None:

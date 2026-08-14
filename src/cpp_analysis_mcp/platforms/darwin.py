@@ -25,6 +25,17 @@ NO_LEAK_SANITIZER = Denial(
     suggestion="run the leak check on Linux, or on the roadmap's Linux-container mode",
 )
 
+# macOS profiles with Instruments and `sample`, which read Apple's own counters and report
+# in their own formats. Neither is perf, and claiming a profile this server cannot produce
+# would be worse than saying so: there is no bridge here the way Windows has WSL.
+NO_PROFILER = Denial(
+    reason="perf is a Linux kernel tool and has no macOS build; profiling needs Linux",
+    suggestion=(
+        "profile on Linux, or use Instruments directly: "
+        "xcrun xctrace record --template 'Time Profiler' --launch -- ./your-binary"
+    ),
+)
+
 # a silent TSan run here means "no races found", never "no deadlocks found"
 TSAN_LIMITATIONS = (
     "Apple clang's TSan runtime cannot detect deadlocks or lock-order inversions; "
@@ -46,7 +57,8 @@ def detect() -> Platform:
 
 
 def denied() -> dict[Analysis, Denial]:
-    """Intel macs do run LeakSanitizer, so the denial is arm64's alone."""
-    if platform.machine() != ARM64:
-        return {}
-    return {Analysis.LSAN: NO_LEAK_SANITIZER}
+    """Every mac refuses the profiler; only arm64 refuses LeakSanitizer as well."""
+    refusals = {Analysis.PROFILE: NO_PROFILER}
+    if platform.machine() == ARM64:
+        refusals[Analysis.LSAN] = NO_LEAK_SANITIZER
+    return refusals
