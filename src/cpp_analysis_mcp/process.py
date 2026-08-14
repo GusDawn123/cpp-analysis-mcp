@@ -28,6 +28,11 @@ SANITIZER_ENV_VARS = ("ASAN_OPTIONS", "LSAN_OPTIONS", "TSAN_OPTIONS", "UBSAN_OPT
 # of the pipe are each bound by this, because neither is guaranteed to finish on its own
 KILL_GRACE_S = 10
 
+# what a shell exits with when the command was not found. Borrowed deliberately: a caller
+# reading exit codes should not have to learn a private convention for the one failure that
+# already has a universal one.
+NOT_FOUND_EXIT = 127
+
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
@@ -50,18 +55,30 @@ def run(
     env: Mapping[str, str] | None = None,
     cwd: Path | None = None,
 ) -> RunResult:
-    """Run a command to completion or to its timeout, stderr merged into stdout."""
-    # New session so a hung sanitizer takes its symbolizer child down with it.
-    proc = subprocess.Popen(
-        list(cmd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        cwd=cwd,
-        text=True,
-        errors="replace",
-        start_new_session=True,
-    )
+    """Run a command to completion or to its timeout, stderr merged into stdout.
+
+    A tool that is not installed comes back as exit 127 carrying the OS's own words, not as
+    an exception. Every caller here already treats "the tool failed" as an ordinary thing to
+    observe and report -- a capability probe exists precisely to find out that a tool is
+    missing -- and a raise would turn that answer into a crash one layer above, taking the
+    whole startup down with it because one optional tool was absent.
+    """
+    try:
+        # New session so a hung sanitizer takes its symbolizer child down with it.
+        proc = subprocess.Popen(
+            list(cmd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            cwd=cwd,
+            text=True,
+            errors="replace",
+            start_new_session=True,
+        )
+    except (FileNotFoundError, NotADirectoryError, PermissionError) as missing:
+        # NotADirectoryError: a PATH entry that is a file, which POSIX reports this way.
+        # PermissionError: present but not executable, which is the same problem to a caller.
+        return RunResult(exit_code=NOT_FOUND_EXIT, output=str(missing))
     try:
         output, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
