@@ -165,14 +165,18 @@ def test_the_first_matching_signature_wins() -> None:
     assert linux_like.diagnose(reversed_order) is first
 
 
-def test_linux_reads_the_aslr_width_only_where_it_is_readable() -> None:
-    """/proc is absent on macOS and root-only on GitHub's runners; an unreadable fact
-    is omitted rather than guessed at or crashed on."""
+def test_linux_reads_host_facts_only_where_they_are_readable() -> None:
+    """/proc is absent on macOS and partly root-only on GitHub's runners; an unreadable
+    fact is omitted rather than guessed at or crashed on, and each is read on its own --
+    the runners prove it by serving perf_event_paranoid while denying mmap_rnd_bits."""
     facts = linux.detect().env_facts
 
-    assert set(facts) <= {linux.MMAP_RND_BITS_FACT}
+    assert set(facts) <= set(linux.HOST_SETTINGS)
     if linux.MMAP_RND_BITS_FACT in facts:
         assert facts[linux.MMAP_RND_BITS_FACT].isdigit()
+    if linux.PERF_PARANOID_FACT in facts:
+        # -1 (everything allowed) through 4 (nothing allowed) are all real kernel values
+        assert facts[linux.PERF_PARANOID_FACT].lstrip("-").isdigit()
 
 
 def test_linux_detect_carries_its_tables() -> None:
