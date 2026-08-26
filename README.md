@@ -50,6 +50,12 @@ inside std::map tree machinery", names the rewrite families worth
 trying, and tells you how much to trust the numbers given the sample
 count.
 
+Two guided workflows ship as prompts, which clients surface as
+slash commands. `checkup` runs the whole correctness pass and fixes
+findings until the file comes back clean. `make-it-faster` walks the
+loop this tool exists for: profile, write rewrite candidates, race
+them, adopt only a proven winner, and prove it again.
+
 Under the hood: ThreadSanitizer for data races, AddressSanitizer
 for memory corruption, LeakSanitizer for leaks, UBSan for undefined
 behavior, clang-tidy and -Wthread-safety at compile time, and perf
