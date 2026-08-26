@@ -45,6 +45,9 @@ GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux|windows)-(?P<famil
 COMPILE_TIME_CAPTURES = {
     "unguarded_write": ("thread_safety_unguarded_write.darwin-clang.txt",),
     "nullptr_zero": ("clang_tidy_nullptr_zero.linux-clang.txt",),
+    # not compile-time, but hand-captured all the same: coz is not in the capture
+    # script's toolset, so its golden is captured by hand from this fixture
+    "critical_path": ("coz_critical_path.linux-clang.txt",),
 }
 COMPILE_TIME_FIXTURES = frozenset(COMPILE_TIME_CAPTURES)
 COMPILE_TIME_GOLDENS = frozenset(name for names in COMPILE_TIME_CAPTURES.values() for name in names)

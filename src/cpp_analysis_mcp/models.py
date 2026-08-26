@@ -250,6 +250,47 @@ class ProfileReport:
 
 
 @dataclass(frozen=True, slots=True)
+class CausalPoint:
+    """One measured answer to "if this line were faster, would the program be faster?".
+
+    `virtual_speedup_pct` is how much faster coz pretended the line was;
+    `program_speedup_pct` is how much faster the whole program actually finished work,
+    measured against the zero-speedup baseline. Negative values are real measurements
+    too: they mean the experiment ran slower than baseline, which at small magnitudes
+    is noise and at large ones is contention worth knowing about.
+    """
+
+    location: Location
+    virtual_speedup_pct: float
+    program_speedup_pct: float
+    experiments: int
+
+
+@dataclass(frozen=True, slots=True)
+class CausalReport:
+    """What causal profiling measured, and what makes the numbers worth believing.
+
+    A sampling profile ranks where time went; this measures what changing each line
+    would do to the program end to end. The two disagree exactly when a hot line sits
+    off the critical path. `baseline_experiments` and `experiment_count` are the trust
+    numbers: few experiments means coarse estimates, and no baseline means no estimates
+    at all.
+    """
+
+    analysis: Analysis
+    points: tuple[CausalPoint, ...]
+    statements: tuple[str, ...]
+    progress_points: tuple[str, ...]
+    experiment_count: int
+    baseline_experiments: int
+    exit_code: int | None = None
+    timed_out: bool = False
+    limitations: tuple[str, ...] = ()
+    verified_by: str | None = None
+    next_step: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Variant:
     """One competitor in a benchmark race: a name and a complete program."""
 
