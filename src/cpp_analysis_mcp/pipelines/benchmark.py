@@ -68,6 +68,7 @@ LIMITATIONS = (
 STOPPED_EARLY = "the race stopped at its time budget; run counts are uneven"
 
 NO_WINNER = "no variant beat the baseline on this machine"
+WINNER = "{name} won; sanitize it (sanitize_snippet: tsan, then asan) before adopting it"
 
 Clock = Callable[[], float]
 
@@ -296,11 +297,7 @@ def _report(
     next_step = None
     if survivors:
         fastest = survivors[0].name
-        next_step = (
-            NO_WINNER
-            if fastest == baseline
-            else f"{fastest} won; sanitize it (sanitize_snippet: tsan, then asan) before adopting it"
-        )
+        next_step = NO_WINNER if fastest == baseline else WINNER.format(name=fastest)
     return BenchmarkReport(
         baseline=baseline,
         variants=(*survivors, *losers),
