@@ -331,8 +331,6 @@ def test_a_denied_platform_never_reaches_the_pipeline_through_its_own_tables(
 def test_plain_user_code_reports_no_fingerprints_and_a_coarse_confidence(
     tmp_path: Path,
 ) -> None:
-    """286 samples of the user's own function: nothing to name, nothing to race, and the
-    confidence line says the ranking is coarse."""
     result = run_profile(tmp_path, a_working_profiler())
 
     assert isinstance(result, ProfileReport)

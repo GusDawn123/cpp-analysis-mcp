@@ -68,13 +68,22 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         category="memory-shifting",
-        statement="{pct}% of self time shifting or regrowing contiguous storage",
-        markers=("_M_realloc", "memmove", "memcpy"),
+        statement="{pct}% of self time regrowing contiguous storage on insert",
+        markers=("_M_realloc",),
         candidates=(
             "reserve capacity up front",
             "append then sort once instead of inserting in the middle",
             "a container that does not shift on insert",
         ),
+    ),
+    # bare copy symbols carry no proof of a container behind them, so no rewrite advice
+    Rule(
+        category="bulk-copying",
+        statement=(
+            "{pct}% of self time copying memory in bulk; the caller rows say whether a "
+            "container's inserts are behind it"
+        ),
+        markers=("memmove", "memcpy"),
     ),
     Rule(
         category="allocation",
@@ -120,7 +129,6 @@ UNRESOLVED = Rule(
 
 
 def read(hotspots: Sequence[Hotspot]) -> tuple[Fingerprint, ...]:
-    """Sum self time per pattern and report the ones above the noise floor, largest first."""
     shares: dict[str, float] = {}
     for spot in hotspots:
         rule = _claim(spot.function)
@@ -150,7 +158,6 @@ def confidence(samples: int) -> str:
 
 
 def next_step(found: Sequence[Fingerprint]) -> str | None:
-    """The breadcrumb: only when some pattern actually has rewrites worth racing."""
     if any(mark.candidates for mark in found):
         return NEXT_STEP
     return None
