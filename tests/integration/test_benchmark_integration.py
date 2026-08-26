@@ -94,10 +94,13 @@ def test_the_lighter_program_wins_with_real_times(
 
     assert [result.name for result in report.variants] == ["light", "heavy"]
     light, heavy = report.variants
-    assert light.matches_baseline and heavy.matches_baseline
-    assert light.mean_ms is not None and heavy.mean_ms is not None
+    assert light.matches_baseline
+    assert heavy.matches_baseline
+    assert light.mean_ms is not None
+    assert heavy.mean_ms is not None
     assert light.mean_ms < heavy.mean_ms
-    assert light.runs == 2 and heavy.runs == 2
+    assert light.runs == 2
+    assert heavy.runs == 2
     assert light.stddev_ms is not None
     assert report.next_step is not None
     assert report.next_step.startswith("light won")

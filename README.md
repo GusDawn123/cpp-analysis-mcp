@@ -25,12 +25,12 @@ up to. This project is that wiring.
 
 Nine tools, four questions:
 
-| Question                  | Tools                               | Cost    |
-|---------------------------|-------------------------------------|---------|
-| Does anything look wrong? | static_check_file / _snippet        | seconds |
-| Is it actually wrong?     | sanitize_file / _project / _snippet | minutes |
-| Where is it slow?         | profile_file / _project             | minutes |
-| Which rewrite is faster?  | benchmark_variants                  | minutes |
+| Question                  | Tools                                     | Cost    |
+|---------------------------|-------------------------------------------|---------|
+| Does anything look wrong? | `static_check_file` / `_snippet`          | seconds |
+| Is it actually wrong?     | `sanitize_file` / `_project` / `_snippet` | minutes |
+| Where is it slow?         | `profile_file` / `_project`               | minutes |
+| Which rewrite is faster?  | `benchmark_variants`                      | minutes |
 
 The agent starts cheap and escalates only when it has to.
 The ninth tool, capabilities, reports what this machine can really run.
@@ -105,7 +105,7 @@ looks exactly like clean code.
 ```
 your AI agent (Claude Code, Cursor, anything that speaks MCP)
         |
-    server.py        eight tools, no logic of its own
+    server.py        nine tools, no logic of its own
         |
     pipelines/       the recipes: check, sanitize, profile
         |

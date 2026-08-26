@@ -40,6 +40,11 @@ from cpp_analysis_mcp.toolchains.base import BENCH_FLAGS, Toolchain
 # repeat would make a five-repeat race take ten minutes, which is a workload problem
 RUN_TIMEOUT_S = 120
 
+# and one race must finish inside a tool call. Five variants at twenty repeats of a slow
+# workload would otherwise be hours; when this runs out the race stops where it stands
+# and reports what it measured, run counts uneven and the limitation saying so.
+RACE_TIMEOUT_S = 600
+
 DEFAULT_REPEATS = 5
 MIN_REPEATS, MAX_REPEATS = 2, 20
 MIN_VARIANTS, MAX_VARIANTS = 2, 5
@@ -53,11 +58,14 @@ SNIPPET_CHARS = 300
 DIFFERS = "output differs from the baseline"
 UNSTABLE = "output changes between identical runs; give the workload a fixed seed"
 STRANDED = "not compared: the baseline failed"
+OVER_BUDGET = "the race ran out of time before this variant ran twice"
 
 LIMITATIONS = (
     "times include process start and teardown; differences of a few milliseconds are noise",
     "times are this machine's, for this compiler; other machines may rank differently",
 )
+
+STOPPED_EARLY = "the race stopped at its time budget; run counts are uneven"
 
 NO_WINNER = "no variant beat the baseline on this machine"
 
@@ -73,6 +81,7 @@ def race(
     repeats: int = DEFAULT_REPEATS,
     compile_timeout_s: int = single_file.COMPILE_TIMEOUT_S,
     run_timeout_s: int = RUN_TIMEOUT_S,
+    race_timeout_s: int = RACE_TIMEOUT_S,
     runner: Runner = process.run,
     clock: Clock = time.perf_counter,
 ) -> BenchmarkReport | BuildFailure:
@@ -82,6 +91,9 @@ def race(
     that does not build is the whole race failing and comes back as that BuildFailure. Any
     other variant that fails to build, crashes, or answers differently is rejected on its
     own and the race continues without it.
+
+    `race_timeout_s` bounds the whole call, not one run: per-run timeouts alone would let
+    five slow variants at twenty repeats hold a synchronous tool call for hours.
     """
     _validate(variants, repeats)
     baseline = variants[0].name
@@ -97,6 +109,10 @@ def race(
     if isinstance(built, BuildFailure):
         return built
 
+    # The budget clock starts with the first execution. The baseline's warmup is always
+    # paid for -- without its answer there is no race to save time on.
+    deadline = clock() + race_timeout_s
+
     # The baseline's warmup settles what the right answer is; a baseline that cannot
     # produce one strands the race, because there is nothing to compare anybody against.
     first = _run(built[baseline], run_timeout_s=run_timeout_s, runner=runner)
@@ -111,6 +127,9 @@ def race(
     for variant in variants[1:]:
         if variant.name in rejected:
             continue
+        if clock() > deadline:
+            rejected[variant.name] = OVER_BUDGET
+            continue
         outcome = _run(built[variant.name], run_timeout_s=run_timeout_s, runner=runner)
         reason = _refusal(outcome, run_timeout_s) or (
             None if outcome.output == expected else DIFFERS
@@ -120,7 +139,7 @@ def race(
         else:
             racing.append(variant.name)
 
-    timed, unstable = _timed_rounds(
+    timed, unstable, stopped = _timed_rounds(
         racing,
         built,
         rejected,
@@ -128,13 +147,14 @@ def race(
         expected=expected,
         repeats=repeats,
         run_timeout_s=run_timeout_s,
+        deadline=deadline,
         runner=runner,
         clock=clock,
     )
     if unstable is not None:
         return _stranded(variants, rejected, baseline_reason=unstable, repeats=repeats)
 
-    return _report(variants, timed, rejected, baseline=baseline, repeats=repeats)
+    return _report(variants, timed, rejected, baseline=baseline, repeats=repeats, stopped=stopped)
 
 
 def _validate(variants: Sequence[Variant], repeats: int) -> None:
@@ -195,14 +215,19 @@ def _timed_rounds(
     expected: str,
     repeats: int,
     run_timeout_s: int,
+    deadline: float,
     runner: Runner,
     clock: Clock,
-) -> tuple[dict[str, list[float]], str | None]:
+) -> tuple[dict[str, list[float]], str | None, bool]:
     """Interleave the timed runs; a variant that misbehaves mid-race is dropped there.
 
     The baseline is held to its own answer too. A baseline that changes output between
     identical runs makes every comparison in the race meaningless, so that one case does
     not reject a variant -- it comes back as the reason to strand the whole report.
+
+    The deadline is checked on each run's own start instant, so honoring the budget costs
+    no extra clock reads. Past it, the race stops for everyone: the rounds interleave, so
+    whatever was measured up to that point is still evenly spread.
     """
     times: dict[str, list[float]] = {name: [] for name in racing}
     for _ in range(repeats):
@@ -210,6 +235,8 @@ def _timed_rounds(
             if name in rejected:
                 continue
             started = clock()
+            if started > deadline:
+                return times, None, True
             outcome = _run(built[name], run_timeout_s=run_timeout_s, runner=runner)
             elapsed_ms = (clock() - started) * 1000.0
             reason = _refusal(outcome, run_timeout_s) or (
@@ -218,10 +245,10 @@ def _timed_rounds(
             if reason is None:
                 times[name].append(elapsed_ms)
             elif name == baseline:
-                return times, (UNSTABLE if reason == DIFFERS else reason)
+                return times, (UNSTABLE if reason == DIFFERS else reason), False
             else:
                 rejected[name] = reason
-    return times, None
+    return times, None, False
 
 
 def _report(
@@ -231,8 +258,17 @@ def _report(
     *,
     baseline: str,
     repeats: int,
+    stopped: bool,
 ) -> BenchmarkReport:
-    """Rank the survivors by mean, carry every rejection with its reason, name the winner."""
+    """Rank the survivors by mean, carry every rejection with its reason, name the winner.
+
+    A race the budget stopped can leave a variant with one measurement, and one number has
+    no spread to judge it by, so fewer than two runs is a rejection rather than a row that
+    looks comparable. Survivors with uneven counts stay ranked; `runs` says how uneven.
+    """
+    for name, runs in times.items():
+        if name not in rejected and len(runs) < 2:
+            rejected[name] = OVER_BUDGET
     survivors = sorted(
         (
             VariantResult(
@@ -249,21 +285,27 @@ def _report(
         key=lambda result: result.mean_ms or 0.0,
     )
     losers = tuple(
-        VariantResult(name=variant.name, runs=0, rejected=rejected[variant.name])
+        VariantResult(
+            name=variant.name,
+            runs=len(times.get(variant.name, [])),
+            rejected=rejected[variant.name],
+        )
         for variant in variants
         if variant.name in rejected
     )
-    fastest = survivors[0].name
-    next_step = (
-        NO_WINNER
-        if fastest == baseline
-        else f"{fastest} won; sanitize it (sanitize_snippet: tsan, then asan) before adopting it"
-    )
+    next_step = None
+    if survivors:
+        fastest = survivors[0].name
+        next_step = (
+            NO_WINNER
+            if fastest == baseline
+            else f"{fastest} won; sanitize it (sanitize_snippet: tsan, then asan) before adopting it"
+        )
     return BenchmarkReport(
         baseline=baseline,
         variants=(*survivors, *losers),
         repeats=repeats,
-        limitations=LIMITATIONS,
+        limitations=(*LIMITATIONS, STOPPED_EARLY) if stopped else LIMITATIONS,
         next_step=next_step,
     )
 

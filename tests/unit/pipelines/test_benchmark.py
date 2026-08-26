@@ -128,7 +128,7 @@ def row(report: BenchmarkReport, name: str) -> VariantResult:
 
 def test_survivors_are_ranked_fastest_first_with_real_statistics(tmp_path: Path) -> None:
     # baseline runs take 100ms and 120ms; flat takes 50ms and 70ms
-    clock = FakeClock([0.0, 0.100, 1.0, 1.050, 2.0, 2.120, 3.0, 3.070])
+    clock = FakeClock([0.0, 0.0, 0.0, 0.100, 1.0, 1.050, 2.0, 2.120, 3.0, 3.070])
     report = report_of(run_race(tmp_path, FakeRace(), clock=clock))
 
     assert [result.name for result in report.variants] == ["flat", "baseline"]
@@ -161,7 +161,7 @@ def test_warmups_run_first_and_timed_rounds_interleave(tmp_path: Path) -> None:
 
 
 def test_the_winning_variant_is_named_with_its_next_step(tmp_path: Path) -> None:
-    clock = FakeClock([0.0, 0.100, 1.0, 1.050, 2.0, 2.120, 3.0, 3.070])
+    clock = FakeClock([0.0, 0.0, 0.0, 0.100, 1.0, 1.050, 2.0, 2.120, 3.0, 3.070])
     report = report_of(run_race(tmp_path, FakeRace(), clock=clock))
 
     assert report.next_step is not None
@@ -171,7 +171,7 @@ def test_the_winning_variant_is_named_with_its_next_step(tmp_path: Path) -> None
 
 def test_a_race_the_baseline_wins_says_so(tmp_path: Path) -> None:
     # baseline takes 10ms per run; flat takes 500ms
-    clock = FakeClock([0.0, 0.010, 1.0, 1.500, 2.0, 2.010, 3.0, 3.500])
+    clock = FakeClock([0.0, 0.0, 0.0, 0.010, 1.0, 1.500, 2.0, 2.010, 3.0, 3.500])
     report = report_of(run_race(tmp_path, FakeRace(), clock=clock))
 
     assert report.variants[0].name == "baseline"
@@ -311,3 +311,79 @@ def test_unsafe_names_and_absurd_repeats_are_refused(tmp_path: Path) -> None:
     for repeats in (1, 21):
         with pytest.raises(ValueError, match="repeats"):
             run_race(tmp_path, FakeRace(), repeats=repeats)
+
+
+# ------------------------------------------------------------------------- the race budget
+
+
+def test_the_budget_stops_the_race_and_says_so(tmp_path: Path) -> None:
+    """Three repeats asked for, time for two: both variants keep their even two runs, the
+    ranking stands, and the report admits it stopped early."""
+    clock = FakeClock([0.0, 0.0, 0.0, 0.100, 1.0, 1.050, 2.0, 2.120, 3.0, 3.070, 11.0])
+    runner = FakeRace()
+    report = report_of(
+        race(
+            two_variants(),
+            toolchain=a_clang(),
+            platform=a_linux(),
+            build_dir=tmp_path / "build",
+            repeats=3,
+            race_timeout_s=10,
+            runner=runner,
+            clock=clock,
+        )
+    )
+
+    assert benchmark.STOPPED_EARLY in report.limitations
+    assert row(report, "baseline").runs == 2
+    assert row(report, "flat").runs == 2
+    assert [result.name for result in report.variants] == ["flat", "baseline"]
+
+
+def test_a_variant_the_budget_left_with_one_run_is_not_ranked(tmp_path: Path) -> None:
+    """One measurement has no spread to judge it by, so it is a rejection, not a row that
+    looks comparable next to a variant that ran twice."""
+    clock = FakeClock([0.0, 0.0, 0.0, 0.100, 1.0, 1.050, 2.0, 2.100, 11.0])
+    runner = FakeRace()
+    report = report_of(
+        race(
+            two_variants(),
+            toolchain=a_clang(),
+            platform=a_linux(),
+            build_dir=tmp_path / "build",
+            repeats=2,
+            race_timeout_s=10,
+            runner=runner,
+            clock=clock,
+        )
+    )
+
+    starved = row(report, "flat")
+    assert starved.rejected == benchmark.OVER_BUDGET
+    assert starved.runs == 1
+    assert starved.mean_ms is None
+    survivor = row(report, "baseline")
+    assert survivor.rejected is None
+    assert survivor.runs == 2
+
+
+def test_a_zero_budget_race_refuses_to_rank_anything(tmp_path: Path) -> None:
+    clock = FakeClock([float(i) for i in range(20)])
+    runner = FakeRace()
+    report = report_of(
+        race(
+            two_variants(),
+            toolchain=a_clang(),
+            platform=a_linux(),
+            build_dir=tmp_path / "build",
+            repeats=2,
+            race_timeout_s=0,
+            runner=runner,
+            clock=clock,
+        )
+    )
+
+    assert row(report, "baseline").rejected == benchmark.OVER_BUDGET
+    assert row(report, "flat").rejected == benchmark.OVER_BUDGET
+    assert report.next_step is None
+    assert benchmark.STOPPED_EARLY in report.limitations

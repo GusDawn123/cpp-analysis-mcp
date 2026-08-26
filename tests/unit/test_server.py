@@ -508,6 +508,14 @@ async def test_the_races_own_outcomes_are_in_its_published_schema(tmp_path: Path
     assert published >= {"BenchmarkReport", "BuildFailure", "VariantResult"}
     assert "Variant" in set(tool.input_schema.get("$defs", {}))
 
+    # the limits live in the schema too, so a client refuses a six-variant race before
+    # anything is spawned instead of learning the bounds from a failed call
+    properties = tool.input_schema["properties"]
+    assert properties["variants"]["minItems"] == 2
+    assert properties["variants"]["maxItems"] == 5
+    assert properties["repeats"]["minimum"] == 2
+    assert properties["repeats"]["maximum"] == 20
+
 
 @pytest.mark.anyio
 async def test_the_analyses_a_sanitizer_tool_accepts_are_the_four_that_run(

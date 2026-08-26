@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from anyio import to_thread
 from mcp.server import MCPServer
@@ -31,6 +31,7 @@ from mcp.server import MCPServer
 # our own Context is the app state these handlers read, and the SDK's is the request handle
 # they read it off; one of the two names has to move
 from mcp.server.mcpserver import Context as ServerContext
+from pydantic import Field
 
 from cpp_analysis_mcp import context
 from cpp_analysis_mcp.context import Context
@@ -372,9 +373,14 @@ def profile_project(
 
 
 def benchmark_variants(
-    variants: list[Variant],
+    variants: Annotated[
+        list[Variant],
+        Field(min_length=benchmark.MIN_VARIANTS, max_length=benchmark.MAX_VARIANTS),
+    ],
     ctx: ServerContext[Context],
-    repeats: int = benchmark.DEFAULT_REPEATS,
+    repeats: Annotated[
+        int, Field(ge=benchmark.MIN_REPEATS, le=benchmark.MAX_REPEATS)
+    ] = benchmark.DEFAULT_REPEATS,
 ) -> BenchmarkReport | BuildFailure:
     """Delegate to the benchmark pipeline, on the host's own engine.
 
@@ -444,7 +450,7 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the eight tools against one server; `lifespan` is the seam a test starts through.
+    """Register the nine tools against one server; `lifespan` is the seam a test starts through.
 
     The default is what ships. A test injects a context it wrote down instead, because the
     live one probes the machine the suite happens to be running on.
