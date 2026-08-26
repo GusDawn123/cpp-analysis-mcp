@@ -53,12 +53,13 @@ TOOL_NAMES = frozenset(
         "profile_file",
         "profile_project",
         "benchmark_variants",
+        "full_check_file",
     }
 )
 
 # the two tools that publish no CapabilityStatus outcome: capabilities returns the statuses
 # themselves, and the race gates on nothing -- a plain compile-and-run cannot break silently
-UNGATED_TOOLS = ("capabilities", "benchmark_variants")
+UNGATED_TOOLS = ("capabilities", "benchmark_variants", "full_check_file")
 
 SANITIZER_TOOLS = ("sanitize_file", "sanitize_project", "sanitize_snippet")
 CHECK_TOOLS = ("static_check_file", "static_check_snippet")
@@ -83,6 +84,9 @@ SHAPE_PHRASES: Mapping[str, tuple[str, ...]] = {
     # the race's contract: whole programs, the first one defines the right answer, and a
     # fast variant with a different answer must be told from a win
     "benchmark_variants": ("whole programs", "baseline", "same output", "fixed seed"),
+    # the battery is the one-call road; its description must say what its report sections
+    # mean, or an empty ran list reads as a clean file
+    "full_check_file": ("single call", "in parallel", "unavailable", "failed_builds"),
 }
 
 # the two outcomes every pipeline can hand back whatever it was asked. Both have to be in
@@ -163,6 +167,7 @@ INSTRUCTION_PHRASES = (
     # learns a speedup claim needs one behind it
     "benchmark_variants",
     "races",
+    "full_check_file",
 )
 
 
@@ -386,7 +391,7 @@ def result_of(structured: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_nine_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
+async def test_the_ten_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
     """The names are the API. A client config lists them, so a rename breaks every caller,
     and an extra one is a rung nobody documented."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
@@ -790,6 +795,66 @@ async def test_a_variant_that_answers_differently_is_rejected_over_the_protocol(
         "baseline",
         "baseline",
     ]
+
+
+@pytest.mark.anyio
+async def test_the_batterys_own_outcomes_are_in_its_published_schema(tmp_path: Path) -> None:
+    """The battery folds failure modes into report sections instead of union arms, so the
+    one shape it returns has to publish whole."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    tool = next(entry for entry in listed.tools if entry.name == "full_check_file")
+    schema = tool.output_schema or {}
+    # a bare dataclass return publishes itself as the schema root, nested shapes in $defs
+    assert schema.get("title") == "FullCheckReport"
+    assert set(schema.get("$defs", {})) >= {"Finding", "Location"}
+    assert set(schema.get("properties", {})) >= {"findings", "ran", "unavailable", "failed_builds"}
+
+
+@pytest.mark.anyio
+async def test_the_battery_runs_whole_over_the_protocol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One call, six analyses in parallel, one merged JSON answer. The runner dispatches
+    by command content because parallel order is not promised, and the reply for TSan is
+    a committed golden so the merge is proved against real sanitizer output."""
+    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    source = tmp_path / f"{FILE_STEM}.cpp"
+    source.write_text(SNIPPET_SOURCE, encoding="utf-8")
+
+    def dispatch(
+        cmd: Sequence[str],
+        *,
+        timeout_s: int,
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
+    ) -> RunResult:
+        listed = list(cmd)
+        if Path(listed[0]).name == "clang-tidy" or "-fsyntax-only" in listed:
+            return RunResult(exit_code=0, output="")
+        if any(arg.startswith("-fsanitize=") for arg in listed):
+            return RunResult(exit_code=0, output="")
+        if Path(listed[0]).name.endswith(".thread"):
+            return RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))
+        return RunResult(exit_code=0, output="")
+
+    app = a_context(tmp_path, dispatch)
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool("full_check_file", {"source": str(source)})
+
+    # a bare dataclass return arrives unwrapped, no {"result": ...} envelope
+    report = result.structured_content
+    assert report is not None
+    assert sorted(report["ran"]) == sorted(
+        ["thread-safety", "clang-tidy", "tsan", "asan", "lsan", "ubsan"]
+    )
+    assert [finding["category"] for finding in report["findings"]] == [RACE_CATEGORY]
+    assert report["unavailable"] == {}
+    assert report["failed_builds"] == {}
+    assert report["next_step"] is not None
 
 
 @pytest.mark.anyio
