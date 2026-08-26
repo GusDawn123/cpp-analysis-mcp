@@ -91,7 +91,7 @@ def run_battery(
     monkeypatch: pytest.MonkeyPatch,
     capabilities: dict[Analysis, CapabilityStatus] | None = None,
 ) -> FullCheckReport:
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text("int main() { return 0; }\n", encoding="utf-8")
     engine = FakeEngine(a_clang(), Platform(name="darwin"), runner)
