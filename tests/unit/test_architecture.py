@@ -30,6 +30,7 @@ PRIMITIVE_PACKAGES = ("build", "parsers", "platforms", "toolchains")
 TOP_LEVEL_PRIMITIVES = (
     PACKAGE_DIR / "capabilities.py",
     PACKAGE_DIR / "context.py",
+    PACKAGE_DIR / "fingerprints.py",
     PACKAGE_DIR / "process.py",
     PACKAGE_DIR / "wsl.py",
 )
