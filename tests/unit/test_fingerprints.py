@@ -125,3 +125,11 @@ def test_confidence_speaks_in_tiers() -> None:
     assert "coarse" in coarse
     assert "noise" in middling
     assert firm == "50000 samples"
+
+
+def test_bare_memory_copies_get_no_container_advice() -> None:
+    found = fingerprints.read([spot("__memmove_avx_unaligned_erms", 30.0)])
+
+    assert categories(found) == ["bulk-copying"]
+    assert found[0].candidates == ()
+    assert fingerprints.next_step(found) is None
