@@ -180,25 +180,26 @@ class Hotspot:
     note: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class FullCheckReport:
     """Every correctness analysis over one target, merged into one answer.
 
     `ran` names the analyses whose detector provably worked and reported; `unavailable`
     and `failed_builds` carry the ones that could not, each with its reason. Without
     those two, a battery missing half its detectors would read as a clean bill of health.
+
+    The one model here without slots=. It is the only dataclass returned bare from a
+    tool, and the SDK's schema builder reads class attributes for defaults on that path,
+    where a slots descriptor gets mistaken for an unserializable default.
     """
 
     findings: tuple[Finding, ...]
     ran: tuple[str, ...]
-    unavailable: Mapping[str, str]
-    failed_builds: Mapping[str, str]
+    # concrete dicts, not Mapping and not proxied: this report crosses the protocol, and
+    # the SDK's schema generator refuses both the abstract type and a __post_init__
+    unavailable: dict[str, str]
+    failed_builds: dict[str, str]
     next_step: str | None = None
-
-    def __post_init__(self) -> None:
-        # same reason BuiltBinary proxies its mapping: frozen= does not stop item writes
-        object.__setattr__(self, "unavailable", MappingProxyType(dict(self.unavailable)))
-        object.__setattr__(self, "failed_builds", MappingProxyType(dict(self.failed_builds)))
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,4 +1,4 @@
-"""The MCP tool surface: nine tools, their schemas, and one line each into a pipeline.
+"""The MCP tool surface: ten tools, their schemas, and one line each into a pipeline.
 
 Protocol only. Every handler reads the resolved context off the request, hands it to one
 pipeline call and returns what came back -- there is no control flow in this file at all, and
@@ -33,7 +33,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver import Context as ServerContext
 from pydantic import Field
 
-from cpp_analysis_mcp import context
+from cpp_analysis_mcp import battery, context
 from cpp_analysis_mcp.context import Context
 from cpp_analysis_mcp.models import (
     Analysis,
@@ -41,6 +41,7 @@ from cpp_analysis_mcp.models import (
     BenchmarkReport,
     BuildFailure,
     CapabilityStatus,
+    FullCheckReport,
     ProfileReport,
     Variant,
 )
@@ -84,6 +85,10 @@ guessing at hot code from reading it is famously unreliable even for the person 
 For "which version is faster?", measure that too: benchmark_variants races 2 to 5 whole
 programs on this machine and rejects any whose output stopped matching the baseline's. A
 speedup claim without a race behind it is a guess.
+
+For the whole correctness picture in one call, full_check_file runs both compile-time
+checks and all four sanitizers in parallel and merges the findings. The ladder is for when
+you already know which question you are asking.
 
 capabilities says which analyses this machine proved it can do, and is worth reading before
 trusting an empty result from any of them.
@@ -212,6 +217,21 @@ workload for several seconds is what produces a ranking worth acting on.
 Read `samples` on the result before reading the ranking. It is how many measurements the
 ranking rests on, and a few dozen of them ranks noise. Read `event` too: `cpu/cycles/P` is
 the hardware counter, while `cpu-clock` means the machine had none and a timer stood in.
+"""
+
+FULL_CHECK_FILE_DOC = """\
+Runs every correctness analysis on one C++ file in a single call and merges what they saw:
+both compile-time checks and all four sanitizers, in parallel, one report.
+
+This is the one-call answer to "is this file wrong?". Use it when you want the whole
+picture; use the individual tools when you already know which question you are asking, or
+when the file has no main() for the sanitizers to run.
+
+`source` is a path to a file with a main(): the sanitizers compile, link and execute it,
+so this costs minutes. The report's `ran` list names the detectors that provably worked
+and reported. An analysis this machine cannot run appears under `unavailable` with its
+reason, and a build that died appears under `failed_builds`; neither stops the others.
+Duplicate findings are merged, and `next_step` says what to do when anything was found.
 """
 
 BENCHMARK_VARIANTS_DOC = """\
@@ -400,6 +420,26 @@ def benchmark_variants(
     )
 
 
+def full_check_file(
+    source: str,
+    ctx: ServerContext[Context],
+    checks: str | None = None,
+) -> FullCheckReport:
+    """Delegate the whole battery to battery.py, each analysis on its own engine.
+
+    One return type on purpose: an unavailable analysis or a failed build is a section
+    inside the report, not a different outcome, so the battery never refuses whole.
+    """
+    app = ctx.request_context.lifespan_context
+    return battery.check_file(
+        Path(source),
+        engines=app.engines,
+        capabilities=app.capabilities,
+        build_dir=context.scratch(app.workspace),
+        checks=checks,
+    )
+
+
 def static_check_file(
     source: str,
     analysis: CompileTimeCheck,
@@ -450,7 +490,7 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the nine tools against one server; `lifespan` is the seam a test starts through.
+    """Register the ten tools against one server; `lifespan` is the seam a test starts through.
 
     The default is what ships. A test injects a context it wrote down instead, because the
     live one probes the machine the suite happens to be running on.
@@ -467,6 +507,7 @@ def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
     server.add_tool(profile_file, description=PROFILE_FILE_DOC)
     server.add_tool(profile_project, description=PROFILE_PROJECT_DOC)
     server.add_tool(benchmark_variants, description=BENCHMARK_VARIANTS_DOC)
+    server.add_tool(full_check_file, description=FULL_CHECK_FILE_DOC)
     return server
 
 
