@@ -93,11 +93,17 @@ def race(
     other variant that fails to build, crashes, or answers differently is rejected on its
     own and the race continues without it.
 
-    `race_timeout_s` bounds the whole call, not one run: per-run timeouts alone would let
-    five slow variants at twenty repeats hold a synchronous tool call for hours.
+    `race_timeout_s` bounds the whole call, builds included, not one run. The budget is
+    checked between steps rather than mid-step, so the hard ceiling is the budget plus one
+    step's own timeout; a per-run timeout alone would let five slow variants at twenty
+    repeats hold a synchronous tool call for hours.
     """
     _validate(variants, repeats)
     baseline = variants[0].name
+
+    # The baseline's build and warmup are always paid for -- without its answer there is
+    # no race to save time on. Everything after them yields to the deadline.
+    deadline = clock() + race_timeout_s
 
     built, rejected = _build_all(
         variants,
@@ -105,14 +111,12 @@ def race(
         platform=platform,
         build_dir=build_dir,
         compile_timeout_s=compile_timeout_s,
+        deadline=deadline,
         runner=runner,
+        clock=clock,
     )
     if isinstance(built, BuildFailure):
         return built
-
-    # The budget clock starts with the first execution. The baseline's warmup is always
-    # paid for -- without its answer there is no race to save time on.
-    deadline = clock() + race_timeout_s
 
     # The baseline's warmup settles what the right answer is; a baseline that cannot
     # produce one strands the race, because there is nothing to compare anybody against.
@@ -179,12 +183,22 @@ def _build_all(
     platform: Platform,
     build_dir: Path,
     compile_timeout_s: int,
+    deadline: float,
     runner: Runner,
+    clock: Clock,
 ) -> tuple[dict[str, BuiltBinary] | BuildFailure, dict[str, str]]:
-    """Write and compile every variant; a broken baseline fails the race, others just lose."""
+    """Write and compile every variant; a broken baseline fails the race, others just lose.
+
+    Builds count against the race budget too. The baseline always builds; a later variant
+    reached after the deadline is rejected unbuilt rather than allowed to spend a compile
+    timeout the budget no longer covers.
+    """
     built: dict[str, BuiltBinary] = {}
     rejected: dict[str, str] = {}
     for index, variant in enumerate(variants):
+        if index > 0 and clock() > deadline:
+            rejected[variant.name] = OVER_BUDGET
+            continue
         source = build_dir / f"{variant.name}.cpp"
         build_dir.mkdir(parents=True, exist_ok=True)
         source.write_text(variant.code, encoding="utf-8")
