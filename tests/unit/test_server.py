@@ -886,6 +886,8 @@ async def test_the_checkup_recipe_names_its_tools_and_its_rules(tmp_path: Path) 
     steps = text[text.index("Steps:") :]
     assert steps.index("capabilities") < steps.index("full_check_file")
     assert "never delete or weaken a check" in text
+    # the precondition and its trap: a library file gets a driver, never a pasted main()
+    assert "never add a main() to the library itself" in text
 
 
 @pytest.mark.anyio
@@ -906,6 +908,7 @@ async def test_the_speed_recipe_orders_profile_race_check(tmp_path: Path) -> Non
         < steps.index("full_check_file")
     )
     assert "never claim a speedup without a race" in text
+    assert "write a small driver" in text
 
 
 @pytest.mark.anyio
