@@ -23,7 +23,7 @@ up to. This project is that wiring.
 
 ## What it does
 
-Nine tools, four questions:
+Ten tools, five questions:
 
 | Question                  | Tools                                     | Cost    |
 |---------------------------|-------------------------------------------|---------|
@@ -31,9 +31,12 @@ Nine tools, four questions:
 | Is it actually wrong?     | `sanitize_file` / `_project` / `_snippet` | minutes |
 | Where is it slow?         | `profile_file` / `_project`               | minutes |
 | Which rewrite is faster?  | `benchmark_variants`                      | minutes |
+| Everything at once?       | `full_check_file`                         | minutes |
 
-The agent starts cheap and escalates only when it has to.
-The ninth tool, capabilities, reports what this machine can really run.
+The agent starts cheap and escalates only when it has to, or calls
+`full_check_file` to run both compile-time checks and all four
+sanitizers in parallel and get one merged, deduplicated report. The
+tenth tool, capabilities, reports what this machine can really run.
 
 benchmark_variants is the one that ends arguments: it races up to
 five versions of a program on your machine, feeds them the same
@@ -111,8 +114,10 @@ looks exactly like clean code.
 ```
 your AI agent (Claude Code, Cursor, anything that speaks MCP)
         |
-    server.py        nine tools, no logic of its own
+    server.py        ten tools, no logic of its own
         |
+    battery.py       full_check_file only: fans out to every
+        |            correctness pipeline below, in parallel
     pipelines/       the recipes: check, sanitize, profile
         |
    +----------+-------------+
