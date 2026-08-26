@@ -26,22 +26,24 @@ clang-tidy is optional. Stock macOS does not ship it; the server notices and
 says so instead of failing. On Linux, `sudo apt install clang-tidy` if you want
 that check. On Windows it arrives with LLVM.
 
-Windows runs four of the six checks natively — AddressSanitizer, UBSan,
+Windows runs four of the seven analyses natively — AddressSanitizer, UBSan,
 `-Wthread-safety`, clang-tidy. ThreadSanitizer and LeakSanitizer have no
-Windows runtime in any compiler — but the server bridges them into WSL by
-itself the moment a distro there can compile. One-time setup, all six checks:
+Windows runtime in any compiler, and the perf profiler is Linux-only — but the
+server bridges those three into WSL by itself the moment a distro there can
+compile. One-time setup, all seven analyses:
 
 ```powershell
 wsl --install -d Ubuntu
 wsl -d Ubuntu -- sudo apt-get update
-wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build
+wsl -d Ubuntu -- sudo apt-get install -y clang llvm cmake ninja-build linux-tools-generic
 ```
 
 (`llvm` matters: without `llvm-symbolizer` the two detectors still catch bugs
-but report `<null>` frames instead of file and line.) Restart the server and
-`capabilities` reports all six. You keep passing ordinary `C:\` paths; findings
-from the two bridged checks name files in WSL form, `/mnt/c/...` meaning
-`C:\...`. Without WSL, the denials stand and carry these same setup commands.
+but report `<null>` frames instead of file and line. `linux-tools-generic` is
+perf.) Restart the server and `capabilities` reports all seven. You keep
+passing ordinary `C:\` paths; findings from the bridged analyses name files in
+WSL form, `/mnt/c/...` meaning `C:\...`. Without WSL, the denials stand and
+carry these same setup commands.
 MinGW gcc (MSYS2) cannot link any sanitizer on Windows — the server picks
 clang when both are installed.
 

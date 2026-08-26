@@ -52,6 +52,11 @@ class Platform:
     # there is the Visual Studio generator, which ignores CMAKE_CXX_COMPILER and hands the
     # build to cl.exe, so the configure must name a generator that obeys the choice
     cmake_extras: tuple[str, ...] = ()
+    # extra cmake configure arguments one sanitizer needs, on top of cmake_extras. Separate
+    # from sanitize_link_extras because these have to reach the configure rather than the
+    # link: they change how every object in the project is compiled, and an object is only
+    # compiled once. Measured on Windows for UBSan -- see windows.py
+    sanitize_cmake_extras: Mapping[SanitizerKind, tuple[str, ...]] = field(default_factory=dict)
     # searched on top of PATH: brew installs llvm outside it on macOS
     extra_tool_dirs: tuple[Path, ...] = ()
     denied: Mapping[Analysis, Denial] = field(default_factory=dict)
@@ -71,6 +76,9 @@ class Platform:
         object.__setattr__(self, "env_facts", MappingProxyType(dict(self.env_facts)))
         object.__setattr__(
             self, "sanitize_link_extras", MappingProxyType(dict(self.sanitize_link_extras))
+        )
+        object.__setattr__(
+            self, "sanitize_cmake_extras", MappingProxyType(dict(self.sanitize_cmake_extras))
         )
         object.__setattr__(self, "runtime_dlls", MappingProxyType(dict(self.runtime_dlls)))
 

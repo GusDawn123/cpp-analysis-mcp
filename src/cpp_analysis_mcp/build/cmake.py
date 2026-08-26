@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cpp_analysis_mcp import process
-from cpp_analysis_mcp.build.single_file import place_runtime_dlls
+from cpp_analysis_mcp.build.single_file import place_runtime_dlls, with_runtime_on_path
 from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
@@ -80,6 +80,7 @@ def build_project(
     sanitizer: SanitizerKind | None,
     build_dir: Path,
     target: str | None = None,
+    base_flags: tuple[str, ...] = BASE_FLAGS,
     timeout_s: int = CMAKE_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> BuiltBinary | BuildFailure:
@@ -91,12 +92,21 @@ def build_project(
     With no `target`, a project holding exactly one executable builds it; anything else comes
     back as a failure naming the targets there are, since picking one for the caller is a
     guess and the wrong guess wastes minutes.
+
+    `base_flags` is what an unsanitized build compiles with, and a sanitized one ignores it:
+    every sanitizer flag set is built on BASE_FLAGS already. It exists so the profiler can
+    ask for its own optimization level without a second build module.
     """
     _write_query(build_dir)
 
     configured = runner(
         _configure_command(
-            project_dir, build_dir, toolchain=toolchain, platform=platform, sanitizer=sanitizer
+            project_dir,
+            build_dir,
+            toolchain=toolchain,
+            platform=platform,
+            sanitizer=sanitizer,
+            base_flags=base_flags,
         ),
         timeout_s=timeout_s,
         # a build must not inherit the developer's sanitizer options
@@ -129,7 +139,10 @@ def build_project(
     built = runner(
         _build_command(build_dir, chosen.name, configuration.name),
         timeout_s=timeout_s,
-        env=process.hygienic_env({}),
+        # the sanitizer's runtime goes on PATH for this step alone: a build that runs what
+        # it just linked -- gtest_discover_tests does -- needs the loader to find it before
+        # anything has been copied beside the binary. The run afterwards uses the copy.
+        env=with_runtime_on_path(platform, sanitizer, process.hygienic_env({})),
     )
     if built.timed_out:
         return BuildFailure(stage=BUILD_STAGE, output=built.output, timed_out=True)
@@ -165,9 +178,10 @@ def _configure_command(
     toolchain: Toolchain,
     platform: Platform,
     sanitizer: SanitizerKind | None,
+    base_flags: tuple[str, ...],
 ) -> list[str]:
     """Compose the configure: sanitizer flags or the base ones, warnings, then this OS's."""
-    flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else BASE_FLAGS
+    flags = toolchain.sanitize_flags(sanitizer) if sanitizer is not None else base_flags
     extras = platform.sanitize_link_extras.get(sanitizer, ()) if sanitizer is not None else ()
     # CMAKE_CXX_FLAGS is one space-separated string; a runtime library under
     # "C:\Program Files" must be quoted inside it or cmake splits the path in two
@@ -191,6 +205,9 @@ def _configure_command(
         # the OS's own configure needs, e.g. Windows forcing a generator that obeys
         # CMAKE_CXX_COMPILER
         *platform.cmake_extras,
+        # and what this particular sanitizer needs of the configure, which is not the same
+        # question: these change how every object is compiled, so they cannot wait for the link
+        *(platform.sanitize_cmake_extras.get(sanitizer, ()) if sanitizer is not None else ()),
     ]
 
 

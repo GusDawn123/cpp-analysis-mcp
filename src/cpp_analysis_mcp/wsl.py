@@ -42,7 +42,7 @@ NAME = "wsl"
 WSL = "wsl"
 
 # the analyses Windows structurally lacks -- the only ones worth carrying across
-BRIDGED = frozenset({Analysis.TSAN, Analysis.LSAN})
+BRIDGED = frozenset({Analysis.TSAN, Analysis.LSAN, Analysis.PROFILE})
 
 # the compiler as the wrapped runner will resolve it, on the distro's own PATH
 COMPILER = "clang++"
@@ -143,12 +143,26 @@ def bridge_platform(distro: str, env_facts: Mapping[str, str]) -> Platform:
         f"runs inside WSL distro {distro!r}; file paths in its reports appear "
         "in WSL form (/mnt/c/... is C:\\...)"
     )
+    # profiling is the one bridged analysis whose answer is about a different binary than
+    # the one Windows would ship. A race is a race in either build, but where the time goes
+    # is decided by the compiler that made the code, and this is the distro's clang against
+    # libstdc++ -- so a hotspot in a standard library container is that library's, and the
+    # cost of anything calling into the Windows C runtime is not represented here at all.
+    measures_linux_build = (
+        "profiles a Linux build made by the distro's clang against its libstdc++, not the "
+        "binary Windows would produce; portable code ranks the same either way, but "
+        "standard-library and system-call costs are that platform's"
+    )
     return Platform(
         name=NAME,
         compile_extras=linux.COMPILE_EXTRAS,
         cmake_extras=CMAKE_EXTRAS,
         denied=DENIED,
-        limitations={Analysis.TSAN: (inside,), Analysis.LSAN: (inside,)},
+        limitations={
+            Analysis.TSAN: (inside,),
+            Analysis.LSAN: (inside,),
+            Analysis.PROFILE: (inside, measures_linux_build),
+        },
         failure_signatures=linux.failure_signatures(env_facts.get(linux.MMAP_RND_BITS_FACT)),
         env_facts=env_facts,
     )
@@ -205,15 +219,25 @@ def _distros(output: str) -> list[str]:
 
 
 def _env_facts(wsl_exe: str, distro: str, runner: Runner) -> dict[str, str]:
-    """Read the volatile facts a bridged capability depends on, off the distro itself."""
+    """Read the volatile facts a bridged capability depends on, off the distro itself.
+
+    The same settings linux.env_facts() reads on a real Linux, asked one at a time through
+    the bridge: these live in the distro's kernel, not this Windows one, so reading them
+    here would answer about the wrong machine.
+    """
     facts = {DISTRO_FACT: distro}
-    asked = runner(
-        _wrapped(wsl_exe, distro, None, (), ("cat", str(linux.MMAP_RND_BITS))),
-        timeout_s=ASK_TIMEOUT_S,
-    )
-    value = asked.output.strip()
-    if asked.exit_code == 0 and value:
-        facts[linux.MMAP_RND_BITS_FACT] = value
+    for name, path in linux.HOST_SETTINGS.items():
+        asked = runner(
+            # as_posix() rather than str(): these are Linux paths held in a Path, and a Path
+            # renders in the host's spelling, so on the only OS that has a bridge str() hands
+            # the distro "\proc\sys\..." -- which cat reports as missing, leaving the fact
+            # silently unread and the cache fingerprint blind to a setting that changed
+            _wrapped(wsl_exe, distro, None, (), ("cat", path.as_posix())),
+            timeout_s=ASK_TIMEOUT_S,
+        )
+        value = asked.output.strip()
+        if asked.exit_code == 0 and value:
+            facts[name] = value
     return facts
 
 

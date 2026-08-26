@@ -50,11 +50,14 @@ TOOL_NAMES = frozenset(
         "sanitize_snippet",
         "static_check_file",
         "static_check_snippet",
+        "profile_file",
+        "profile_project",
     }
 )
 
 SANITIZER_TOOLS = ("sanitize_file", "sanitize_project", "sanitize_snippet")
 CHECK_TOOLS = ("static_check_file", "static_check_snippet")
+PROFILE_TOOLS = ("profile_file", "profile_project")
 
 # the descriptions are the only thing an assistant reads before choosing, so the ladder has
 # to be in them: what this rung costs, that it executes the code, and which cheaper rung to
@@ -74,9 +77,15 @@ SHAPE_PHRASES: Mapping[str, tuple[str, ...]] = {
     "capabilities": ("probe", "unavailable"),
 }
 
-# every outcome a pipeline can hand back; all three have to be in the published schema or a
-# client validates one of them as an error
-UNION_MEMBERS = frozenset({"AnalysisReport", "BuildFailure", "CapabilityStatus"})
+# the two outcomes every pipeline can hand back whatever it was asked. Both have to be in
+# the published schema or a client validates one of them as an error
+UNION_MEMBERS = frozenset({"BuildFailure", "CapabilityStatus"})
+
+# the third member varies, because the profiler answers a different question and so returns
+# a different shape: a ranking with the sample count that decides whether to believe it,
+# rather than a list of findings
+REPORT_MEMBER: Mapping[str, str] = {name: "ProfileReport" for name in PROFILE_TOOLS}
+DEFAULT_REPORT = "AnalysisReport"
 
 # spelled through Path so the strings compare equal to str(Path(...)) on Windows too
 CLANG_PATH = str(Path("/usr/bin/clang++"))
@@ -137,6 +146,11 @@ INSTRUCTION_PHRASES = (
     "minutes",
     "capabilities",
     "trusting an empty result",
+    # the profiler is off the ladder rather than on top of it, and an assistant that reads
+    # only the rungs will climb them looking for an answer to slowness that is not there
+    "why is this code slow?",
+    "profile_project",
+    "Only measurement ranks anything",
 )
 
 
@@ -360,7 +374,7 @@ def result_of(structured: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_six_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
+async def test_the_eight_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
     """The names are the API. A client config lists them, so a rename breaks every caller,
     and an extra one is a rung nobody documented."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
@@ -457,7 +471,8 @@ async def test_every_analysis_outcome_is_in_the_published_schema(tmp_path: Path)
     incomplete = [
         f"{tool.name}: {sorted((tool.output_schema or {}).get('$defs', {}))}"
         for tool in analysis_tools
-        if not set((tool.output_schema or {}).get("$defs", {})) >= UNION_MEMBERS
+        if not set((tool.output_schema or {}).get("$defs", {}))
+        >= UNION_MEMBERS | {REPORT_MEMBER.get(tool.name, DEFAULT_REPORT)}
     ]
 
     assert len(analysis_tools) == len(TOOL_NAMES) - 1
@@ -711,6 +726,7 @@ async def test_asking_for_no_checks_leaves_the_projects_own_config_in_charge(
     monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
+    (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
     runner = ScriptedRunner([SUCCESS])
     app = a_context(tmp_path, runner)
 
@@ -721,6 +737,27 @@ async def test_asking_for_no_checks_leaves_the_projects_own_config_in_charge(
 
     assert runner.only.cmd[0] == TIDY_PATH
     assert not [arg for arg in runner.only.cmd if arg.startswith("--checks")]
+
+
+@pytest.mark.anyio
+async def test_a_file_with_no_clang_tidy_anywhere_still_gets_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """clang-tidy enables nothing by itself: with no --checks and no .clang-tidy above the
+    file it exits 1 printing usage text, which parses to no findings and is indistinguishable
+    from clean code. A project that committed no configuration gets a default instead."""
+    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    source = tmp_path / "widget.cpp"
+    source.write_text(SNIPPET_SOURCE, encoding="utf-8")
+    runner = ScriptedRunner([SUCCESS])
+    app = a_context(tmp_path, runner)
+
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        await client.call_tool(
+            "static_check_file", {"source": str(source), "analysis": "clang-tidy"}
+        )
+
+    assert [arg for arg in runner.only.cmd if arg.startswith("--checks")]
 
 
 @pytest.mark.anyio

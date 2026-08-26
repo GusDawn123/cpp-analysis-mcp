@@ -35,6 +35,28 @@ UBSAN_LIBS = (
     "clang_rt.ubsan_standalone_cxx-x86_64.lib",
 )
 
+# LLVM ships UBSan's runtime built against the static CRT only -- there is no _dynamic
+# variant of it the way there is for ASan. cmake stamps every object it compiles with a
+# /failifmismatch directive naming the CRT it chose, defaults that to the dynamic one, and
+# the linker then refuses the pair:
+#
+#   lld-link: error: /failifmismatch: mismatch detected for 'RuntimeLibrary':
+#   >>> OrderBook.cpp.obj has value MD_DynamicRelease
+#   >>> clang_rt.ubsan_standalone_cxx-x86_64.lib(ubsan_type_hash_win.cpp.obj) MT_StaticRelease
+#
+# Measured. So the project is moved to the CRT its sanitizer runtime was built against,
+# rather than the other way round, which is not available. Only the configure can do it:
+# the directive is written when each object is compiled. Single-file builds never hit this
+# -- clang's own driver writes no such directive, which is why sanitize_file works.
+UBSAN_STATIC_CRT = ("-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",)
+
+# what that costs the caller, said out loud rather than silently changing the binary
+UBSAN_CRT_LIMITATION = (
+    "on Windows this builds the project against the static C runtime, because LLVM ships "
+    "no dynamic-CRT build of UBSan's runtime and the linker refuses the mismatch; the "
+    "binary analyzed therefore links the CRT differently from a normal build of it"
+)
+
 # ASan's runtime is always a DLL on Windows, and it lives here rather than anywhere on
 # PATH. Measured: a sanitized binary without it beside itself dies on STATUS_DLL_NOT_FOUND
 # before main, printing nothing at all
@@ -63,7 +85,27 @@ NO_LEAK_SANITIZER = Denial(
     suggestion=WSL_SUGGESTION,
 )
 
-DENIED = {Analysis.TSAN: NO_THREAD_SANITIZER, Analysis.LSAN: NO_LEAK_SANITIZER}
+# perf is not a compiler tool that happens to ship for Linux -- it is a front end to the
+# kernel's own performance counter subsystem, which Windows does not have and cannot be
+# given. The bridge answers this the same way it answers the two sanitizers.
+NO_PROFILER = Denial(
+    reason=(
+        "perf reads the Linux kernel's performance counters, which Windows has no "
+        "equivalent of; profiling needs Linux"
+    ),
+    suggestion=(
+        "install a WSL distro with clang and perf, then restart this server -- it will "
+        "profile through WSL automatically: wsl --install -d Ubuntu; then wsl -d Ubuntu -- "
+        "sudo apt-get update; then wsl -d Ubuntu -- sudo apt-get install -y clang llvm "
+        "cmake ninja-build linux-perf"
+    ),
+)
+
+DENIED = {
+    Analysis.TSAN: NO_THREAD_SANITIZER,
+    Analysis.LSAN: NO_LEAK_SANITIZER,
+    Analysis.PROFILE: NO_PROFILER,
+}
 
 INSTALL_HINTS = {Analysis.CLANG_TIDY: "winget install LLVM.LLVM"}
 
@@ -95,6 +137,8 @@ def detect() -> Platform:
         install_hints=INSTALL_HINTS,
         failure_signatures=FAILURE_SIGNATURES,
         sanitize_link_extras=link_extras(runtime),
+        sanitize_cmake_extras={SanitizerKind.UNDEFINED: UBSAN_STATIC_CRT},
+        limitations={Analysis.UBSAN: (UBSAN_CRT_LIMITATION,)},
         runtime_dlls=runtime_dlls(runtime),
         cmake_extras=cmake_extras(find_ninja()),
     )

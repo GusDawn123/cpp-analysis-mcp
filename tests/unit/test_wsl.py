@@ -18,6 +18,7 @@ import pytest
 
 from cpp_analysis_mcp import wsl
 from cpp_analysis_mcp.models import Analysis
+from cpp_analysis_mcp.platforms import linux
 from cpp_analysis_mcp.process import RunResult
 
 # where the fake PATH puts wsl.exe; spelled through Path so comparisons hold on any OS
@@ -33,6 +34,16 @@ DISTROS = "docker-desktop\nUbuntu\n"
 # the same listing as a wsl.exe that ignores WSL_UTF8 answers it: UTF-16 through a
 # UTF-8 decode, NUL after every character. Measured shape.
 DISTROS_UTF16 = "".join(f"{ch}\x00" for ch in DISTROS)
+
+# what the distro answers when asked for each kernel setting the bridge fingerprints on.
+# Keyed by the posix spelling on purpose, so a discovery that asks in Windows spelling falls
+# through to the assertion instead of being answered: these are Linux paths carried in a Path,
+# and a Path renders as "\proc\sys\..." on the only OS that has a bridge, which cat cannot
+# open. Answering both spellings here is what let that go unnoticed once already.
+HOST_SETTINGS = {
+    linux.MMAP_RND_BITS.as_posix(): "32\n",
+    linux.PERF_PARANOID.as_posix(): "2\n",
+}
 
 Reply = Callable[[list[str]], RunResult]
 
@@ -96,8 +107,8 @@ def a_machine_where_ubuntu_has_clang(listing: str = DISTROS) -> Reply:
                 return RunResult(exit_code=0, output=UBUNTU_CLANG)
             # docker-desktop: a busybox userland with no compiler anywhere
             return RunResult(exit_code=1, output="env: 'clang++': No such file or directory")
-        if cmd[-1].endswith("mmap_rnd_bits"):
-            return RunResult(exit_code=0, output="32\n")
+        if cmd[-1] in HOST_SETTINGS:
+            return RunResult(exit_code=0, output=HOST_SETTINGS[cmd[-1]])
         raise AssertionError(f"discovery asked something unexpected: {cmd}")
 
     return reply
@@ -158,12 +169,15 @@ def test_the_first_distro_that_answers_for_clang_becomes_the_bridge(
     bridge = wsl.discover(runner=runner)
 
     assert bridge is not None
-    assert bridge.analyses == frozenset({Analysis.TSAN, Analysis.LSAN})
+    assert bridge.analyses == frozenset({Analysis.TSAN, Analysis.LSAN, Analysis.PROFILE})
     assert bridge.toolchain.family == "clang"
     assert bridge.toolchain.version == "Ubuntu clang version 21.1.8 (6ubuntu1)"
     assert bridge.platform.name == "wsl"
     assert bridge.platform.env_facts["distro"] == "Ubuntu"
+    # both kernel settings were read off the distro rather than off this Windows, and both
+    # reached it in a spelling it could open
     assert bridge.platform.env_facts["vm.mmap_rnd_bits"] == "32"
+    assert bridge.platform.env_facts["kernel.perf_event_paranoid"] == "2"
     # docker-desktop was asked and failed, which is how it was skipped
     asked = [asked_distro(cmd) for cmd in runner.calls if "-d" in cmd and cmd[-1] == "--version"]
     assert asked == ["docker-desktop", "Ubuntu"]
@@ -296,10 +310,25 @@ def test_the_bridged_analyses_say_where_they_run_and_how_paths_read() -> None:
     that is explained, and it travels on every report the pipeline produces."""
     platform = wsl.bridge_platform("Ubuntu", {"distro": "Ubuntu"})
 
-    for analysis in (Analysis.TSAN, Analysis.LSAN):
-        (note,) = platform.limitations[analysis]
-        assert "Ubuntu" in note
-        assert "/mnt/c" in note
+    for analysis in wsl.BRIDGED:
+        notes = platform.limitations[analysis]
+        assert any("Ubuntu" in note and "/mnt/c" in note for note in notes), analysis
+
+
+def test_a_bridged_profile_says_it_ranked_a_different_binary() -> None:
+    """The one bridged analysis whose answer is about a build Windows would not have made.
+
+    A race is a race in either build, so TSan's answer carries across unchanged. Where the
+    time goes is decided by the compiler and standard library that produced the code, and
+    those are the distro's -- a caller told only "runs inside WSL" would read a libstdc++
+    hotspot as one they can act on from Windows.
+    """
+    platform = wsl.bridge_platform("Ubuntu", {"distro": "Ubuntu"})
+
+    notes = platform.limitations[Analysis.PROFILE]
+
+    assert any("libstdc++" in note for note in notes)
+    assert len(notes) > len(platform.limitations[Analysis.TSAN])
 
 
 def test_the_bridge_is_a_linux_and_builds_like_one() -> None:

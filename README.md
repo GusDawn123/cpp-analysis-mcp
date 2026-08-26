@@ -1,7 +1,9 @@
 # cpp-analysis-mcp
 
-**Status: working.** Sanitizers and compile-time checks run end to end behind an
-MCP server; profilers are not built yet.
+**Status: working.** All seven analyses run end to end behind an MCP server —
+the sanitizers, the compile-time checks, and a sampling profiler (perf; native
+on Linux, through the WSL bridge on Windows, refused toward Instruments on
+macOS for now).
 [docs/getting-started.md](docs/getting-started.md) takes you from clone to first
 caught bug.
 
@@ -175,5 +177,5 @@ Read in this order:
 | Language | Python | The work is running command-line tools and parsing their text output. Python is best-in-class at both. |
 | Build system | CMake first | Covers most real C++ projects. Bazel/Meson/Make deferred. |
 | Compiler | clang default, gcc supported | clang is the only compiler on all three platforms and `-Wthread-safety` is clang-only. But gcc vendors LLVM's sanitizer runtime, so gcc support costs almost nothing. See [architecture.md](docs/architecture.md#operating-system-and-compiler-are-separate-axes). |
-| Platforms | Linux + macOS + Windows | Windows runs natively with LLVM clang: ASan, UBSan, `-Wthread-safety` and clang-tidy work. TSan and LSan have no Windows runtime in any compiler, so the server bridges those two into a WSL distro with clang when one exists — all six checks on one Windows machine — and names the setup commands when one does not. |
+| Platforms | Linux + macOS + Windows | Windows runs natively with LLVM clang: ASan, UBSan, `-Wthread-safety` and clang-tidy work. TSan and LSan have no Windows runtime in any compiler and perf is Linux-only, so the server bridges those three into a WSL distro when one exists — all seven analyses on one Windows machine — and names the setup commands when one does not. |
 | Distribution | Public GitHub, installed via `uvx` | No existing MCP server wraps these tools. |

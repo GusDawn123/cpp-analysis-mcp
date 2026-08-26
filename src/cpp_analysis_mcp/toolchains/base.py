@@ -16,6 +16,13 @@ from cpp_analysis_mcp.models import Analysis, SanitizerKind
 # must match the flags scripts/fixtures.py compile_case passes; a test cross-checks the two
 BASE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O1", "-fno-omit-frame-pointer")
 
+# what a build meant to be profiled is compiled with. -O2 rather than BASE_FLAGS' -O1 is the
+# whole point: optimization decides which calls get inlined, and inlining decides where the
+# time appears to go, so a profile of an -O1 build is a ranking of code the release build
+# does not contain. -g stays for the source lines and -fno-omit-frame-pointer for the call
+# graph -- perf walks frame pointers, and -O2 discards them without it.
+PROFILE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O2", "-fno-omit-frame-pointer")
+
 # must match PINNED_ENV in scripts/fixtures.py so a run reproduces the goldens; a test
 # cross-checks. ASan and LSan are empty because the goldens were captured on their defaults.
 PINNED_RUNTIME_ENV: Mapping[SanitizerKind, Mapping[str, str]] = {

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp import capabilities
+from cpp_analysis_mcp import capabilities, profiler
 from cpp_analysis_mcp.capabilities import (
     PROBE_STEM,
     discover_toolchains,
@@ -64,6 +64,14 @@ CAUGHT = {
         "exclusively [-Wthread-safety-analysis]"
     ),
     Analysis.CLANG_TIDY: "probe.cpp:2:14: warning: use nullptr [modernize-use-nullptr]",
+    # perf's own table, delimited the way the report command asks for it. The planted hot
+    # function has to be named in it: that is the whole detection.
+    Analysis.PROFILE: (
+        "# Samples: 640  of event 'cpu/cycles/P'\n"
+        "# Children;    Self;Symbol;Source:Line\n"
+        " 99.06% ; 99.06% ;[.] probe_hot_spot();probe_profile.cpp:4;-      -\n"
+        " 0.49%  ; 0.49%  ;[.] probe_cold_spot();probe_profile.cpp:10;-      -\n"
+    ),
 }
 
 # a detector that reports is not obliged to exit 0: TSan exits 66 under the pinned options
@@ -74,6 +82,8 @@ DETECTION_EXIT = {
     Analysis.UBSAN: 0,
     Analysis.THREAD_SAFETY: 0,
     Analysis.CLANG_TIDY: 0,
+    # nothing went wrong: a profile that ran is a profile that succeeded
+    Analysis.PROFILE: 0,
 }
 
 Reply = Callable[[list[str]], RunResult]
@@ -106,7 +116,14 @@ class FakeRunner:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names."""
+    """Read which probe a command belongs to off the scratch file it names.
+
+    perf is asked for by name rather than by the file it works on: its report step names
+    only the trace and its own flags, none of which carry the probe's stem, and perf is
+    reached for by exactly one analysis.
+    """
+    if cmd and Path(cmd[0]).name == profiler.PERF:
+        return Analysis.PROFILE
     for arg in cmd:
         stem = Path(arg).name.removesuffix(".cpp")
         if stem.startswith(PROBE_STEM):
@@ -120,7 +137,14 @@ def is_run(cmd: Sequence[str]) -> bool:
 
 
 def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
-    """Say whether this is the step whose output has to carry the marker."""
+    """Say whether this is the step whose output has to carry the marker.
+
+    Profiling is the one probe with three steps rather than two, and the marker belongs to
+    the last of them: recording produces a binary trace that says nothing readable, so only
+    the report can name the function that was planted.
+    """
+    if analysis is Analysis.PROFILE:
+        return len(cmd) > 1 and cmd[1] == "report"
     return is_run(cmd) or analysis not in SANITIZER_FOR
 
 
@@ -175,7 +199,7 @@ def a_darwin() -> Platform:
     """Build macOS's arm64 tables without asking what machine this is."""
     return Platform(
         name="darwin",
-        denied={Analysis.LSAN: darwin.NO_LEAK_SANITIZER},
+        denied={Analysis.LSAN: darwin.NO_LEAK_SANITIZER, Analysis.PROFILE: darwin.NO_PROFILER},
         limitations={Analysis.TSAN: darwin.TSAN_LIMITATIONS},
         install_hints=darwin.INSTALL_HINTS,
     )

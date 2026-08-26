@@ -165,14 +165,18 @@ def test_the_first_matching_signature_wins() -> None:
     assert linux_like.diagnose(reversed_order) is first
 
 
-def test_linux_reads_the_aslr_width_only_where_it_is_readable() -> None:
-    """/proc is absent on macOS and root-only on GitHub's runners; an unreadable fact
-    is omitted rather than guessed at or crashed on."""
+def test_linux_reads_host_facts_only_where_they_are_readable() -> None:
+    """/proc is absent on macOS and partly root-only on GitHub's runners; an unreadable
+    fact is omitted rather than guessed at or crashed on, and each is read on its own --
+    the runners prove it by serving perf_event_paranoid while denying mmap_rnd_bits."""
     facts = linux.detect().env_facts
 
-    assert set(facts) <= {linux.MMAP_RND_BITS_FACT}
+    assert set(facts) <= set(linux.HOST_SETTINGS)
     if linux.MMAP_RND_BITS_FACT in facts:
         assert facts[linux.MMAP_RND_BITS_FACT].isdigit()
+    if linux.PERF_PARANOID_FACT in facts:
+        # -1 (everything allowed) through 4 (nothing allowed) are all real kernel values
+        assert facts[linux.PERF_PARANOID_FACT].lstrip("-").isdigit()
 
 
 def test_linux_detect_carries_its_tables() -> None:
@@ -285,6 +289,34 @@ def test_ubsan_is_linked_against_llvms_own_runtime_by_full_path(tmp_path: Path) 
 
     assert [Path(library).parent for library in named] == [tmp_path, tmp_path]
     assert [Path(library).name for library in named] == list(windows.UBSAN_LIBS)
+
+
+def test_a_ubsan_cmake_build_is_moved_onto_the_static_c_runtime() -> None:
+    """LLVM ships UBSan's runtime built against the static CRT and no other. cmake stamps
+    every object with a /failifmismatch naming the CRT it chose, defaults that to the dynamic
+    one, and lld-link then refuses the pair -- measured against a real project:
+
+        mismatch detected for 'RuntimeLibrary':
+        OrderBook.cpp.obj has value MD_DynamicRelease
+        clang_rt.ubsan_standalone_cxx-x86_64.lib(...) has value MT_StaticRelease
+
+    So the project moves to the runtime's CRT, which is the only direction available. It has
+    to reach the configure: the directive is written when each object is compiled, once.
+    """
+    platform = windows.detect()
+
+    assert platform.sanitize_cmake_extras[SanitizerKind.UNDEFINED] == windows.UBSAN_STATIC_CRT
+    assert "MultiThreaded" in windows.UBSAN_STATIC_CRT[0]
+    # and the caller is told, because the binary analyzed is not linked like a normal build
+    assert any("static C runtime" in note for note in platform.limitations[Analysis.UBSAN])
+
+
+def test_only_ubsan_is_moved_off_the_default_runtime() -> None:
+    """ASan's runtime is a DLL built against the dynamic CRT, so forcing the static one there
+    would create the very mismatch this avoids for UBSan."""
+    extras = windows.detect().sanitize_cmake_extras
+
+    assert set(extras) == {SanitizerKind.UNDEFINED}
 
 
 def test_cmake_on_windows_is_forced_onto_the_ninja_generator(tmp_path: Path) -> None:

@@ -26,17 +26,18 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from cpp_analysis_mcp import process
+from cpp_analysis_mcp import process, profiler
 from cpp_analysis_mcp.build.single_file import place_runtime_dlls
 from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains import clang, gcc
-from cpp_analysis_mcp.toolchains.base import PINNED_RUNTIME_ENV, Toolchain
+from cpp_analysis_mcp.toolchains.base import PINNED_RUNTIME_ENV, PROFILE_FLAGS, Toolchain
 
 # bump when a probe starts meaning something different; it is part of the cache fingerprint,
-# so a bump retires every cached result rather than answering new questions with old findings
-PROBE_SCHEMA_VERSION: int = 1
+# so a bump retires every cached result rather than answering new questions with old findings.
+# 2: the profiler joined the set, so a cached answer from 1 is missing an analysis
+PROBE_SCHEMA_VERSION: int = 2
 
 COMPILE_TIMEOUT_S = 120
 RUN_TIMEOUT_S = 30
@@ -49,6 +50,9 @@ PROBE_STEM = "probe_"
 
 CLANG_TIDY = "clang-tidy"
 TIDY_CHECK = "modernize-use-nullptr"
+
+# the hot function the profiling probe plants, and the string its report must contain
+HOT_SPOT = "probe_hot_spot"
 
 COMPILER_CANDIDATES = ("clang++", "g++")
 CONSTRUCTORS = {"clang": clang.toolchain, "gcc": gcc.toolchain}
@@ -147,6 +151,38 @@ int main() {
 }
 """
 
+# What a profiler must be able to say: nearly all of this program's time is in one named
+# function. The other probes plant a bug; this one plants a hotspot, and the same rule
+# applies -- a profiler that cannot find a function burning 99% of the run cannot be trusted
+# to rank a real one.
+#
+# Every defence here is load-bearing at -O2, which is what a profiled build uses. volatile
+# keeps the arithmetic from being folded away, noinline keeps the two functions from being
+# merged into main, and the cold loop gives the ranking something to outrank. The iteration
+# count is sized for roughly half a second of work: at 999 samples a second that is hundreds
+# of samples, enough that the ranking means something, and short enough to pay at startup.
+PROFILE_SOURCE = """\
+volatile double sink = 0.0;
+
+__attribute__((noinline)) void probe_hot_spot() {
+    for (long i = 0; i < 300000000; ++i) {
+        sink += i * 0.5;  // planted: where essentially all of the time must be found
+    }
+}
+
+__attribute__((noinline)) void probe_cold_spot() {
+    for (long i = 0; i < 200000; ++i) {
+        sink += 1.0;
+    }
+}
+
+int main() {
+    probe_hot_spot();
+    probe_cold_spot();
+    return 0;
+}
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class Probe:
@@ -202,6 +238,15 @@ PROBES: Mapping[Analysis, Probe] = {
         detector=CLANG_TIDY,
         planted="null pointer written as 0",
         action="checked",
+    ),
+    Analysis.PROFILE: Probe(
+        source=PROFILE_SOURCE,
+        # the function's own name, which the report can only print if sampling collected
+        # something and the symbols resolved -- the two ways profiling quietly half-works
+        marker=HOT_SPOT,
+        detector="perf",
+        planted="hot loop",
+        action="compiled, ran and profiled",
     ),
 }
 
@@ -373,8 +418,16 @@ def _refused(
 def _probe(
     toolchain: Toolchain, platform: Platform, analysis: Analysis, runner: Runner
 ) -> CapabilityStatus:
-    """Write this analysis's planted bug into a scratch directory and try to catch it."""
-    with tempfile.TemporaryDirectory(prefix=TEMP_PREFIX) as directory:
+    """Write this analysis's planted bug into a scratch directory and try to catch it.
+
+    ignore_cleanup_errors, because on Windows the directory is regularly still in use when
+    the probe finishes: a bridged analysis ran its program inside WSL against this path, and
+    the distro does not release a /mnt/c directory the instant the process using it exits.
+    Without this the rmdir raises out of the probe, out of the thread pool, and out of
+    resolve() -- a server refusing to start because a scratch directory outlived it. The
+    directory is disposable and the temp cleaner will take it; the answer is what matters.
+    """
+    with tempfile.TemporaryDirectory(prefix=TEMP_PREFIX, ignore_cleanup_errors=True) as directory:
         source = Path(directory) / f"{PROBE_STEM}{analysis.value}.cpp"
         source.write_text(PROBES[analysis].source, encoding="utf-8")
 
@@ -382,6 +435,8 @@ def _probe(
             return _probe_clang_tidy(platform, source, runner)
         if analysis is Analysis.THREAD_SAFETY:
             return _probe_thread_safety(toolchain, platform, source, runner)
+        if analysis is Analysis.PROFILE:
+            return _probe_profile(toolchain, platform, source, runner)
         return _probe_sanitizer(toolchain, platform, analysis, source, runner)
 
 
@@ -448,6 +503,71 @@ def _probe_thread_safety(
         ),
     )
     return classify(Analysis.THREAD_SAFETY, platform, PROBES[Analysis.THREAD_SAFETY], (compiled,))
+
+
+def _probe_profile(
+    toolchain: Toolchain, platform: Platform, source: Path, runner: Runner
+) -> CapabilityStatus:
+    """Build the planted hotspot optimized, sample it, and look for its name in the report.
+
+    Three steps rather than two, and all three must succeed, because profiling has three
+    separate ways to half-work and each of them ends in a plausible-looking empty table. The
+    recording can be refused outright -- no perf, or a kernel that will not open a
+    performance counter for this user. It can succeed and collect nothing, which is what a
+    virtualized host with no counters and no software fallback does. Or it can collect
+    plenty and resolve none of it to a name, which is what a stripped binary or a missing
+    llvm looks like, and is the one that reads most convincingly like a flat profile.
+
+    Only the last is caught by the marker; the first two are caught by exit codes, which is
+    why every stage here is must_succeed and the detection is the report's own text.
+    """
+    binary = source.with_suffix(platform.executable_suffix)
+    compiled = Stage(
+        name="compile",
+        timeout_s=COMPILE_TIMEOUT_S,
+        must_succeed=True,
+        result=runner(
+            [
+                str(toolchain.compiler),
+                *PROFILE_FLAGS,
+                *platform.compile_extras,
+                str(source),
+                "-o",
+                str(binary),
+            ],
+            timeout_s=COMPILE_TIMEOUT_S,
+        ),
+    )
+    if compiled.result.exit_code != 0:
+        return classify(Analysis.PROFILE, platform, PROBES[Analysis.PROFILE], (compiled,))
+
+    data = source.parent / profiler.DATA_NAME
+    recorded = Stage(
+        name="record",
+        timeout_s=RUN_TIMEOUT_S,
+        must_succeed=True,
+        result=runner(
+            profiler.record_command(binary, data),
+            timeout_s=RUN_TIMEOUT_S,
+            cwd=source.parent,
+        ),
+    )
+    if recorded.result.exit_code != 0:
+        return classify(Analysis.PROFILE, platform, PROBES[Analysis.PROFILE], (compiled, recorded))
+
+    reported = Stage(
+        name="report",
+        timeout_s=RUN_TIMEOUT_S,
+        must_succeed=True,
+        result=runner(
+            profiler.report_command(data),
+            timeout_s=RUN_TIMEOUT_S,
+            cwd=source.parent,
+        ),
+    )
+    return classify(
+        Analysis.PROFILE, platform, PROBES[Analysis.PROFILE], (compiled, recorded, reported)
+    )
 
 
 def _probe_clang_tidy(platform: Platform, source: Path, runner: Runner) -> CapabilityStatus:

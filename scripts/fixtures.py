@@ -232,7 +232,13 @@ def run_command(
             output, _ = proc.communicate(timeout=KILL_GRACE_S)
         except subprocess.TimeoutExpired as undead:
             proc.kill()
-            salvaged = undead.output if isinstance(undead.output, str) else ""
+            # bytes on POSIX, absent on Windows, str only when run() re-raises it
+            leftover = undead.output
+            salvaged = (
+                leftover.decode(errors="replace")
+                if isinstance(leftover, bytes)
+                else (leftover if isinstance(leftover, str) else "")
+            )
             return None, (
                 salvaged + f"\n[killed after {timeout}s timeout; parts of its process tree"
                 " may have survived]\n"

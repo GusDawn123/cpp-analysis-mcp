@@ -25,9 +25,11 @@ class Analysis(StrEnum):
     UBSAN = "ubsan"
     THREAD_SAFETY = "thread-safety"
     CLANG_TIDY = "clang-tidy"
+    PROFILE = "profile"
 
 
-# which analyses need a binary built with a sanitizer; the two missing here run at compile time
+# which analyses need a binary built with a sanitizer; the three missing here are the two
+# compile-time checks and the profiler, which builds optimized and instruments nothing
 SANITIZER_FOR: Mapping[Analysis, SanitizerKind] = {
     Analysis.TSAN: SanitizerKind.THREAD,
     Analysis.ASAN: SanitizerKind.ADDRESS,
@@ -176,3 +178,34 @@ class Hotspot:
     total_pct: float
     location: Location | None = None
     note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileReport:
+    """Where the time went, and what makes the ranking worth believing.
+
+    Separate from AnalysisReport because a profiler answers a different question. A sanitizer
+    reports discrete facts that are true or absent; a profiler reports a distribution, and a
+    distribution read without knowing how it was sampled is a ranking of noise. So the two
+    numbers that decide whether these percentages mean anything travel with them:
+
+    `samples` is how many the profiler actually took. A hundred samples spread over a hundred
+    functions ranks nothing, and the difference between 40% and 30% at that count is chance.
+
+    `event` is what was counted. `cpu/cycles/P` is the hardware counter and is what a
+    profile normally means; a virtualized host with no PMU falls back to `cpu-clock`, a
+    timer interrupt, which still finds hot code but cannot see stalls -- and neither can be
+    told from the other by looking at the percentages.
+    """
+
+    analysis: Analysis
+    # ordered by self time, hottest first -- the profiler's own order is by cumulative time,
+    # which puts main() and _start at the top of every profile ever taken
+    hotspots: tuple[Hotspot, ...]
+    samples: int
+    event: str
+    # the program's own exit status: a workload that crashed profiled only what it reached
+    exit_code: int | None = None
+    timed_out: bool = False
+    limitations: tuple[str, ...] = ()
+    verified_by: str | None = None
