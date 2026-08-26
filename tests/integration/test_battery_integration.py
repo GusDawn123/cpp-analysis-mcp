@@ -63,7 +63,6 @@ def test_the_battery_catches_the_planted_unguarded_write(
         build_dir=tmp_path / "battery",
     )
 
-    # every analysis is accounted for exactly once, whatever this machine can run
     accounted = set(report.ran) | set(report.unavailable) | set(report.failed_builds)
     assert accounted == {analysis.value for analysis in battery.CORRECTNESS}
     assert len(report.ran) + len(report.unavailable) + len(report.failed_builds) == len(

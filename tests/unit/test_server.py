@@ -821,7 +821,7 @@ async def test_the_battery_runs_whole_over_the_protocol(
     """One call, six analyses in parallel, one merged JSON answer. The runner dispatches
     by command content because parallel order is not promised, and the reply for TSan is
     a committed golden so the merge is proved against real sanitizer output."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / f"{FILE_STEM}.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
 
@@ -900,7 +900,7 @@ async def test_asking_for_no_checks_leaves_the_projects_own_config_in_charge(
     """A --checks the caller never asked for overrides whatever .clang-tidy the project
     committed, so a repository with a curated check list silently gets a different one. The
     absence has to survive all the way to argv, not be filled in with a default on the way."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
@@ -923,7 +923,7 @@ async def test_a_file_with_no_clang_tidy_anywhere_still_gets_checks(
     """clang-tidy enables nothing by itself: with no --checks and no .clang-tidy above the
     file it exits 1 printing usage text, which parses to no findings and is indistinguishable
     from clean code. A project that committed no configuration gets a default instead."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner([SUCCESS])
@@ -943,7 +943,7 @@ async def test_the_checks_the_caller_did_ask_for_reach_the_tool(
 ) -> None:
     """The other half of the same promise: passed through means passed through, so a caller
     hunting one check gets that check rather than the project's whole list."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner([SUCCESS])

@@ -23,7 +23,7 @@ up to. This project is that wiring.
 
 ## What it does
 
-Ten tools, four questions:
+Ten tools, five questions:
 
 | Question                  | Tools                                     | Cost    |
 |---------------------------|-------------------------------------------|---------|
@@ -31,7 +31,7 @@ Ten tools, four questions:
 | Is it actually wrong?     | `sanitize_file` / `_project` / `_snippet` | minutes |
 | Where is it slow?         | `profile_file` / `_project`               | minutes |
 | Which rewrite is faster?  | `benchmark_variants`                      | minutes |
-| All of it, in one call    | `full_check_file`                         | minutes |
+| Everything at once?       | `full_check_file`                         | minutes |
 
 The agent starts cheap and escalates only when it has to, or calls
 `full_check_file` to run both compile-time checks and all four
@@ -116,6 +116,8 @@ your AI agent (Claude Code, Cursor, anything that speaks MCP)
         |
     server.py        ten tools, no logic of its own
         |
+    battery.py       full_check_file only: fans out to every
+        |            correctness pipeline below, in parallel
     pipelines/       the recipes: check, sanitize, profile
         |
    +----------+-------------+
