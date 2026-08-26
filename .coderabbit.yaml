@@ -11,3 +11,13 @@ reviews:
         Flag any comment that restates what the code already says, and any comment that
         runs longer than the point it makes. Comments should be short and explain why,
         a constraint, or a trap. Prefer removing an obvious comment over keeping it.
+        Also question data structure choices: flag a container or collection type that
+        costs more than the access pattern needs (lookup, insertion, ordering, memory
+        locality), and say which structure fits the scenario better and why.
+    - path: "**/*.{cpp,hpp,h,cc}"
+      instructions: >-
+        Question data structure choices hard: for each container, check the access
+        pattern it actually serves and flag mismatches that cost latency or memory
+        locality (for example node-based maps where contiguous storage fits, middle
+        inserts into vectors, per-element heap allocation in hot paths). Name the
+        better-fitting structure and the reason.
