@@ -1,0 +1,7 @@
+# All feature work lands through PRs into develop, so reviews must fire there too.
+reviews:
+  profile: assertive
+  auto_review:
+    base_branches:
+      - main
+      - develop
