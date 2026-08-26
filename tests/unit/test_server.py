@@ -858,6 +858,60 @@ async def test_the_battery_runs_whole_over_the_protocol(
 
 
 @pytest.mark.anyio
+async def test_the_two_recipes_are_published_as_prompts(tmp_path: Path) -> None:
+    """Prompts are how a client surfaces whole workflows as slash commands, and the
+    argument must be declared required or a client renders the recipe with a hole in it."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_prompts()
+
+    prompts_by_name = {prompt.name: prompt for prompt in listed.prompts}
+    assert set(prompts_by_name) == {"checkup", "make-it-faster"}
+    for prompt in prompts_by_name.values():
+        assert prompt.description
+        assert [argument.name for argument in prompt.arguments or []] == ["source"]
+        assert all(argument.required for argument in prompt.arguments or [])
+
+
+@pytest.mark.anyio
+async def test_the_checkup_recipe_names_its_tools_and_its_rules(tmp_path: Path) -> None:
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        result = await client.get_prompt("checkup", {"source": "book.cpp"})
+
+    text = result.messages[0].content.text  # type: ignore[union-attr]
+    assert "book.cpp" in text
+    steps = text[text.index("Steps:") :]
+    assert steps.index("capabilities") < steps.index("full_check_file")
+    assert "never delete or weaken a check" in text
+    # the precondition and its trap: a library file gets a driver, never a pasted main()
+    assert "never add a main() to the library itself" in text
+
+
+@pytest.mark.anyio
+async def test_the_speed_recipe_orders_profile_race_check(tmp_path: Path) -> None:
+    """The order is the method: measure, then rewrite, then race, then prove correctness,
+    and a recipe that stopped saying so would let a speedup claim skip its race."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        result = await client.get_prompt("make-it-faster", {"source": "book.cpp"})
+
+    text = result.messages[0].content.text  # type: ignore[union-attr]
+    assert "book.cpp" in text
+    steps = text[text.index("Steps:") :]
+    assert (
+        steps.index("profile_file")
+        < steps.index("benchmark_variants")
+        < steps.index("full_check_file")
+    )
+    assert "never claim a speedup without a race" in text
+    assert "write a small driver" in text
+
+
+@pytest.mark.anyio
 async def test_the_servers_instructions_teach_the_ladder_before_any_tool_is_read(
     tmp_path: Path,
 ) -> None:
