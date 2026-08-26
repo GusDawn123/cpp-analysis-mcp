@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from cpp_analysis_mcp import process, profiler
+from cpp_analysis_mcp import fingerprints, process, profiler
 from cpp_analysis_mcp.build import cmake, single_file
 from cpp_analysis_mcp.models import (
     Analysis,
@@ -149,11 +149,16 @@ def _observe(
     )
 
     samples, event = perf.header(reported.output)
+    spots = perf.parse(reported.output)
+    found = fingerprints.read(spots)
     return ProfileReport(
         analysis=Analysis.PROFILE,
-        hotspots=perf.parse(reported.output),
+        hotspots=spots,
         samples=samples,
         event=event,
+        fingerprints=found,
+        confidence=fingerprints.confidence(samples),
+        next_step=fingerprints.next_step(found),
         exit_code=recorded.exit_code,
         timed_out=recorded.timed_out,
         limitations=(*status.limitations, profiler.TRUNCATION),
