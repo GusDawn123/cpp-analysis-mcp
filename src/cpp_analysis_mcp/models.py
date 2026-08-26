@@ -180,6 +180,28 @@ class Hotspot:
     note: str | None = None
 
 
+@dataclass(frozen=True)
+class FullCheckReport:
+    """Every correctness analysis over one target, merged into one answer.
+
+    `ran` names the analyses whose detector provably worked and reported; `unavailable`
+    and `failed_builds` carry the ones that could not, each with its reason. Without
+    those two, a battery missing half its detectors would read as a clean bill of health.
+
+    The one model here without slots=. It is the only dataclass returned bare from a
+    tool, and the SDK's schema builder reads class attributes for defaults on that path,
+    where a slots descriptor gets mistaken for an unserializable default.
+    """
+
+    findings: tuple[Finding, ...]
+    ran: tuple[str, ...]
+    # concrete dicts, not Mapping and not proxied: this report crosses the protocol, and
+    # the SDK's schema generator refuses both the abstract type and a __post_init__
+    unavailable: dict[str, str]
+    failed_builds: dict[str, str]
+    next_step: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class Fingerprint:
     """One recognized pattern in a profile: the fact in plain words, plus the known
