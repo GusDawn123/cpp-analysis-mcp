@@ -31,9 +31,10 @@ from mcp.server import MCPServer
 # our own Context is the app state these handlers read, and the SDK's is the request handle
 # they read it off; one of the two names has to move
 from mcp.server.mcpserver import Context as ServerContext
+from mcp.server.mcpserver.prompts import Prompt
 from pydantic import Field
 
-from cpp_analysis_mcp import battery, context
+from cpp_analysis_mcp import battery, context, prompts
 from cpp_analysis_mcp.context import Context
 from cpp_analysis_mcp.models import (
     Analysis,
@@ -508,6 +509,20 @@ def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
     server.add_tool(profile_project, description=PROFILE_PROJECT_DOC)
     server.add_tool(benchmark_variants, description=BENCHMARK_VARIANTS_DOC)
     server.add_tool(full_check_file, description=FULL_CHECK_FILE_DOC)
+    server.add_prompt(
+        Prompt.from_function(
+            prompts.checkup,
+            name="checkup",
+            description="Run every correctness check on a file and fix findings until clean.",
+        )
+    )
+    server.add_prompt(
+        Prompt.from_function(
+            prompts.make_it_faster,
+            name="make-it-faster",
+            description="Profile a file, race rewrite candidates, adopt only a proven winner.",
+        )
+    )
     return server
 
 
