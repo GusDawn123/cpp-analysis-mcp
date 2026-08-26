@@ -212,6 +212,14 @@ class ProfileReport:
 
 
 @dataclass(frozen=True, slots=True)
+class Variant:
+    """One competitor in a benchmark race: a name and a complete program."""
+
+    name: str
+    code: str
+
+
+@dataclass(frozen=True, slots=True)
 class VariantResult:
     """How one variant fared in a race: its times, and whether its answer held up.
 
