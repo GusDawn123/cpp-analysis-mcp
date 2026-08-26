@@ -1,4 +1,4 @@
-"""The MCP tool surface: eight tools, their schemas, and one line each into a pipeline.
+"""The MCP tool surface: nine tools, their schemas, and one line each into a pipeline.
 
 Protocol only. Every handler reads the resolved context off the request, hands it to one
 pipeline call and returns what came back -- there is no control flow in this file at all, and
@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from anyio import to_thread
 from mcp.server import MCPServer
@@ -31,17 +31,20 @@ from mcp.server import MCPServer
 # our own Context is the app state these handlers read, and the SDK's is the request handle
 # they read it off; one of the two names has to move
 from mcp.server.mcpserver import Context as ServerContext
+from pydantic import Field
 
 from cpp_analysis_mcp import context
 from cpp_analysis_mcp.context import Context
 from cpp_analysis_mcp.models import (
     Analysis,
     AnalysisReport,
+    BenchmarkReport,
     BuildFailure,
     CapabilityStatus,
     ProfileReport,
+    Variant,
 )
-from cpp_analysis_mcp.pipelines import profile, sanitize, static_check
+from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
 
 SERVER_NAME = "cpp-analysis"
 
@@ -77,6 +80,10 @@ A linter matches patterns in source text, so it can say a parameter is copied wh
 be moved. It cannot say that the copy is 40% of the runtime, or that the real cost is a
 container being rebuilt in a loop it never looks inside. Only measurement ranks anything, and
 guessing at hot code from reading it is famously unreliable even for the person who wrote it.
+
+For "which version is faster?", measure that too: benchmark_variants races 2 to 5 whole
+programs on this machine and rejects any whose output stopped matching the baseline's. A
+speedup claim without a race behind it is a guess.
 
 capabilities says which analyses this machine proved it can do, and is worth reading before
 trusting an empty result from any of them.
@@ -205,6 +212,28 @@ workload for several seconds is what produces a ranking worth acting on.
 Read `samples` on the result before reading the ranking. It is how many measurements the
 ranking rests on, and a few dozen of them ranks noise. Read `event` too: `cpu/cycles/P` is
 the hardware counter, while `cpu-clock` means the machine had none and a timer stood in.
+"""
+
+BENCHMARK_VARIANTS_DOC = """\
+Races 2 to 5 versions of a program on this machine and reports which is faster, by how much,
+and whether each still produced the same output as the baseline.
+
+This is the tool that settles "which rewrite is faster". Reading code and reasoning about
+what looks expensive cannot, and a speedup claim without a race behind it is a guess. Hand
+it whole programs: each variant is a complete file with a main() that runs the same workload
+and prints its result. The first variant is the baseline. Outputs are compared byte for
+byte, and a variant that answered differently is rejected no matter how fast it ran --
+wrong but quick must not win.
+
+Keep incidental logging out of what the programs print and give the workload a fixed seed:
+the comparison is exact, so a timestamp or an unseeded shuffle reads as a wrong answer. Aim
+for a second or more of work per run; times include process start, and differences of a few
+milliseconds are noise.
+
+Costs minutes: every variant builds at release optimization and runs `repeats` times (2 to
+20, default 5), interleaved round-robin, timed one at a time so variants never fight each
+other for the machine. Read `stddev_ms` before believing `mean_ms`, and `next_step` for
+what to do with the winner.
 """
 
 STATIC_CHECK_SNIPPET_DOC = """\
@@ -343,6 +372,34 @@ def profile_project(
     )
 
 
+def benchmark_variants(
+    variants: Annotated[
+        list[Variant],
+        Field(min_length=benchmark.MIN_VARIANTS, max_length=benchmark.MAX_VARIANTS),
+    ],
+    ctx: ServerContext[Context],
+    repeats: Annotated[
+        int, Field(ge=benchmark.MIN_REPEATS, le=benchmark.MAX_REPEATS)
+    ] = benchmark.DEFAULT_REPEATS,
+) -> BenchmarkReport | BuildFailure:
+    """Delegate to the benchmark pipeline, on the host's own engine.
+
+    No capability gate, unlike every other tool that runs something: the probes exist to
+    catch detectors that break silently, and a plain compile-and-run cannot -- a failed
+    build is loud, and the clock always ticks. What a race needs is a toolchain, and the
+    server does not start without one.
+    """
+    app = ctx.request_context.lifespan_context
+    return benchmark.race(
+        variants,
+        toolchain=app.toolchain,
+        platform=app.platform,
+        build_dir=context.scratch(app.workspace),
+        repeats=repeats,
+        runner=app.runner,
+    )
+
+
 def static_check_file(
     source: str,
     analysis: CompileTimeCheck,
@@ -393,7 +450,7 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the eight tools against one server; `lifespan` is the seam a test starts through.
+    """Register the nine tools against one server; `lifespan` is the seam a test starts through.
 
     The default is what ships. A test injects a context it wrote down instead, because the
     live one probes the machine the suite happens to be running on.
@@ -409,6 +466,7 @@ def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
     server.add_tool(static_check_snippet, description=STATIC_CHECK_SNIPPET_DOC)
     server.add_tool(profile_file, description=PROFILE_FILE_DOC)
     server.add_tool(profile_project, description=PROFILE_PROJECT_DOC)
+    server.add_tool(benchmark_variants, description=BENCHMARK_VARIANTS_DOC)
     return server
 
 

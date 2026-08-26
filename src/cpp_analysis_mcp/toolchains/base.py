@@ -23,6 +23,10 @@ BASE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O1", "-fno-omit-frame-point
 # graph -- perf walks frame pointers, and -O2 discards them without it.
 PROFILE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O2", "-fno-omit-frame-pointer")
 
+# what a raced build compiles with: the release shape. No -g and no kept frame pointers,
+# because nothing walks these stacks -- a race should time the code a release would ship.
+BENCH_FLAGS: tuple[str, ...] = ("-std=c++20", "-O2")
+
 # must match PINNED_ENV in scripts/fixtures.py so a run reproduces the goldens; a test
 # cross-checks. ASan and LSan are empty because the goldens were captured on their defaults.
 PINNED_RUNTIME_ENV: Mapping[SanitizerKind, Mapping[str, str]] = {

@@ -16,6 +16,7 @@ from cpp_analysis_mcp.models import (
     SANITIZER_FOR,
     AccessOp,
     Analysis,
+    BenchmarkReport,
     BuildFailure,
     BuiltBinary,
     CapabilityStatus,
@@ -26,6 +27,7 @@ from cpp_analysis_mcp.models import (
     SanitizerKind,
     Severity,
     ThreadAccess,
+    VariantResult,
 )
 
 
@@ -275,3 +277,58 @@ def test_hotspot_constructs() -> None:
     assert hotspot.location is not None
     assert hotspot.location.column is None
     assert Hotspot(function="idle", self_pct=0.0, total_pct=0.0).note is None
+
+
+def a_variant_result() -> VariantResult:
+    return VariantResult(
+        name="flat_map",
+        runs=5,
+        mean_ms=812.4,
+        min_ms=798.0,
+        stddev_ms=11.2,
+        matches_baseline=True,
+    )
+
+
+def test_variant_result_defaults_to_unproven() -> None:
+    """A variant starts with nothing granted: no match claimed, no numbers, no verdict."""
+    bare = VariantResult(name="baseline", runs=0)
+
+    assert bare.mean_ms is None
+    assert bare.min_ms is None
+    assert bare.stddev_ms is None
+    assert bare.matches_baseline is False
+    assert bare.rejected is None
+
+
+def test_rejected_variant_keeps_its_reason_and_no_numbers() -> None:
+    out = VariantResult(name="unordered", runs=1, rejected="output differs from baseline")
+
+    assert out.rejected == "output differs from baseline"
+    assert out.mean_ms is None
+    assert out.matches_baseline is False
+
+
+def test_benchmark_report_constructs_and_defaults() -> None:
+    report = BenchmarkReport(
+        baseline="baseline",
+        variants=(a_variant_result(),),
+        repeats=5,
+    )
+
+    assert report.baseline == "baseline"
+    assert report.variants[0].name == "flat_map"
+    assert report.limitations == ()
+    assert report.next_step is None
+
+
+def test_benchmark_models_are_frozen_and_slotted() -> None:
+    result = a_variant_result()
+    report = BenchmarkReport(baseline="baseline", variants=(result,), repeats=5)
+
+    with pytest.raises(FrozenInstanceError):
+        result.mean_ms = 1.0  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        report.repeats = 9  # type: ignore[misc]
+    for instance in (result, report):
+        assert not hasattr(instance, "__dict__"), f"{type(instance).__name__} lost its slots"
