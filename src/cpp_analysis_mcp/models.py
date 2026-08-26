@@ -209,3 +209,39 @@ class ProfileReport:
     timed_out: bool = False
     limitations: tuple[str, ...] = ()
     verified_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VariantResult:
+    """How one variant fared in a race: its times, and whether its answer held up.
+
+    A rejected variant keeps its name and the reason it is out, but its numbers stay None.
+    Reporting a time for a program that crashed or answered differently would invite the
+    exact comparison the rejection exists to prevent.
+    """
+
+    name: str
+    runs: int
+    mean_ms: float | None = None
+    min_ms: float | None = None
+    stddev_ms: float | None = None
+    matches_baseline: bool = False
+    rejected: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkReport:
+    """Who won the race, and what makes the numbers worth believing.
+
+    Variants are ranked fastest first among those that survived; rejected ones sit at the
+    end with their reasons. The baseline is named because every claim in the report is
+    relative to it: a variant only counts as faster if it produced the same output from
+    the same input. `repeats` is how many timed runs each mean rests on, and a mean with
+    a large stddev next to it is a shrug, not a ranking.
+    """
+
+    baseline: str
+    variants: tuple[VariantResult, ...]
+    repeats: int
+    limitations: tuple[str, ...] = ()
+    next_step: str | None = None
