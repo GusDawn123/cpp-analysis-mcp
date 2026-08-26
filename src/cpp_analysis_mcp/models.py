@@ -181,6 +181,17 @@ class Hotspot:
 
 
 @dataclass(frozen=True, slots=True)
+class Fingerprint:
+    """One recognized pattern in a profile: the fact in plain words, plus the known
+    rewrite families for it. Never a diff and never a verdict."""
+
+    category: str
+    share_pct: float
+    statement: str
+    candidates: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileReport:
     """Where the time went, and what makes the ranking worth believing.
 
@@ -204,6 +215,11 @@ class ProfileReport:
     hotspots: tuple[Hotspot, ...]
     samples: int
     event: str
+    # the ranking read back in plain words: which library machinery ate the time
+    fingerprints: tuple[Fingerprint, ...] = ()
+    # what the sample count says about trusting the percentages
+    confidence: str | None = None
+    next_step: str | None = None
     # the program's own exit status: a workload that crashed profiled only what it reached
     exit_code: int | None = None
     timed_out: bool = False

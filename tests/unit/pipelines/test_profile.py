@@ -326,3 +326,31 @@ def test_a_denied_platform_never_reaches_the_pipeline_through_its_own_tables(
 
     assert isinstance(answer, CapabilityStatus)
     assert runner.calls == []
+
+
+def test_plain_user_code_reports_no_fingerprints_and_a_coarse_confidence(
+    tmp_path: Path,
+) -> None:
+    result = run_profile(tmp_path, a_working_profiler())
+
+    assert isinstance(result, ProfileReport)
+    assert result.fingerprints == ()
+    assert result.next_step is None
+    assert result.confidence is not None
+    assert "coarse" in result.confidence
+
+
+def test_library_machinery_is_named_with_its_breadcrumb(tmp_path: Path) -> None:
+    """The same report with the hot symbol swapped for a std::map tree walk: the pattern
+    gets named, the candidates arrive, and next_step points at the race."""
+    tree_report = REPORT.replace(
+        "Book::AddOrder(int, int)", "std::_Rb_tree<int, int>::find(int const&)"
+    )
+    runner = FakeRunner({"report": RunResult(exit_code=0, output=tree_report)})
+    result = run_profile(tmp_path, runner)
+
+    assert isinstance(result, ProfileReport)
+    assert [mark.category for mark in result.fingerprints] == ["map-machinery"]
+    assert result.fingerprints[0].candidates
+    assert result.next_step is not None
+    assert "benchmark_variants" in result.next_step

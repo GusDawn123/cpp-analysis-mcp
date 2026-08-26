@@ -41,6 +41,12 @@ workload, and rejects any variant whose output stopped matching the
 baseline. A rewrite that got faster by answering differently is not
 faster, it is wrong.
 
+Profiles come back interpreted, not just ranked. Instead of a wall
+of mangled symbols, the report says things like "42% of self time
+inside std::map tree machinery", names the rewrite families worth
+trying, and tells you how much to trust the numbers given the sample
+count.
+
 Under the hood: ThreadSanitizer for data races, AddressSanitizer
 for memory corruption, LeakSanitizer for leaks, UBSan for undefined
 behavior, clang-tidy and -Wthread-safety at compile time, and perf
