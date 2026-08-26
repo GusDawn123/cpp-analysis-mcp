@@ -1,10 +1,5 @@
-"""The guided workflows, published as MCP prompts.
-
-A tool description can only argue for its own tool. These are the recipes that walk an
-agent through several tools in the right order, and clients surface them as slash
-commands. Each one is written as a work order: what success means first, numbered steps
-naming exact tools, then the rules that hold whatever happens.
-"""
+"""The guided workflows, published as MCP prompts: multi-tool recipes a single tool
+description cannot carry, written as work orders with success first, steps, then rules."""
 
 from __future__ import annotations
 
@@ -13,6 +8,10 @@ Run a full correctness pass over {source} and fix what it finds.
 
 Success means full_check_file reports zero findings, and every fix is explained in one
 line: what changed and why.
+
+{source} must be a standalone program whose main() exercises the code. For a library
+file, write a small driver file that calls into it and run this recipe on the driver;
+never add a main() to the library itself just to satisfy a tool.
 
 Steps:
 1. Call capabilities. Note anything unavailable; a missing detector's silence is not a
@@ -32,6 +31,10 @@ Make {source} measurably faster without changing what it computes.
 
 Success means a benchmark_variants report where the adopted version beats the original
 with matching output, and a second profile showing the hotspot shrank.
+
+{source} must be a standalone program whose main() runs a real workload. For a library
+file, write a small driver that exercises the hot path for a second or more and run
+this recipe on the driver; never add a main() to the library itself.
 
 Steps:
 1. Call profile_file on {source}. Read samples and confidence before trusting the
@@ -54,10 +57,8 @@ output differed. Leave the workload generator alone when the rng fingerprint nam
 
 
 def checkup(source: str) -> str:
-    """Render the correctness recipe for one file."""
     return CHECKUP.format(source=source)
 
 
 def make_it_faster(source: str) -> str:
-    """Render the speed recipe for one file."""
     return MAKE_IT_FASTER.format(source=source)
