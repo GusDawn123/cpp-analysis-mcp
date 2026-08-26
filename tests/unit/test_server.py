@@ -52,8 +52,13 @@ TOOL_NAMES = frozenset(
         "static_check_snippet",
         "profile_file",
         "profile_project",
+        "benchmark_variants",
     }
 )
+
+# the two tools that publish no CapabilityStatus outcome: capabilities returns the statuses
+# themselves, and the race gates on nothing -- a plain compile-and-run cannot break silently
+UNGATED_TOOLS = ("capabilities", "benchmark_variants")
 
 SANITIZER_TOOLS = ("sanitize_file", "sanitize_project", "sanitize_snippet")
 CHECK_TOOLS = ("static_check_file", "static_check_snippet")
@@ -75,6 +80,9 @@ SHAPE_PHRASES: Mapping[str, tuple[str, ...]] = {
     # the probe is why an unavailable answer is worth anything: a version number can claim
     # a sanitizer the runtime library is missing
     "capabilities": ("probe", "unavailable"),
+    # the race's contract: whole programs, the first one defines the right answer, and a
+    # fast variant with a different answer must be told from a win
+    "benchmark_variants": ("whole programs", "baseline", "same output", "fixed seed"),
 }
 
 # the two outcomes every pipeline can hand back whatever it was asked. Both have to be in
@@ -151,6 +159,10 @@ INSTRUCTION_PHRASES = (
     "why is this code slow?",
     "profile_project",
     "Only measurement ranks anything",
+    # the race sits beside the profiler, and the instructions are where an assistant
+    # learns a speedup claim needs one behind it
+    "benchmark_variants",
+    "races",
 )
 
 
@@ -374,7 +386,7 @@ def result_of(structured: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_eight_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
+async def test_the_nine_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
     """The names are the API. A client config lists them, so a rename breaks every caller,
     and an extra one is a rung nobody documented."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
@@ -467,7 +479,7 @@ async def test_every_analysis_outcome_is_in_the_published_schema(tmp_path: Path)
     ):
         listed = await client.list_tools()
 
-    analysis_tools = [tool for tool in listed.tools if tool.name != "capabilities"]
+    analysis_tools = [tool for tool in listed.tools if tool.name not in UNGATED_TOOLS]
     incomplete = [
         f"{tool.name}: {sorted((tool.output_schema or {}).get('$defs', {}))}"
         for tool in analysis_tools
@@ -475,10 +487,34 @@ async def test_every_analysis_outcome_is_in_the_published_schema(tmp_path: Path)
         >= UNION_MEMBERS | {REPORT_MEMBER.get(tool.name, DEFAULT_REPORT)}
     ]
 
-    assert len(analysis_tools) == len(TOOL_NAMES) - 1
+    assert len(analysis_tools) == len(TOOL_NAMES) - len(UNGATED_TOOLS)
     assert not incomplete, "an outcome is missing from a published schema:\n" + "\n".join(
         incomplete
     )
+
+
+@pytest.mark.anyio
+async def test_the_races_own_outcomes_are_in_its_published_schema(tmp_path: Path) -> None:
+    """The race's union has no CapabilityStatus arm on purpose -- nothing gates it -- but
+    its two real outcomes and the shapes inside them still have to be published, or a
+    client validates a build failure as a protocol fault."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    tool = next(entry for entry in listed.tools if entry.name == "benchmark_variants")
+    published = set((tool.output_schema or {}).get("$defs", {}))
+    assert published >= {"BenchmarkReport", "BuildFailure", "VariantResult"}
+    assert "Variant" in set(tool.input_schema.get("$defs", {}))
+
+    # the limits live in the schema too, so a client refuses a six-variant race before
+    # anything is spawned instead of learning the bounds from a failed call
+    properties = tool.input_schema["properties"]
+    assert properties["variants"]["minItems"] == 2
+    assert properties["variants"]["maxItems"] == 5
+    assert properties["repeats"]["minimum"] == 2
+    assert properties["repeats"]["maximum"] == 20
 
 
 @pytest.mark.anyio
@@ -678,6 +714,82 @@ async def test_a_snippet_is_checked_at_compile_time_without_being_linked(
     assert written.name == "snippet.cpp"
     assert tmp_path in written.parents
     assert written.read_text(encoding="utf-8") == SNIPPET_SOURCE
+
+
+@pytest.mark.anyio
+async def test_a_race_runs_whole_over_the_protocol_and_ranks_what_matched(
+    tmp_path: Path,
+) -> None:
+    """The full race as an assistant meets it: two variants in as JSON, release builds, the
+    baseline's warmup defining the answer, interleaved timed runs, and a ranking out. The
+    spawn order is the methodology, so it is pinned call by call."""
+    answer = RunResult(exit_code=0, output="trades=1200\n")
+    runner = ScriptedRunner([SUCCESS, SUCCESS, answer, answer, answer, answer, answer, answer])
+    app = a_context(tmp_path, runner)
+
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool(
+            "benchmark_variants",
+            {
+                "variants": [
+                    {"name": "baseline", "code": SNIPPET_SOURCE},
+                    {"name": "flat", "code": SNIPPET_SOURCE},
+                ],
+                "repeats": 2,
+            },
+        )
+
+    report = result_of(result.structured_content)
+    assert report["baseline"] == "baseline"
+    assert report["repeats"] == 2
+    assert {row["name"] for row in report["variants"]} == {"baseline", "flat"}
+    assert all(row["matches_baseline"] for row in report["variants"])
+    assert all(row["rejected"] is None for row in report["variants"])
+    assert all(row["runs"] == 2 for row in report["variants"])
+    assert report["next_step"] is not None
+
+    # both compiles at release optimization, neither instrumented
+    for spawn in runner.spawns[:2]:
+        assert "-O2" in spawn.cmd
+        assert not [arg for arg in spawn.cmd if arg.startswith("-fsanitize")]
+    # warmups first, then the rounds interleave: nobody gets the machine twice in a row
+    ran = [Path(spawn.cmd[0]).stem for spawn in runner.spawns[2:]]
+    assert ran == ["baseline", "flat", "baseline", "flat", "baseline", "flat"]
+
+
+@pytest.mark.anyio
+async def test_a_variant_that_answers_differently_is_rejected_over_the_protocol(
+    tmp_path: Path,
+) -> None:
+    """The same-answer rule surviving serialization: the lying variant comes back rejected
+    with no numbers, and not one timed run was spent on it."""
+    right = RunResult(exit_code=0, output="trades=1200\n")
+    wrong = RunResult(exit_code=0, output="trades=999\n")
+    runner = ScriptedRunner([SUCCESS, SUCCESS, right, wrong, right, right])
+    app = a_context(tmp_path, runner)
+
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool(
+            "benchmark_variants",
+            {
+                "variants": [
+                    {"name": "baseline", "code": SNIPPET_SOURCE},
+                    {"name": "liar", "code": SNIPPET_SOURCE},
+                ],
+                "repeats": 2,
+            },
+        )
+
+    report = result_of(result.structured_content)
+    liar = next(row for row in report["variants"] if row["name"] == "liar")
+    assert liar["rejected"] == "output differs from the baseline"
+    assert liar["mean_ms"] is None
+    assert [Path(spawn.cmd[0]).stem for spawn in runner.spawns[2:]] == [
+        "baseline",
+        "liar",  # its warmup, where the answer check caught it
+        "baseline",
+        "baseline",
+    ]
 
 
 @pytest.mark.anyio
