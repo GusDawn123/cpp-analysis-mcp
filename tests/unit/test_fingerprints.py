@@ -72,9 +72,7 @@ def test_patterns_below_the_noise_floor_stay_out() -> None:
 
 
 def test_plain_user_code_produces_no_fingerprints() -> None:
-    found = fingerprints.read(
-        [spot("Book::match()", 60.0), spot("Book::add(unsigned long)", 30.0)]
-    )
+    found = fingerprints.read([spot("Book::match()", 60.0), spot("Book::add(unsigned long)", 30.0)])
 
     assert found == ()
     assert fingerprints.next_step(found) is None
@@ -111,9 +109,7 @@ def test_rng_is_named_but_never_actionable() -> None:
 
 
 def test_unresolved_hex_is_grouped_and_explained() -> None:
-    found = fingerprints.read(
-        [spot("0x0000000000197e47", 41.9), spot("0x00007c4991f97d6a", 7.8)]
-    )
+    found = fingerprints.read([spot("0x0000000000197e47", 41.9), spot("0x00007c4991f97d6a", 7.8)])
 
     assert categories(found) == ["unresolved"]
     assert found[0].share_pct == 49.7

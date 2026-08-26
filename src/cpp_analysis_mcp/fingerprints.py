@@ -24,8 +24,7 @@ FIRM_SAMPLES = 3000
 HEX_NAME = re.compile(r"^0x[0-9a-fA-F]+$")
 
 NEXT_STEP = (
-    "pick a candidate, write 2 or 3 whole-program variants, and race them with "
-    "benchmark_variants"
+    "pick a candidate, write 2 or 3 whole-program variants, and race them with benchmark_variants"
 )
 
 
@@ -80,7 +79,14 @@ RULES: tuple[Rule, ...] = (
     Rule(
         category="allocation",
         statement="{pct}% of self time allocating memory, kernel page faults included",
-        markers=("operator new", "_int_malloc", "malloc", "mm_fault", "page_fault", "anonymous_page"),
+        markers=(
+            "operator new",
+            "_int_malloc",
+            "malloc",
+            "mm_fault",
+            "page_fault",
+            "anonymous_page",
+        ),
         candidates=(
             "a pool or arena for the hot objects",
             "store objects by value inside their container",
