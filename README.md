@@ -23,16 +23,23 @@ up to. This project is that wiring.
 
 ## What it does
 
-Eight tools, three questions:
+Nine tools, four questions:
 
 | Question                  | Tools                               | Cost    |
 |---------------------------|-------------------------------------|---------|
 | Does anything look wrong? | static_check_file / _snippet        | seconds |
 | Is it actually wrong?     | sanitize_file / _project / _snippet | minutes |
 | Where is it slow?         | profile_file / _project             | minutes |
+| Which rewrite is faster?  | benchmark_variants                  | minutes |
 
 The agent starts cheap and escalates only when it has to.
-The eighth tool, capabilities, reports what this machine can really run.
+The ninth tool, capabilities, reports what this machine can really run.
+
+benchmark_variants is the one that ends arguments: it races up to
+five versions of a program on your machine, feeds them the same
+workload, and rejects any variant whose output stopped matching the
+baseline. A rewrite that got faster by answering differently is not
+faster, it is wrong.
 
 Under the hood: ThreadSanitizer for data races, AddressSanitizer
 for memory corruption, LeakSanitizer for leaks, UBSan for undefined
