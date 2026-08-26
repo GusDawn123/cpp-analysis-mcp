@@ -5,3 +5,9 @@ reviews:
     base_branches:
       - main
       - develop
+  path_instructions:
+    - path: "**/*.py"
+      instructions: >-
+        Flag any comment that restates what the code already says, and any comment that
+        runs longer than the point it makes. Comments should be short and explain why,
+        a constraint, or a trap. Prefer removing an obvious comment over keeping it.
