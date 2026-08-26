@@ -2,6 +2,7 @@
 name = "cpp-analysis-mcp"
 version = "0.1.0"
 description = "MCP server exposing C++ sanitizers, static analysis, and profilers to AI agents"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "anyio>=4.14.2",
