@@ -181,6 +181,27 @@ class Hotspot:
 
 
 @dataclass(frozen=True, slots=True)
+class FullCheckReport:
+    """Every correctness analysis over one target, merged into one answer.
+
+    `ran` names the analyses whose detector provably worked and reported; `unavailable`
+    and `failed_builds` carry the ones that could not, each with its reason. Without
+    those two, a battery missing half its detectors would read as a clean bill of health.
+    """
+
+    findings: tuple[Finding, ...]
+    ran: tuple[str, ...]
+    unavailable: Mapping[str, str]
+    failed_builds: Mapping[str, str]
+    next_step: str | None = None
+
+    def __post_init__(self) -> None:
+        # same reason BuiltBinary proxies its mapping: frozen= does not stop item writes
+        object.__setattr__(self, "unavailable", MappingProxyType(dict(self.unavailable)))
+        object.__setattr__(self, "failed_builds", MappingProxyType(dict(self.failed_builds)))
+
+
+@dataclass(frozen=True, slots=True)
 class Fingerprint:
     """One recognized pattern in a profile: the fact in plain words, plus the known
     rewrite families for it. Never a diff and never a verdict."""
