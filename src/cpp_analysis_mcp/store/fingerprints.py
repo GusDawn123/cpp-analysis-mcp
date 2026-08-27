@@ -34,6 +34,10 @@ Two identity boundaries are accepted for scheme 1, both pinned by regression tes
 Both would be solved by hashing token context or the enclosing symbol -- the richer
 scheme ADR-0002 defers until real-world collisions demand it. That is what bumping
 SCHEME_VERSION is for.
+
+Naming note: this module is about *finding identity*. The `Fingerprint` class in the
+shared vocabulary is a different, older concept -- a recognized pattern in a profile's
+time distribution. The split is deliberate (ADR-0002, "Two meanings of fingerprint").
 """
 
 from collections.abc import Callable, Sequence
@@ -88,9 +92,14 @@ def fingerprint(finding: Finding, line_text: str, occurrence_index: int) -> Find
 
     A finding with no location fingerprints on rule and empty file and text -- build
     failures and whole-run diagnostics are rare, and "the same rule with no location"
-    being one identity is the behavior a baseline wants for them.
+    being one identity is the behavior a baseline wants for them. The text argument is
+    ignored for those on purpose: the spec says locationless findings contribute empty
+    text, and which entry point computed a fingerprint must never change it.
     """
-    path = finding.location.file if finding.location is not None else ""
+    if finding.location is None:
+        path, line_text = "", ""
+    else:
+        path = finding.location.file
     digest = compute_fingerprint(finding.category, path, line_text, occurrence_index)
     return replace(finding, fingerprint=digest, fingerprint_scheme=SCHEME_VERSION)
 

@@ -255,7 +255,11 @@ class FullCheckReport:
 @dataclass(frozen=True, slots=True)
 class Fingerprint:
     """One recognized pattern in a profile: the fact in plain words, plus the known
-    rewrite families for it. Never a diff and never a verdict."""
+    rewrite families for it. Never a diff and never a verdict.
+
+    Unrelated to finding identity: `Finding.fingerprint` and store/fingerprints.py hash
+    what was flagged and where. The shared word is deliberate -- ADR-0002 has the note.
+    """
 
     category: str
     share_pct: float
