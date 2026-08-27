@@ -1,8 +1,7 @@
-"""Import shim: the vocabulary moved to store.models (architecture v2, layer 2).
+"""The store: normalized findings, and — as the phase advances — their identity and operations.
 
-Importers migrate as later sub-chunks touch them — never in a big-bang rename — so this
-file forwards the old path until the last `from cpp_analysis_mcp.models import ...` is
-gone, and then it is deleted. Add nothing here.
+Layer 2 of architecture v2. Today it holds the shared vocabulary; fingerprints and the
+store operations (dedup, baselines, suppressions) land in the next sub-chunks.
 """
 
 from cpp_analysis_mcp.store.models import (
