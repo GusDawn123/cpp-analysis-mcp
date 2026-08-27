@@ -68,8 +68,11 @@ def test_confirmation_is_frozen_and_slotted() -> None:
 
 
 def test_the_shim_and_the_package_export_the_same_vocabulary() -> None:
+    # the shim forwards exactly the vocabulary -- it must never grow store operations,
+    # or the legacy import path would gain surface the migration is trying to retire.
+    # the package facade is a superset: vocabulary plus the store API
     assert sorted(shim.__all__) == sorted(store_models.__all__)
-    assert sorted(store_package.__all__) == sorted(store_models.__all__)
+    assert set(store_models.__all__) < set(store_package.__all__)
 
 
 def test_the_shim_forwards_the_same_objects_not_copies() -> None:
