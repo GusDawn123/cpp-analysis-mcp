@@ -1,9 +1,16 @@
-"""The store: normalized findings, and — as the phase advances — their identity and operations.
+"""The store: the shared vocabulary, finding identity, and the operations over both.
 
-Layer 2 of architecture v2. Today it holds the shared vocabulary; fingerprints and the
-store operations (dedup, baselines, suppressions) land in the next sub-chunks.
+Layer 2 of architecture v2. Models are the nouns every layer speaks; fingerprints give
+findings an identity that survives edits; FindingStore answers the questions a review
+gate asks -- what is new, what agrees, what is hidden, what to show first.
 """
 
+from cpp_analysis_mcp.store.fingerprints import (
+    SCHEME_VERSION,
+    compute_fingerprint,
+    fingerprint,
+    fingerprint_batch,
+)
 from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     AccessOp,
@@ -22,9 +29,11 @@ from cpp_analysis_mcp.store.models import (
     Severity,
     ThreadAccess,
 )
+from cpp_analysis_mcp.store.store import FindingStore
 
 __all__ = [
     "SANITIZER_FOR",
+    "SCHEME_VERSION",
     "AccessOp",
     "Analysis",
     "AnalysisReport",
@@ -33,6 +42,7 @@ __all__ = [
     "CapabilityStatus",
     "Confirmation",
     "Finding",
+    "FindingStore",
     "Frame",
     "Hotspot",
     "Location",
@@ -40,4 +50,7 @@ __all__ = [
     "SanitizerKind",
     "Severity",
     "ThreadAccess",
+    "compute_fingerprint",
+    "fingerprint",
+    "fingerprint_batch",
 ]
