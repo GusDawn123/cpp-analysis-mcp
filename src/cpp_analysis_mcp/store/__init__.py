@@ -1,10 +1,16 @@
-"""Import shim: the vocabulary moved to store.models (architecture v2, layer 2).
+"""The store: the shared vocabulary, finding identity, and the operations over both.
 
-Importers migrate as later sub-chunks touch them — never in a big-bang rename — so this
-file forwards the old path until the last `from cpp_analysis_mcp.models import ...` is
-gone, and then it is deleted. Add nothing here.
+Layer 2 of architecture v2. Models are the nouns every layer speaks; fingerprints give
+findings an identity that survives edits; FindingStore answers the questions a review
+gate asks -- what is new, what agrees, what is hidden, what to show first.
 """
 
+from cpp_analysis_mcp.store.fingerprints import (
+    SCHEME_VERSION,
+    compute_fingerprint,
+    fingerprint,
+    fingerprint_batch,
+)
 from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     AccessOp,
@@ -28,9 +34,11 @@ from cpp_analysis_mcp.store.models import (
     Variant,
     VariantResult,
 )
+from cpp_analysis_mcp.store.store import FindingStore
 
 __all__ = [
     "SANITIZER_FOR",
+    "SCHEME_VERSION",
     "AccessOp",
     "Analysis",
     "AnalysisReport",
@@ -40,6 +48,7 @@ __all__ = [
     "CapabilityStatus",
     "Confirmation",
     "Finding",
+    "FindingStore",
     "Fingerprint",
     "Frame",
     "FullCheckReport",
@@ -51,4 +60,7 @@ __all__ = [
     "ThreadAccess",
     "Variant",
     "VariantResult",
+    "compute_fingerprint",
+    "fingerprint",
+    "fingerprint_batch",
 ]
