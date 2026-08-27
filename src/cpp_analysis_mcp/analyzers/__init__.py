@@ -14,14 +14,18 @@ from cpp_analysis_mcp.analyzers.base import (
     Scope,
     UnitOfWork,
 )
+from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
+from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 
 __all__ = [
     "Analyzer",
     "AnalyzerContext",
     "Applicability",
+    "ClangTidyAnalyzer",
     "CostTier",
     "Registry",
     "Resolution",
     "Scope",
     "UnitOfWork",
+    "WarningsAnalyzer",
 ]
