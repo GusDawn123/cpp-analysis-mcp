@@ -19,3 +19,4 @@ a.out
 # container crashes drop core dumps at the bind-mount root
 /core
 /core.*
+.vscode/
