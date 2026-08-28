@@ -265,6 +265,25 @@ def test_a_file_the_database_never_compiled_gets_every_include_it_knows(tmp_path
     assert f"-I{other}" in flags
 
 
+def test_a_relative_file_entry_resolves_against_its_own_directory(tmp_path: Path) -> None:
+    """CMake writes absolute paths, but bear and hand-written databases write relative
+    ones -- resolved against the process's cwd they match nothing, and the entry's
+    flags are silently lost."""
+    source, include = a_project(tmp_path)
+    database = write_db(
+        tmp_path / "build",
+        [
+            {
+                "directory": str(source.parent),
+                "file": source.name,
+                "command": f"clang++ -I{include} -DMATCHED -c {source.name}",
+            }
+        ],
+    )
+
+    assert "-DMATCHED" in compile_db.flags_for(database, source)
+
+
 def test_paths_spelled_differently_still_match_the_same_file(tmp_path: Path) -> None:
     """A database writes whatever spelling the build used -- forward slashes on Windows, a
     different case -- so the strings are not comparable and the resolved paths are."""

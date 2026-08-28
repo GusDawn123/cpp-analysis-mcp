@@ -129,7 +129,14 @@ def _entry(database: Path, source: Path) -> dict[str, object] | None:
     wanted = _normalized(source)
     for entry in _entries(database):
         named = entry.get("file")
-        if isinstance(named, str) and _normalized(Path(named)) == wanted:
+        if not isinstance(named, str):
+            continue
+        # a relative `file` is relative to the entry's own `directory`, per the spec:
+        # CMake writes absolute paths, but bear and hand-written databases write
+        # relative ones, and resolved against the cwd they would match nothing
+        directory = entry.get("directory")
+        base = Path(directory) if isinstance(directory, str) else Path.cwd()
+        if _normalized(Path(_absolute(named, base))) == wanted:
             return entry
     return None
 

@@ -75,7 +75,7 @@ class FindingStore:
                     existing, confirmations=confirmed
                 )
 
-    def findings(self, include_suppressed: bool = False) -> tuple[Finding, ...]:
+    def findings(self, *, include_suppressed: bool = False) -> tuple[Finding, ...]:
         """Everything on record, in the order it arrived; suppressed entries opt in.
 
         The flag exists because suppression must be inspectable to be trustworthy:

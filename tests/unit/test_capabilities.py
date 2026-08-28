@@ -503,6 +503,21 @@ def test_a_different_compiler_version_fingerprints_differently() -> None:
     assert fingerprint(older, a_darwin()) != fingerprint(a_clang(), a_darwin())
 
 
+def test_a_clang_tidy_change_retires_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tidy probe's outcome depends on a binary the compiler fields never mention:
+    installing or removing clang-tidy must re-probe, not replay a stale answer."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    searched = Platform(name="linux", extra_tool_dirs=(tmp_path,))
+
+    absent = fingerprint(a_clang(), searched)
+    (tmp_path / "clang-tidy").write_text("#!/bin/sh\n", encoding="utf-8")
+    installed = fingerprint(a_clang(), searched)
+
+    assert absent != installed
+
+
 def test_a_different_compiler_path_fingerprints_differently() -> None:
     brewed = clang.toolchain(Path("/opt/homebrew/opt/llvm/bin/clang++"), "clang version 18.1.8")
     system = clang.toolchain(Path("/usr/bin/clang++"), "clang version 18.1.8")

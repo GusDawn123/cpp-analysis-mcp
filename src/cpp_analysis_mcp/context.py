@@ -43,7 +43,8 @@ NO_COMPILER = (
     f"{' and '.join(capabilities.COMPILER_CANDIDATES)}): neither is on PATH, or one is there "
     "but could not report a version when asked. Install or repair one: xcode-select --install "
     "or brew install llvm on macOS, sudo apt install clang or sudo apt install g++ on Debian "
-    "and Ubuntu."
+    "and Ubuntu, winget install LLVM.LLVM on Windows (then add its bin directory to PATH; "
+    "the installer offers a checkbox for it)."
 )
 
 
