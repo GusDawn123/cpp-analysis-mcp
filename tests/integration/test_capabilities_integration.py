@@ -20,7 +20,7 @@ from helpers import FIXTURES_SCRIPT
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

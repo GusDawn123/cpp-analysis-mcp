@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 
 @dataclass(frozen=True, slots=True)

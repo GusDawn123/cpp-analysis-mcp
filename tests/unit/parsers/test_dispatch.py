@@ -8,8 +8,8 @@ that dispatched TSan output to the ASan reader fails here.
 
 from __future__ import annotations
 
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.parsers import PARSER_FOR, asan, lsan, tsan, ubsan
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis
 
 
 def test_every_analysis_that_needs_a_sanitizer_has_a_reader() -> None:

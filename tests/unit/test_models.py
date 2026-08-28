@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     AccessOp,
     Analysis,

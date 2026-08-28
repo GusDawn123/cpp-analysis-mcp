@@ -13,8 +13,8 @@ from dataclasses import dataclass
 import pytest
 from helpers import GOLDEN_DIR
 
-from cpp_analysis_mcp.models import Severity
 from cpp_analysis_mcp.parsers import asan
+from cpp_analysis_mcp.store.models import Severity
 
 
 @dataclass(frozen=True)

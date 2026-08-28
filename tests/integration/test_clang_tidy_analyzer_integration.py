@@ -18,8 +18,8 @@ from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Scope
 from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, Severity
 from cpp_analysis_mcp.pipelines.static_check import check_file
+from cpp_analysis_mcp.store.models import Analysis, Severity
 
 pytestmark = pytest.mark.integration
 

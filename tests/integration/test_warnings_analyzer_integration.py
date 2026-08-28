@@ -17,8 +17,8 @@ from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Scope
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.pipelines.static_check import check_file
+from cpp_analysis_mcp.store.models import Analysis
 
 pytestmark = pytest.mark.integration
 

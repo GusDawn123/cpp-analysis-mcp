@@ -24,9 +24,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp.build.cmake import build_project
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.platforms.base import FailureSignature, Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

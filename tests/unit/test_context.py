@@ -28,10 +28,10 @@ import pytest
 from cpp_analysis_mcp import platforms, profiler
 from cpp_analysis_mcp.capabilities import PROBE_STEM
 from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms import linux, windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 

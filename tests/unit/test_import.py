@@ -1,7 +1,7 @@
 """Smoke test proving the package imports and its dataclasses construct."""
 
 import cpp_analysis_mcp
-from cpp_analysis_mcp.models import Finding, Location, Severity
+from cpp_analysis_mcp.store.models import Finding, Location, Severity
 
 
 def test_version() -> None:

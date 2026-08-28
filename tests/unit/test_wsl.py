@@ -17,9 +17,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import wsl
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms import linux
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis
 
 # where the fake PATH puts wsl.exe; spelled through Path so comparisons hold on any OS
 WSL_PATH = str(Path("/windows/system32/wsl.exe"))

@@ -16,9 +16,9 @@ from helpers import cpp_source
 
 from cpp_analysis_mcp import battery, platforms, process
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

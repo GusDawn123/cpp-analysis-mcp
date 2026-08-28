@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis
+from cpp_analysis_mcp.store.models import Analysis
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 NO_THREAD_SAFETY = (

@@ -15,9 +15,9 @@ import pytest
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains
-from cpp_analysis_mcp.models import BenchmarkReport, Variant
 from cpp_analysis_mcp.pipelines.benchmark import DIFFERS, race
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import BenchmarkReport, Variant
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

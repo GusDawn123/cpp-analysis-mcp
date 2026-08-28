@@ -23,16 +23,16 @@ from pathlib import Path
 
 from cpp_analysis_mcp import fingerprints, process, profiler
 from cpp_analysis_mcp.build import cmake, single_file
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers import perf
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import (
     Analysis,
     BuildFailure,
     BuiltBinary,
     CapabilityStatus,
     ProfileReport,
 )
-from cpp_analysis_mcp.parsers import perf
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains.base import PROFILE_FLAGS, Toolchain
 
 # a profiled binary runs at very close to its normal speed -- sampling costs a timer

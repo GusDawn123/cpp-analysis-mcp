@@ -14,8 +14,8 @@ from pathlib import Path
 
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Location, Severity
 from cpp_analysis_mcp.parsers.clang_tidy import parse
+from cpp_analysis_mcp.store.models import Location, Severity
 
 CLANG_TIDY_GOLDEN = "clang_tidy_nullptr_zero.linux-clang.txt"
 

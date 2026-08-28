@@ -24,7 +24,6 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.pipelines.static_check import (
     CHECK_TIMEOUT_S,
     DEFAULT_CHECKS,
@@ -34,6 +33,7 @@ from cpp_analysis_mcp.pipelines.static_check import (
 )
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR
 
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers.tsan import parse
+from cpp_analysis_mcp.store.models import (
     AccessOp,
     Finding,
     Frame,
@@ -21,7 +22,6 @@ from cpp_analysis_mcp.models import (
     Severity,
     ThreadAccess,
 )
-from cpp_analysis_mcp.parsers.tsan import parse
 
 # paths as the goldens spell them, kept here so the assertions stay under the line limit
 CPP_DIR_IN_GOLDEN = "/w/tests/fixtures/cpp"

@@ -21,7 +21,10 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.build import cmake, single_file
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers import PARSER_FOR
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     Analysis,
     AnalysisReport,
@@ -29,9 +32,6 @@ from cpp_analysis_mcp.models import (
     BuiltBinary,
     CapabilityStatus,
 )
-from cpp_analysis_mcp.parsers import PARSER_FOR
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # a sanitized program runs at a fraction of its normal speed, so this is generous next to

@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import platforms
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.platforms import darwin, linux, windows
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 # vm.mmap_rnd_bits as Ubuntu 24.04 ships it -- the value the mapping crash was measured at
 MEASURED_RND_BITS = "32"

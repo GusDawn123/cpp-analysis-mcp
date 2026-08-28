@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from cpp_analysis_mcp.models import Finding, Location, Severity
+from cpp_analysis_mcp.store.models import Finding, Location, Severity
 
 TOOL = "compiler"
 

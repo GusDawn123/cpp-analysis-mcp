@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from cpp_analysis_mcp.models import Analysis, Finding
 from cpp_analysis_mcp.parsers import asan, lsan, tsan, ubsan
+from cpp_analysis_mcp.store.models import Analysis, Finding
 
 # one entry per sanitizer analysis; the compile-time analyses read a compiler's own output
 # and go through parsers.diagnostics instead

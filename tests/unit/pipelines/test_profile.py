@@ -15,10 +15,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis, BuildFailure, CapabilityStatus, ProfileReport
 from cpp_analysis_mcp.pipelines.profile import profile_file, profile_project
 from cpp_analysis_mcp.platforms.base import Denial, Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, BuildFailure, CapabilityStatus, ProfileReport
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # spelled through Path so the string compares equal to str(Path(...)) on Windows too

@@ -32,10 +32,10 @@ from mcp import Client
 from mcp.server import MCPServer
 
 from cpp_analysis_mcp.context import Context
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.server import Lifespan, build_server, live
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

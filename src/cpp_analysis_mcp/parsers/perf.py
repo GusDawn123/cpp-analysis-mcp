@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 
-from cpp_analysis_mcp.models import Hotspot, Location
+from cpp_analysis_mcp.store.models import Hotspot, Location
 
 # what the pipeline passes to `perf report -t`; the parser and the command that produces its
 # input have to agree on this, so it lives here and the pipeline imports it

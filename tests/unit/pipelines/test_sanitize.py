@@ -22,10 +22,10 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file, analyze_project, analyze_snippet
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

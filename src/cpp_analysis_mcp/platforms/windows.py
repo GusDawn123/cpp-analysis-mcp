@@ -11,8 +11,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 NAME = "windows"
 

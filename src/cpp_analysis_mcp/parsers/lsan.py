@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from ..models import Finding, Location, Severity
+from ..store.models import Finding, Location, Severity
 
 TOOL = "lsan"
 

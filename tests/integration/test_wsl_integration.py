@@ -17,8 +17,8 @@ from helpers import bug_line, cpp_source
 from cpp_analysis_mcp import wsl
 from cpp_analysis_mcp.capabilities import probe_all
 from cpp_analysis_mcp.context import resolve
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, CapabilityStatus
 
 pytestmark = pytest.mark.integration
 
