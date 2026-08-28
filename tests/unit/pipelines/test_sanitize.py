@@ -1,15 +1,8 @@
 """Drive the whole sanitize chain with no compiler and no child process anywhere.
 
-The only thing faked is the subprocess boundary: capability gating, build composition,
-environment binding and parsing are the real code, and the fake answers each spawn with
-text a real sanitizer once printed. That is why the run-stage replies are committed
-goldens rather than invented strings -- a chain that parsed a hand-written approximation
-would keep passing on the day it stopped understanding the real thing.
-
-Every expectation is written down rather than read from the code under test: the pinned
-TSan options, the category and line each golden holds, the name the build gives a
-sanitized binary. Assertions are on what the fake recorded and on what came back, never
-on how many times something was called.
+Only the subprocess boundary is faked -- capability gating, build composition, and parsing
+are real code, and run-stage replies are committed goldens, never invented strings, so a
+hand-written approximation can't keep passing after the real tool's output changes.
 """
 
 from __future__ import annotations

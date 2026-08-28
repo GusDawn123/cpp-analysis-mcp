@@ -1,10 +1,8 @@
 """Pin the compiler-diagnostic parser against a captured -Wthread-safety run.
 
-Every number here was read out of the golden by eye and written down; nothing is computed
-from the parser it checks, so a parser that starts reporting a different line, severity or
-category fails instead of moving the expectation with it. The synthetic cases below cover
-the forms one macOS clang run cannot show: gcc's flagless diagnostics, errors, missing
-columns, and the note lines that must never become findings of their own.
+Every number here was read off the golden by eye, not computed from the parser it checks,
+so a drifted line, severity, or category fails instead of moving with it. Synthetic cases
+cover what macOS clang alone can't show: gcc's flagless diagnostics, missing columns, and notes.
 """
 
 from __future__ import annotations
@@ -69,7 +67,6 @@ def test_the_flag_suffix_leaves_the_message() -> None:
 
 
 def test_the_golden_blames_the_marked_bug_line() -> None:
-    """End-to-end on the fixture convention: clang named the line // BUG: sits on."""
     finding = parse(golden(THREAD_SAFETY_GOLDEN))[0]
 
     assert finding.location is not None
@@ -212,7 +209,6 @@ def test_aggregation_keeps_first_seen_order() -> None:
 
 
 def test_lines_differing_anywhere_stay_separate() -> None:
-    """Same message, different position, severity or flag: three problems, not one."""
     text = (
         "a.cpp:1:1: warning: same words [-Wone]\n"
         "a.cpp:2:1: warning: same words [-Wone]\n"

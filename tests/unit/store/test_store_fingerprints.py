@@ -1,11 +1,8 @@
 """Prove fingerprints hold identity still while everything around a finding moves.
 
-Each invariance here is a way a baseline would otherwise lie: a line inserted above,
-a reformat, a block moved wholesale -- none of them may change who a finding is, or the
-diff against main reports dozens of "new" findings from a one-line edit. The other
-direction matters as much: two identical flagged lines are two findings, different
-rules are different findings, and adjacent fields must never trade characters into a
-manufactured collision.
+An inserted line, a reformat, or a moved block must not change who a finding is, or the
+diff against main reports false "new" findings from a one-line edit. The other direction
+matters too: identical lines are still two findings, and adjacent fields can't collide.
 """
 
 from __future__ import annotations

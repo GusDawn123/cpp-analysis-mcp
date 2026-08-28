@@ -1,13 +1,8 @@
 """Run the whole static_check chain against the real compiler and the real clang-tidy.
 
-The unit suite replays captured output through a fake process; this proves the loop that
-output came from -- probe the host, check a fixture whose bug is known, and require the parser
-to name the planted bug on the line the fixture marks. A pipeline that composed the wrong
-command, dropped the caller's checks or parsed with the wrong reader all produce the same
-empty report here, which is the failure this suite is built to catch.
-
-The clean fixture matters as much as the buggy ones: an all-clear is only worth anything from
-a chain that was demonstrated to report when there is something to report.
+The unit suite replays captured output through a fake process; this proves the real loop
+end to end -- a wrong command, dropped checks, or the wrong parser would all look like the
+same empty report. The clean fixture proves that all-clear is earned, not assumed.
 """
 
 from __future__ import annotations
@@ -97,11 +92,8 @@ def toolchain() -> Toolchain:
 
 @pytest.fixture(scope="module")
 def capabilities(toolchain: Toolchain, host: Platform) -> Capabilities:
-    """Probe once for the whole module: every case here goes through the same gate.
-
-    The cache is off, so these are this machine's answers today rather than a file written by
-    some earlier run.
-    """
+    """Probe once for the module, with the cache off so these are today's answers, not a file
+    some earlier run wrote."""
     return probe_all(toolchain, host, cache_dir=None)
 
 

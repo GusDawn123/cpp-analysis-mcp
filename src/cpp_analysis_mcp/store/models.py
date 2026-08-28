@@ -271,25 +271,21 @@ class Fingerprint:
 class ProfileReport:
     """Where the time went, and what makes the ranking worth believing.
 
-    Separate from AnalysisReport because a profiler answers a different question. A sanitizer
-    reports discrete facts that are true or absent; a profiler reports a distribution, and a
-    distribution read without knowing how it was sampled is a ranking of noise. So the two
-    numbers that decide whether these percentages mean anything travel with them:
-
-    `samples` is how many the profiler actually took. A hundred samples spread over a hundred
-    functions ranks nothing, and the difference between 40% and 30% at that count is chance.
-
-    `event` is what was counted. `cpu/cycles/P` is the hardware counter and is what a
-    profile normally means; a virtualized host with no PMU falls back to `cpu-clock`, a
-    timer interrupt, which still finds hot code but cannot see stalls -- and neither can be
-    told from the other by looking at the percentages.
+    Separate from AnalysisReport because a profiler answers a different question: a
+    sanitizer reports discrete facts that are true or absent, while a profiler reports a
+    distribution that means nothing without knowing how it was sampled -- so `samples`
+    and `event` travel with every percentage here.
     """
 
     analysis: Analysis
     # ordered by self time, hottest first -- the profiler's own order is by cumulative time,
     # which puts main() and _start at the top of every profile ever taken
     hotspots: tuple[Hotspot, ...]
+    # how many the profiler actually took; a hundred spread over a hundred functions ranks
+    # nothing, and small percentage differences at that count are chance
     samples: int
+    # what was counted: the hardware counter cpu/cycles/P, or a virtualized host's
+    # cpu-clock timer fallback -- indistinguishable from the percentages alone
     event: str
     # the ranking read back in plain words: which library machinery ate the time
     fingerprints: tuple[Fingerprint, ...] = ()

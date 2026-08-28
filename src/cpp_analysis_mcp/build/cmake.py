@@ -1,19 +1,9 @@
 """Build a real CMake project into a BuiltBinary, or say which cmake step died.
 
-Where single_file.py runs one command, a project has two that fail for different reasons, so
-a failure names the step: a configure that could not find the compiler and a build that hit
-a syntax error are not the same problem to whoever reads the report.
-
-Finding the binary afterwards is the part worth explaining. Guessing paths out of a build
-tree is a losing game -- the layout moves with the generator, with subdirectories, and with
-target properties like OUTPUT_NAME. So this asks instead. A File API query file written
-before configuring makes cmake record every target it defined and where each artifact
-lands, and the answer arrives as part of the configure that follows: no second invocation,
-no guessing, and the executables can be told apart from the libraries.
-
-A build that failed is a BuildFailure, not an exception -- user code that does not compile
-is an ordinary thing to observe. The Platform and Toolchain always arrive as arguments
-(rule 3); nothing here looks up the host.
+Finds the binary by asking, not guessing: a File API query written before configuring
+makes cmake record every target and artifact path as part of the configure that follows,
+with no layout-guessing that breaks with the generator or OUTPUT_NAME. Toolchain and
+Platform always arrive as arguments (rule 3) -- nothing here looks up the host.
 """
 
 from __future__ import annotations

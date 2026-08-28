@@ -1,19 +1,9 @@
 """Gate on the capability, build optimized, record, report -- one profiling run.
 
-The same four-step shape sanitize.py has, and the same reason for keeping the steps in one
-place: each is worthless alone and the order carries meaning that neither end would enforce.
-The gate is the same hard stop, for the same reason -- a profiler that was never watching
-produces an empty hotspot list, and an empty hotspot list reads exactly like a program with
-no hot code.
-
-One step differs from the sanitizers' and it is the step that decides whether the answer is
-worth anything: the build is optimized rather than instrumented. A sanitizer wants the code
-it was given, so it builds at -O1 and accepts the slowdown. A profiler wants the code that
-will actually run, and -O2 makes different inlining decisions than -O1 -- profile the -O1
-build and the ranking describes call sites the release binary does not contain.
-
-Composes primitives only, never another pipeline (rule 1); the Platform and Toolchain arrive
-as arguments (rule 3).
+Built optimized, not instrumented: a sanitizer accepts -O1's slowdown for the code it
+was given, but a profiler wants the code that will actually run -- -O2 inlines
+differently, and profiling the -O1 build ranks call sites the release binary lacks.
+Composes primitives only (rule 1); Platform and Toolchain arrive as arguments (rule 3).
 """
 
 from __future__ import annotations
@@ -61,6 +51,8 @@ def profile_file(
     Three outcomes, all of them ordinary: a report, the build failure that stopped one being
     produced, or the capability status saying this machine cannot profile at all.
     """
+    # a hard stop, not a degrade: a profiler that was never watching produces an empty
+    # hotspot list, and an empty hotspot list reads exactly like a program with no hot code
     status = capabilities[Analysis.PROFILE]
     if not status.available:
         return status

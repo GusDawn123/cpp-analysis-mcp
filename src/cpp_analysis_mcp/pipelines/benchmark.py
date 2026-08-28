@@ -1,18 +1,9 @@
 """Race whole-program variants and reject any whose answer changed -- one benchmark run.
 
-The measurement rules live here instead of in the caller's judgement. Warmups come before
-any timing. Timed runs interleave round-robin, so drift in the machine lands on every
-variant evenly rather than on whichever ran last. Measurement is serial on purpose:
-variants racing concurrently would fight for the same caches and clocks, and the loser of
-that fight would look slow for reasons that are not in its code.
-
-The comparison rule is the point of the tool. Every variant runs the same workload, and a
-variant only keeps its numbers if its output matched the baseline's on every run. A rewrite
-that got faster by answering differently is not faster, it is wrong, and "wrong but quick"
-must never survive into a ranking an agent will act on.
-
-Composes primitives only, never another pipeline (rule 1); the Platform and Toolchain
-arrive as arguments (rule 3).
+A variant only keeps its numbers if its output matched the baseline's on every run: a
+rewrite that got faster by answering differently is wrong, not faster, and "wrong but
+quick" must never survive into a ranking an agent will act on. Composes primitives only,
+never another pipeline (rule 1); Platform and Toolchain arrive as arguments (rule 3).
 """
 
 from __future__ import annotations
@@ -236,15 +227,17 @@ def _timed_rounds(
 ) -> tuple[dict[str, list[float]], str | None, bool]:
     """Interleave the timed runs; a variant that misbehaves mid-race is dropped there.
 
-    The baseline is held to its own answer too. A baseline that changes output between
-    identical runs makes every comparison in the race meaningless, so that one case does
-    not reject a variant -- it comes back as the reason to strand the whole report.
+    The baseline is held to its own answer too: a baseline that changes output between
+    identical runs makes every comparison meaningless, so that case doesn't reject a
+    variant -- it strands the whole report instead.
 
-    The deadline is checked on each run's own start instant, so honoring the budget costs
-    no extra clock reads. Past it, the race stops for everyone: the rounds interleave, so
-    whatever was measured up to that point is still evenly spread.
+    The deadline is checked at each run's start, costing no extra clock reads; past it,
+    the race stops for everyone, so whatever was measured stays evenly spread.
     """
     times: dict[str, list[float]] = {name: [] for name in racing}
+    # one round for every variant, then the next round -- never two variants at once, so a
+    # race for the same caches and clocks never makes the loser look slow for reasons that
+    # are not in its code
     for _ in range(repeats):
         for name in racing:
             if name in rejected:

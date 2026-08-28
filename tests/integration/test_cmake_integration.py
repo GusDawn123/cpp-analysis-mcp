@@ -1,12 +1,8 @@
 """Build the real fixture project with the real cmake on this machine, then run it.
 
-The unit suite fabricates the File API reply; this proves the reply is real -- that cmake
-still answers the query with a codemodel shaped the way build_project reads it, that the
-path it names is where the binary actually is, and that the flags reached the linker, since
--fsanitize dropped at link time produces a binary that runs clean and reports nothing.
-
-The fixture holds one library and one executable, so target selection has something to
-filter out and the caller never has to name what it wants.
+The unit suite fakes the File API reply; this proves the codemodel, binary path, and
+linked sanitizer flags are all real (a dropped flag yields a clean, silent binary). The
+fixture ships one library plus one executable so target selection has something to filter.
 """
 
 from __future__ import annotations
@@ -60,7 +56,7 @@ def can_sanitize(host: Platform, chain: Toolchain) -> bool:
 
 
 def build(toolchain: Toolchain, host: Platform, tmp_path: Path) -> BuiltBinary:
-    """Build the fixture under ASan without naming a target, failing with what cmake said."""
+    """Build the fixture under ASan without naming a target."""
     result = build_project(
         PROJECT_DIR,
         toolchain=toolchain,
@@ -76,7 +72,6 @@ def build(toolchain: Toolchain, host: Platform, tmp_path: Path) -> BuiltBinary:
 def test_the_project_builds_and_reports_its_planted_bug(
     toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
 ) -> None:
-    """The whole loop: configure, read the reply, build, run under what the build handed back."""
     for chain in toolchains:
         if not can_sanitize(host, chain):
             continue
@@ -100,7 +95,6 @@ def test_the_project_builds_and_reports_its_planted_bug(
 def test_the_executable_is_found_without_being_named(
     toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
 ) -> None:
-    """Selection with target=None against a real reply: one executable, one library, no guess."""
     for chain in toolchains:
         if not can_sanitize(host, chain):
             continue

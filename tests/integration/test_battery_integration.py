@@ -1,9 +1,8 @@
 """Run the whole battery against the real compiler and a fixture with a planted bug.
 
-The unit suite proves the merge over faked processes; this proves the composition end to
-end: real capability probes decide what runs, six real pipelines execute in parallel, and
-the planted unguarded write must come back as a finding wherever thread-safety analysis
-is available, which is every machine with clang.
+The unit suite proves the merge over faked processes; this proves the real composition:
+capability probes decide what runs, six pipelines execute in parallel, and the planted
+unguarded write must surface wherever thread-safety analysis is available.
 """
 
 from __future__ import annotations

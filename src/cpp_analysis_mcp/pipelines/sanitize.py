@@ -1,17 +1,9 @@
 """Gate on the capability, build, run, parse -- the four steps of one sanitizer analysis.
 
-Each step is worthless alone and the order is the whole point. A capability status with no
-run is a promise; a run without the environment its build decided on reports nothing; and
-findings with no status behind them cannot be told from a detector that was never watching.
-Keeping the four in one place means there is one order rather than one per caller.
-
-The gate is a hard stop, not a note on the report. If the probe could not catch a planted
-bug on this machine, nothing is spawned and the status comes back as the answer -- running
-anyway would produce an empty finding list that reads exactly like clean code, which is the
-false all-clear this project exists to avoid.
-
-Composes primitives only, never another pipeline (rule 1); the Platform and Toolchain arrive
-as arguments (rule 3).
+The gate is a hard stop, not a note on the report: if the probe couldn't catch a planted
+bug here, nothing is spawned and the status comes back as the answer. Running anyway
+would produce an empty finding list that reads exactly like clean code -- the false
+all-clear this project exists to avoid.
 """
 
 from __future__ import annotations

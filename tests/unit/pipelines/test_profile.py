@@ -1,12 +1,8 @@
 """Drive the profile chain with no compiler, no perf and no child process anywhere.
 
-Only the subprocess boundary is faked. The capability gate, the flags the build is composed
-with, the two perf invocations and the parsing are all the real code, and the fake answers
-the report step with output a real perf once printed.
-
-What these pin is mostly what the chain must never do: build with a sanitizer, build at the
-sanitizers' -O1, throw away a recording because the run that produced it failed, or hand back
-a ranking with nothing attached that says how many measurements it rests on.
+Only the subprocess boundary is faked; capability gating, build composition, and parsing
+are real code. What's pinned is mostly what the chain must never do: sanitize the build,
+build at -O1, drop a recording because its run failed, or rank with no sample count behind it.
 """
 
 from __future__ import annotations

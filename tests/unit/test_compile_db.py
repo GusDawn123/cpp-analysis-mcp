@@ -1,10 +1,8 @@
 """Find and read a compilation database, with nothing but files on disk.
 
-Every shape here was taken off a real cmake build tree rather than imagined. The response
-file especially: on Windows cmake moves include flags into one as soon as a project has a few
-of them, so an entry whose command carries no -I at all is the ordinary case there, not a
-corner. A reader that stopped at the command line would find no include directories and
-report the same "file not found" this module exists to prevent.
+Every shape here came off a real cmake build tree, not imagined -- especially the response
+file case: on Windows, cmake moves include flags into one once a project has a few, so a
+command with no -I at all is the norm there, the exact case this module exists to handle.
 """
 
 from __future__ import annotations
@@ -233,10 +231,9 @@ def test_the_arguments_form_is_read_as_well_as_the_command_form(tmp_path: Path) 
 
 
 def test_a_file_the_database_never_compiled_gets_every_include_it_knows(tmp_path: Path) -> None:
-    """Every header. A build compiles no header on its own, so none appears in a database,
-    and a header is a perfectly ordinary thing to point a compile-time check at. Wider than
-    any one translation unit used is the safe direction: a spare -I changes nothing, and a
-    missing one stops the file parsing.
+    """Headers compile in no TU of their own, so none appears in a database, yet a header is
+    an ordinary check target. Wider is the safe default: a spare -I changes nothing, but a
+    missing one stops the file parsing -- so a header gets every -I the database knows.
     """
     source, include = a_project(tmp_path)
     header = include / "orderbook" / "OrderBook.hpp"

@@ -1,12 +1,7 @@
-"""The single place subprocesses get launched. Owns timeouts, output capture and environment
-hygiene. Every layer that touches a host tool goes through here instead of calling subprocess
-directly, so the rules about what may run and for how long are enforced in one file rather than
-restated at each call site; a test walks the package and fails any other module that imports
-subprocess.
-
-scripts/fixtures.py carries its own copy of this logic on purpose: it predates the package,
-runs bare in CI, and imports nothing from src/. The duplication is the price of that, so a
-fix to the kill path belongs in both.
+"""The single place subprocesses get launched: timeouts, output capture, environment
+hygiene. Every layer must call through here instead of subprocess directly (a test
+enforces it). scripts/fixtures.py duplicates this logic on purpose -- it predates the
+package and runs bare in CI -- so a kill-path fix belongs in both.
 """
 
 from __future__ import annotations
@@ -57,11 +52,9 @@ def run(
 ) -> RunResult:
     """Run a command to completion or to its timeout, stderr merged into stdout.
 
-    A tool that is not installed comes back as exit 127 carrying the OS's own words, not as
-    an exception. Every caller here already treats "the tool failed" as an ordinary thing to
-    observe and report -- a capability probe exists precisely to find out that a tool is
-    missing -- and a raise would turn that answer into a crash one layer above, taking the
-    whole startup down with it because one optional tool was absent.
+    A missing tool returns exit 127 with the OS's own message rather than raising --
+    callers already treat tool failure as an ordinary result to report, and raising here
+    would crash a layer above just because one optional tool was absent.
     """
     try:
         # New session so a hung sanitizer takes its symbolizer child down with it.
@@ -92,19 +85,16 @@ def _kill_tree(pid: int) -> None:
 
     POSIX: start_new_session made the child its own group leader, so its pid is the pgid;
     it may also exit on its own between the timeout and the kill. Windows has no process
-    groups to signal (start_new_session is inert there), so taskkill /T walks the child's
-    process tree instead -- same semantics, and a tree already gone exits nonzero, which
-    is the ProcessLookupError case and is ignored the same way.
+    groups to signal, so taskkill /T walks the child's process tree instead; a tree
+    already gone exits nonzero, ignored the same way as ProcessLookupError on POSIX.
 
-    The branch is on sys.platform rather than os.name because mypy narrows the former:
-    killpg and SIGKILL do not exist in Windows stubs, and only this spelling lets each
-    OS type-check the code it will actually run.
+    Branches on sys.platform, not os.name: mypy narrows on the former, and killpg/SIGKILL
+    aren't in the Windows stubs, so only this spelling type-checks on both.
     """
     if sys.platform == "win32":
-        # by full path: bare "taskkill" is resolved through a search that can reach the
-        # process's current directory, and this server is launched from directories it
-        # does not control. Bounded, because the cleanup after a timeout must not be
-        # able to hang the way the thing it is cleaning up did.
+        # Full path: a bare "taskkill" can resolve through the process's current
+        # directory, which this server does not control. Bounded, so this cleanup
+        # can't hang the way the thing it's cleaning up did.
         taskkill = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
         with contextlib.suppress(subprocess.TimeoutExpired):
             subprocess.run(
@@ -119,14 +109,14 @@ def _kill_tree(pid: int) -> None:
 
 
 def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
-    """Collect what a killed process left in its pipe, refusing to wait forever for it.
+    """Collect what a killed process left in its pipe, without waiting forever for it.
 
-    The tree kill is not guaranteed: taskkill cannot touch an elevated child, and a
+    The tree kill isn't guaranteed: taskkill can't touch an elevated child, and a
     grandchild that started its own session escapes the POSIX group. A survivor keeps
-    the pipe's write end open, and a communicate() with no timeout then blocks on it --
-    one timed-out analysis becoming a request that never returns. So the read is bound,
-    the root is killed directly when it expires, and whatever output was gathered before
-    giving up still comes back, with the note saying what happened.
+    the pipe's write end open, so an untimed communicate() would block forever -- one
+    timeout becoming a request that never returns. So this read is itself bound, the
+    root is killed directly if it expires, and whatever output was gathered still comes
+    back, with a note.
     """
     try:
         output, _ = proc.communicate(timeout=KILL_GRACE_S)

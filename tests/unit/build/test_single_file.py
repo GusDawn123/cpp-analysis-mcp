@@ -1,12 +1,8 @@
 """Compile one file with no compiler anywhere: every runner here is a fake.
 
-Every expectation is written down rather than read from the code under test -- the base
-flags, the pinned TSan options, the sanitizer variables that must not survive, the exact
-argument order handed to the compiler. A test that asked single_file.py what it composes
-would agree with it forever, including the day it composes the wrong thing.
-
-The Toolchain and Platform are built by hand, the way tests/unit/platforms/test_platforms.py
-does it, so the Linux command line is exercised on macOS (rule 3).
+Every expectation -- flags, pinned options, vars that must not survive -- is written down,
+not read from the code under test: asking single_file.py what it composes would agree with
+it forever, including the day it composes the wrong thing.
 """
 
 from __future__ import annotations

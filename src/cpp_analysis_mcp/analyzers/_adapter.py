@@ -1,15 +1,8 @@
 """The shared spine of the compile-time plugins: gates, screening, and outcome mapping.
 
-clang-tidy and the compiler's own warnings are different tools with the same shape --
-TU-grained, seconds-cheap, riding the static_check pipeline -- and the moment a second
-plugin exists is the moment their common logic either gets extracted or gets copied.
-This module is the extraction. It is private on purpose: plugins share a spine, but the
-spine is not contract surface, and nothing outside analyzers/ may import it.
-
-The outcome mapping is where the project's no-false-all-clear doctrine lives for every
-plugin at once: reports pass through, a build failure speaks as an ERROR finding naming
-its stage, a capability that went stale between probe and run says the detector was not
-watching, and the pipeline's notes about what was decided for the caller rank last.
+Private on purpose -- plugins share this spine, but it isn't contract surface, and
+nothing outside analyzers/ may import it. Extracted once a second plugin (compiler
+warnings, alongside clang-tidy) needed the same TU-grained, seconds-cheap shape.
 """
 
 from collections.abc import Callable

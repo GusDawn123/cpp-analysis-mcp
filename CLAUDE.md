@@ -65,6 +65,8 @@ spec → the maintainer merges.
   tests stay fast.
 - Don't DRY test fakes until the boundary is stable — a shared fake grown to serve
   four suites stops resembling the boundary any of them tests.
+- Assert on what a fake recorded and on what came back, never on how many times
+  something was called.
 
 ## Quality bars
 

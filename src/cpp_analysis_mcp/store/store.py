@@ -1,17 +1,8 @@
 """Where every tool's reports become one set of facts (ADR-0002, architecture v2 layer 2).
 
-Parsers hand over what each tool said; the store answers the questions a review gate
-asks. Duplicates of one observation merge into an occurrence count. The same fingerprint
-arriving from a second tool does not become a second finding -- it becomes a
-confirmation, because agreement between engines that share no code is a confidence
-signal no single tool can produce. `new_since` subtracts a baseline by fingerprint,
-which is the whole trick of reporting only what a change introduced. Suppression hides;
-it never deletes -- the complete record stays readable, in the same spirit as raw tool
-logs surviving on disk.
-
-Everything here is in-memory and pure: no git, no filesystem, no persistence. Those
-belong to the scope resolver and caches of later phases; the store stays a data
-structure that is exhaustively testable without a toolchain.
+In-memory and pure: no git, no filesystem, no persistence -- those belong to the scope
+resolver and caches of later phases. Suppression hides; it never deletes, so the
+complete record stays readable, in the same spirit as raw tool logs surviving on disk.
 """
 
 from collections import deque

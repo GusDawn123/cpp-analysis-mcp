@@ -1,18 +1,8 @@
 """Drive the six tools over a real MCP session with no compiler and no child process anywhere.
 
-The client here is the SDK's in-memory one, so what these tests exercise is the protocol
-surface an assistant actually meets: the tool names it can call, the descriptions it chooses
-from, the schemas it validates against, and the JSON that comes back. Underneath, the only
-thing faked is the subprocess boundary and the startup that would have probed this host --
-the pipelines, the capability gate and the parsers are all the real code.
-
-resolve() is never called. A unit test that resolved the context would compile and run six
-probes on whatever machine it happened to be on, which is minutes, needs a toolchain, and
-would bind the tools to that host's answers rather than to the ones written down here.
-
-The fakes are copied from tests/unit/test_context.py and the pipeline tests rather than
-shared: hoisting them into tests/helpers.py is a refactor of its own, and one shared fake
-grown to serve four suites stops resembling the boundary any of them is testing.
+The in-memory SDK client exercises the real protocol surface -- names, descriptions, schemas,
+and JSON -- with only the subprocess boundary and startup faked; pipelines and gates are real
+code. resolve() is never called: it would probe six times on whatever host runs the suite.
 """
 
 from __future__ import annotations
@@ -147,11 +137,9 @@ COMPILE_FAILED = RunResult(
 
 COMPILE_STAGE = "compile"
 
-# the phrases the server's own instructions have to carry. They are read once at initialize,
-# before any tool description is, so this is where an assistant learns there is an order to
-# try things in at all -- a client showing only the tool list still gets the ladder.
-# Each phrase is short enough to sit inside one line of the prose, since a pin spanning a
-# wrap would fail on a reflow that changed nothing an assistant reads.
+# the phrases the server's own instructions must carry, read once at initialize before any
+# tool description -- so a client showing only the tool list still gets the ladder. Each is
+# short enough to sit on one line, since a pin spanning a wrap would break on a harmless reflow.
 INSTRUCTION_PHRASES = (
     "Cheapest rung first",
     "seconds",

@@ -82,11 +82,8 @@ def test_a_kill_that_fails_still_returns_with_what_was_read() -> None:
 
 
 def test_a_tool_that_is_not_installed_is_an_answer_rather_than_a_crash() -> None:
-    """A capability probe exists precisely to discover that a tool is missing.
-
-    Left as the FileNotFoundError Popen raises, that discovery would propagate out of the
-    probe, out of the thread pool, and out of resolve() -- a server refusing to start
-    because one optional tool was absent. Exit 127 is the shell's own convention for it.
+    """Uncaught, FileNotFoundError would propagate out of resolve() and refuse to start the
+    server over one missing optional tool; exit 127 is the shell's own convention for it.
     """
     result = run(["cpp-analysis-mcp-no-such-tool-anywhere"], timeout_s=5)
 
