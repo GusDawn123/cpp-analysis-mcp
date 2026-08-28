@@ -10,8 +10,8 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms.base import Denial, Platform
+from cpp_analysis_mcp.store.models import Analysis
 
 NAME = "darwin"
 

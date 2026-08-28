@@ -8,7 +8,7 @@ If the table stops recognizing them, the report goes back to raw mangled names.
 from __future__ import annotations
 
 from cpp_analysis_mcp import fingerprints
-from cpp_analysis_mcp.models import Hotspot
+from cpp_analysis_mcp.store.models import Hotspot
 
 RB_TREE_EMPLACE = (
     "std::_Rb_tree_iterator<std::pair<int const, std::__cxx11::list<std::shared_ptr<Order>"

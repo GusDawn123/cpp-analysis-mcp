@@ -36,7 +36,8 @@ from pydantic import Field
 
 from cpp_analysis_mcp import battery, context, prompts
 from cpp_analysis_mcp.context import Context
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BenchmarkReport,
@@ -46,7 +47,6 @@ from cpp_analysis_mcp.models import (
     ProfileReport,
     Variant,
 )
-from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
 
 SERVER_NAME = "cpp-analysis"
 

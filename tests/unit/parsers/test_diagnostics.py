@@ -13,8 +13,8 @@ from pathlib import Path
 
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Location, Severity
 from cpp_analysis_mcp.parsers.diagnostics import parse
+from cpp_analysis_mcp.store.models import Location, Severity
 
 THREAD_SAFETY_GOLDEN = "thread_safety_unguarded_write.darwin-clang.txt"
 

@@ -17,7 +17,7 @@ from typing import Any
 
 from helpers import FIXTURES_SCRIPT
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import (
     BASE_FLAGS,

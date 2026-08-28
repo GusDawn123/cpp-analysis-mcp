@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp.build.single_file import compile_file, with_runtime_on_path
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.platforms.base import FailureSignature, Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

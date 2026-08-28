@@ -10,8 +10,8 @@ tidy hand-written sample would meet template-heavy C++ and read the wrong column
 
 from __future__ import annotations
 
-from cpp_analysis_mcp.models import Hotspot
 from cpp_analysis_mcp.parsers.perf import header, parse
+from cpp_analysis_mcp.store.models import Hotspot
 
 # captured output. The interesting rows, in order: a hot function with a source line; main;
 # three frames perf could not place; and an inlined standard library frame with no self time

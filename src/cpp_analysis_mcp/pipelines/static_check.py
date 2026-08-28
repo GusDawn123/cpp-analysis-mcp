@@ -30,17 +30,17 @@ from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Registry, Resolutio
 from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BuildFailure,
     CapabilityStatus,
     Finding,
 )
-from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
-from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # nothing runs the checked program, so this only has to cover parsing one translation unit;

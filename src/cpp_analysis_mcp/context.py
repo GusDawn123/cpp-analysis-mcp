@@ -20,10 +20,10 @@ from pathlib import Path
 from types import MappingProxyType
 
 from cpp_analysis_mcp import capabilities, platforms, process, wsl
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms import windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 CLANG_FAMILY = "clang"

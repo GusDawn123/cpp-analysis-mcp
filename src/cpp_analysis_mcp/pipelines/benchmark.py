@@ -25,15 +25,15 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.build import single_file
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner, RunResult
+from cpp_analysis_mcp.store.models import (
     BenchmarkReport,
     BuildFailure,
     BuiltBinary,
     Variant,
     VariantResult,
 )
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner, RunResult
 from cpp_analysis_mcp.toolchains.base import BENCH_FLAGS, Toolchain
 
 # benchmarks are meant to be seconds of work; a variant that runs longer than this per

@@ -19,15 +19,15 @@ from helpers import bug_line, cpp_source
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.pipelines.static_check import check_file, check_snippet
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BuildFailure,
     CapabilityStatus,
     Severity,
 )
-from cpp_analysis_mcp.pipelines.static_check import check_file, check_snippet
-from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

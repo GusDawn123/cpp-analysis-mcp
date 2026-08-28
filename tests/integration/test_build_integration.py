@@ -21,8 +21,8 @@ from helpers import cpp_source
 from cpp_analysis_mcp import platforms, process
 from cpp_analysis_mcp.build.single_file import compile_file
 from cpp_analysis_mcp.capabilities import discover_toolchains
-from cpp_analysis_mcp.models import BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

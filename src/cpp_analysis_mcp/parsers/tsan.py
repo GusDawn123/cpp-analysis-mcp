@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from cpp_analysis_mcp.models import AccessOp, Finding, Frame, Location, Severity, ThreadAccess
+from cpp_analysis_mcp.store.models import AccessOp, Finding, Frame, Location, Severity, ThreadAccess
 
 TOOL = "tsan"
 

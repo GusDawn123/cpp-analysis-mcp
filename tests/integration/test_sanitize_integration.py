@@ -21,9 +21,9 @@ from helpers import FIXTURES_DIR, bug_line, cpp_source
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file, analyze_project, analyze_snippet
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

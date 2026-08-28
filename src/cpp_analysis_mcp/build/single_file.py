@@ -18,10 +18,10 @@ import shutil
 from pathlib import Path
 
 from cpp_analysis_mcp import process
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import BASE_FLAGS, PINNED_RUNTIME_ENV, Toolchain
 
 COMPILE_TIMEOUT_S = 120

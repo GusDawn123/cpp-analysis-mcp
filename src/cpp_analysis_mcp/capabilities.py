@@ -28,9 +28,9 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process, profiler
 from cpp_analysis_mcp.build.single_file import place_runtime_dlls
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import PINNED_RUNTIME_ENV, PROFILE_FLAGS, Toolchain
 

@@ -24,10 +24,10 @@ from cpp_analysis_mcp.capabilities import (
     fingerprint,
     probe_all,
 )
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.platforms import darwin, linux
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 

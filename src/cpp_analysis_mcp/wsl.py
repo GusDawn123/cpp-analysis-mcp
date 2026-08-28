@@ -30,10 +30,10 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.capabilities import first_line
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms import linux
 from cpp_analysis_mcp.platforms.base import Denial, Platform
 from cpp_analysis_mcp.process import Runner, RunResult
+from cpp_analysis_mcp.store.models import Analysis
 from cpp_analysis_mcp.toolchains import clang
 from cpp_analysis_mcp.toolchains.base import Toolchain
 

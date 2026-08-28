@@ -17,11 +17,11 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp.models import BenchmarkReport, BuildFailure, Variant, VariantResult
 from cpp_analysis_mcp.pipelines import benchmark
 from cpp_analysis_mcp.pipelines.benchmark import race
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BenchmarkReport, BuildFailure, Variant, VariantResult
 from cpp_analysis_mcp.toolchains.base import BENCH_FLAGS, Toolchain
 
 CLANG = "clang++"

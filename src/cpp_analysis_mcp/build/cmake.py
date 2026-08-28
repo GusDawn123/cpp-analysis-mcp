@@ -24,10 +24,10 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.build.single_file import place_runtime_dlls, with_runtime_on_path
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import BASE_FLAGS, PINNED_RUNTIME_ENV, Toolchain
 
 # a project is minutes of work where one file is seconds, and cold third-party dependencies
