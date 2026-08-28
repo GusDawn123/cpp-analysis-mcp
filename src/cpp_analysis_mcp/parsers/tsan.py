@@ -4,7 +4,6 @@ TSan prints one report per race or lock-order inversion, each opening with a
 `WARNING: ThreadSanitizer:` headline and closing with a `SUMMARY:` line. Inside a
 race report every thread that touched the memory gets an access block -- a header
 naming the op, the size and any mutexes that thread held, followed by its stack.
-Text in, Findings out: nothing here reads a file or runs a process.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from cpp_analysis_mcp.models import AccessOp, Finding, Frame, Location, Severity, ThreadAccess
+from cpp_analysis_mcp.store.models import AccessOp, Finding, Frame, Location, Severity, ThreadAccess
 
 TOOL = "tsan"
 

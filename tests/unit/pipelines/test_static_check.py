@@ -1,15 +1,8 @@
 """Drive the whole static_check chain with no compiler, no clang-tidy and no child process.
 
-The only thing faked is the subprocess boundary: the capability gate, the command each check
-composes, the environment it goes out under and the parsing are all the real code, and the
-fake answers each spawn with text a real tool once printed. That is why the replies are
-committed goldens rather than invented strings -- a chain that parsed a hand-written
-approximation would keep passing on the day it stopped understanding the real thing.
-
-Every expectation is written down rather than read from the code under test: the argv each
-check composes, the category and line each golden holds, the words gcc uses to refuse
--Wthread-safety. Assertions are on what the fake recorded and on what came back, never on how
-many times something was called.
+Only the subprocess boundary is faked -- the capability gate, each check's command, and
+parsing are real code, and replies are committed goldens, never invented strings, so a
+hand-written approximation can't keep passing after the real tool's output changes.
 """
 
 from __future__ import annotations
@@ -24,7 +17,6 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.pipelines.static_check import (
     CHECK_TIMEOUT_S,
     DEFAULT_CHECKS,
@@ -34,6 +26,7 @@ from cpp_analysis_mcp.pipelines.static_check import (
 )
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

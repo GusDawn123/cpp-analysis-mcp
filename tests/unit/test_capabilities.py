@@ -1,10 +1,8 @@
 """Probe the prober with no compiler anywhere: every runner here is a fake.
 
-A capability counts as available only when a planted bug came back reported, so most of
-what these tests script is a probe that compiles, runs, and then says nothing -- the false
-all-clear the whole module exists to prevent. The platform and toolchain tables are built
-by hand from the real ones, the same way tests/unit/platforms/test_platforms.py does, so
-Linux's link errors and macOS's arm64 denial are both exercised from one machine.
+A capability counts available only when a planted bug came back reported -- most tests
+script a probe that compiles, runs, and says nothing, the false all-clear this module
+exists to prevent. Hand-built platform tables let Linux and macOS both run from one machine.
 """
 
 from __future__ import annotations
@@ -24,10 +22,10 @@ from cpp_analysis_mcp.capabilities import (
     fingerprint,
     probe_all,
 )
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.platforms import darwin, linux
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -501,6 +499,21 @@ def test_a_different_compiler_version_fingerprints_differently() -> None:
     older = clang.toolchain(Path("/usr/bin/clang++"), "Apple clang version 16.0.0")
 
     assert fingerprint(older, a_darwin()) != fingerprint(a_clang(), a_darwin())
+
+
+def test_a_clang_tidy_change_retires_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tidy probe's outcome depends on a binary the compiler fields never mention:
+    installing or removing clang-tidy must re-probe, not replay a stale answer."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    searched = Platform(name="linux", extra_tool_dirs=(tmp_path,))
+
+    absent = fingerprint(a_clang(), searched)
+    (tmp_path / "clang-tidy").write_text("#!/bin/sh\n", encoding="utf-8")
+    installed = fingerprint(a_clang(), searched)
+
+    assert absent != installed
 
 
 def test_a_different_compiler_path_fingerprints_differently() -> None:

@@ -1,14 +1,9 @@
 """Compile one source file into a BuiltBinary, or say why it did not build.
 
-Choosing -fsanitize=thread and knowing the run needs TSAN_OPTIONS are one decision, so the
-binary comes back already bound to its environment. Held apart, they drift: a build with
-the sanitizer and a run without its options reports nothing at all, which reads exactly
-like clean code. One object means a caller cannot pick up the binary and leave the
-environment behind.
-
-A build that failed is a BuildFailure, not an exception -- user code that does not compile
-is an ordinary thing to observe. The Platform and Toolchain always arrive as arguments
-(rule 3); nothing here looks up the host.
+The binary comes back already bound to its runtime environment: held apart, a build with
+the sanitizer and a run without its options reports nothing at all, reading exactly like
+clean code. Toolchain and Platform always arrive as arguments (rule 3) -- nothing here
+looks up the host.
 """
 
 from __future__ import annotations
@@ -18,10 +13,10 @@ import shutil
 from pathlib import Path
 
 from cpp_analysis_mcp import process
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import BASE_FLAGS, PINNED_RUNTIME_ENV, Toolchain
 
 COMPILE_TIMEOUT_S = 120
@@ -112,13 +107,11 @@ def with_runtime_on_path(
 ) -> dict[str, str]:
     """Return `env` with the directories holding this sanitizer's runtime DLLs on PATH.
 
-    Copying the DLL beside the binary covers running that binary afterwards, and nothing
-    else. A build can run a binary too, and one common thing does: gtest_discover_tests
-    executes each freshly linked test program as a POST_BUILD step to enumerate the tests
-    inside it. That happens while the build is still going, before anything has been copied
-    anywhere, so the loader cannot find the ASan runtime and the program dies immediately on
-    STATUS_DLL_NOT_FOUND (0xC0000135), printing nothing. What the caller sees is a build
-    that failed inside a test framework, which explains none of it.
+    Copying the DLL beside the binary only covers running it afterward. A build can also
+    run a binary while building: gtest_discover_tests runs each freshly linked test as a
+    POST_BUILD step to enumerate its tests, before anything has been copied anywhere -- so
+    the loader can't find the ASan runtime and the program dies immediately on
+    STATUS_DLL_NOT_FOUND (0xC0000135), printing nothing that explains it.
 
     A no-op everywhere but Windows, where the runtime_dlls table is the only non-empty one.
     """

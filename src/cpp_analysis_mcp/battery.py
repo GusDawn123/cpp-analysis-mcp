@@ -1,12 +1,9 @@
 """Run every correctness analysis over one file and merge what they saw.
 
-This module sits above the pipelines and below the server. The layer rule says no
-pipeline may import another, and this is the one job that genuinely needs all of them,
-so the composition lives here instead of bending that rule.
-
-The analyses are independent, so they run in parallel, each building in its own
-directory. Merging deduplicates: all four sanitizer builds compile with the same warning
-flags, so one compile-time warning would otherwise arrive four times.
+Sits above the pipelines, below the server: the layer rule bars a pipeline from
+importing another, but this needs all of them, so the composition lives here instead.
+Merging deduplicates, since all four sanitizer builds share warning flags and would
+otherwise report one compile-time warning four times.
 """
 
 from __future__ import annotations
@@ -16,7 +13,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Protocol
 
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.pipelines import sanitize, static_check
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BuildFailure,
@@ -24,9 +24,6 @@ from cpp_analysis_mcp.models import (
     Finding,
     FullCheckReport,
 )
-from cpp_analysis_mcp.pipelines import sanitize, static_check
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 CORRECTNESS: tuple[Analysis, ...] = (

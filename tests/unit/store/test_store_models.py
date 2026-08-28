@@ -1,10 +1,8 @@
-"""Pin the identity fields Finding gained for the store, and the shim's parity.
+"""Pin the identity fields Finding gained for the store.
 
-The four new fields default to "no claim": an unfingerprinted finding says so through
-scheme 0, not through a plausible-looking hash, and a finding that names no second tool
-claims no confirmation. The parity tests exist because the old import path lives on as
-a shim -- a name added in store.models but forgotten in the shim would work everywhere
-except the modules that have not migrated yet, which is the worst way to find out.
+The four fields default to "no claim": an unfingerprinted finding says so through
+scheme 0, not through a plausible-looking hash, and a finding that names no second
+tool claims no confirmation.
 """
 
 from __future__ import annotations
@@ -13,7 +11,6 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-import cpp_analysis_mcp.models as shim
 import cpp_analysis_mcp.store as store_package
 import cpp_analysis_mcp.store.models as store_models
 from cpp_analysis_mcp.store.models import Confirmation, Finding, Severity
@@ -67,17 +64,9 @@ def test_confirmation_is_frozen_and_slotted() -> None:
     assert not hasattr(confirmation, "__dict__"), "Confirmation lost its slots"
 
 
-def test_the_shim_and_the_package_export_the_same_vocabulary() -> None:
-    # the shim forwards exactly the vocabulary -- it must never grow store operations,
-    # or the legacy import path would gain surface the migration is trying to retire.
-    # the package facade is a superset: vocabulary plus the store API
-    assert sorted(shim.__all__) == sorted(store_models.__all__)
+def test_the_package_facade_forwards_the_same_objects_not_copies() -> None:
+    # a facade that re-declared anything would give isinstance checks two distinct
+    # classes with the same name -- every name must be the one store.models defines
     assert set(store_models.__all__) < set(store_package.__all__)
-
-
-def test_the_shim_forwards_the_same_objects_not_copies() -> None:
-    # a shim that re-declared anything would give isinstance checks two distinct classes
-    # with the same name -- every name must be the one object store.models defines
     for name in store_models.__all__:
-        assert getattr(shim, name) is getattr(store_models, name), name
         assert getattr(store_package, name) is getattr(store_models, name), name

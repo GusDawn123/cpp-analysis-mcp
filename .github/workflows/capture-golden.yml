@@ -15,7 +15,7 @@ jobs:
   capture:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Each compiler writes its own linux-clang / linux-gcc files, so the
       # second run adds to the first rather than overwriting it.
@@ -25,7 +25,7 @@ jobs:
       - name: Capture with g++
         run: python3 scripts/fixtures.py --compiler g++ capture
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: linux-goldens
           path: tests/fixtures/golden/

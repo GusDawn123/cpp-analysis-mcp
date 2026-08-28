@@ -12,7 +12,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from cpp_analysis_mcp.models import Fingerprint, Hotspot
+from cpp_analysis_mcp.store.models import Fingerprint, Hotspot
 
 # below this share a pattern is background noise, not a lead worth chasing
 THRESHOLD_PCT = 5.0

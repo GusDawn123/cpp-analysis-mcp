@@ -16,9 +16,9 @@ import pytest
 from helpers import GOLDEN_DIR
 
 from cpp_analysis_mcp import battery
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus, FullCheckReport
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus, FullCheckReport
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 TIDY_PATH = str(Path("/usr/bin/clang-tidy"))

@@ -1,10 +1,8 @@
 """Prove the gate chain refuses in order, explains itself, and never executes a tool.
 
-The fakes here are the contract's real test: plain classes with no base to inherit,
-one static and one dynamic, both fitting the same registry without a branch anywhere.
-The recording fake exists to prove short-circuiting -- a disabled analyzer's own gates
-must never even be consulted, because gates are allowed to be costly and the chain's
-order is the promise that cheap refusals come first.
+The fakes are plain classes with no shared base -- one static tier, one dynamic -- both
+fitting the registry without a branch. A consultation counter proves short-circuiting: a
+disabled analyzer's own (possibly costly) gates must never run, since cheap refusals come first.
 """
 
 from __future__ import annotations

@@ -1,11 +1,8 @@
 """Pin the clang-tidy parser against a captured run of the modernize-use-nullptr check.
 
-Every number and every string here was read out of the golden by eye and written down;
-nothing is computed from the parser it checks, so a parser that starts reporting a different
-line, category or message fails instead of moving the expectation along with it. The
-synthetic cases below cover what one clean capture cannot show: the compile errors clang-tidy
-files under clang-diagnostic-error, a line that trips several checks at once, and every shape
-of noise clang-tidy prints around its diagnostics.
+Every number and string here was read off the golden by eye, not computed from the parser
+it checks, so drift in line, category, or message fails instead of moving with it. Synthetic
+cases cover what one clean capture can't show: compile errors, multi-check lines, and noise.
 """
 
 from __future__ import annotations
@@ -14,8 +11,8 @@ from pathlib import Path
 
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Location, Severity
 from cpp_analysis_mcp.parsers.clang_tidy import parse
+from cpp_analysis_mcp.store.models import Location, Severity
 
 CLANG_TIDY_GOLDEN = "clang_tidy_nullptr_zero.linux-clang.txt"
 
@@ -76,7 +73,6 @@ def test_the_check_name_leaves_the_message() -> None:
 
 
 def test_the_golden_blames_the_marked_bug_line() -> None:
-    """End-to-end on the fixture convention: clang-tidy named the line // BUG: sits on."""
     finding = parse(golden(CLANG_TIDY_GOLDEN))[0]
 
     assert finding.location is not None

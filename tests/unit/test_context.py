@@ -1,17 +1,8 @@
 """Resolve the composition root with no compiler anywhere: the only fake is the subprocess.
 
-resolve() reads the real host on purpose -- it is the one sanctioned caller of
-platforms.detect() -- so what these tests replace is the boundary underneath it: what PATH
-appears to hold, and what each spawn prints. Discovery, the clang preference, the probe gate
-and the cache are all the real code running.
-
-What the code under test decides is written down here rather than read back out of it: the
-compiler paths the fake PATH hands out, where the probe cache lives by default, the length of
-the name a cache file carries, and the phrase the no-compiler error names both compilers in.
-
-Three names are imported on purpose -- Analysis, SANITIZER_FOR and PROBE_STEM. Those are the
-vocabulary the fakes have to answer in, not expectations about behaviour: a test carrying its
-own list of analyses would quietly stop covering a seventh the day one is added.
+resolve() reads the real host on purpose, as platforms.detect()'s one sanctioned caller;
+tests fake only the boundary beneath it -- PATH and spawn output -- while discovery,
+preference, the cache, and the probe gate all run for real, against written-down expectations.
 """
 
 from __future__ import annotations
@@ -28,10 +19,10 @@ import pytest
 from cpp_analysis_mcp import platforms, profiler
 from cpp_analysis_mcp.capabilities import PROBE_STEM
 from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms import linux, windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -140,11 +131,9 @@ def perf_step(cmd: Sequence[str]) -> str | None:
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
     """Read which probe a command belongs to off the scratch file it names.
 
-    .exe comes off as well as .cpp: on a real Windows host the probes name their
-    binaries with the platform's executable suffix.
-
-    perf is recognized by name instead: its report step names only the trace and its own
-    flags, none of which carry the probe's stem, and one analysis reaches for perf.
+    .exe comes off as well as .cpp, since Windows probes carry the platform's suffix. perf
+    is recognized by name instead: its report step names only the trace and its own flags,
+    none of which carry the probe's stem.
     """
     if perf_step(cmd) is not None:
         return Analysis.PROFILE

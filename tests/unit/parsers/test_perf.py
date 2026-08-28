@@ -1,17 +1,14 @@
 """Read a real perf table, and every shape it uses to say it does not know something.
 
-REPORT below is not written by hand: it is what `perf report --stdio -g none --sort
-symbol,srcline --full-source-path -t ';'` printed for a small C++ program on Ubuntu 26.04
-under WSL2, trimmed only in the length of the paths. That matters more here than for the
-sanitizer parsers, because perf's table is padded to the widest demangled symbol in the
-profile and an approximation would be padded differently -- a parser that passed against a
-tidy hand-written sample would meet template-heavy C++ and read the wrong columns.
+REPORT is real `perf report --stdio -g none --sort symbol,srcline --full-source-path -t ';'`
+output (Ubuntu 26.04, WSL2), trimmed only in path length -- not hand-written, because perf
+pads columns to the widest demangled symbol, and a tidy sample would pad differently.
 """
 
 from __future__ import annotations
 
-from cpp_analysis_mcp.models import Hotspot
 from cpp_analysis_mcp.parsers.perf import header, parse
+from cpp_analysis_mcp.store.models import Hotspot
 
 # captured output. The interesting rows, in order: a hot function with a source line; main;
 # three frames perf could not place; and an inlined standard library frame with no self time

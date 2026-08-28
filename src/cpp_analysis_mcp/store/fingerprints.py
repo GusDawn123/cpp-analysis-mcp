@@ -1,43 +1,9 @@
 """Finding identity that survives edits: content-derived fingerprints (ADR-0002).
 
-The naive key -- rule, file, line number -- breaks the moment anyone adds a line above a
-finding: everything below it "disappears" from the baseline and "appears" in the head run.
-So line numbers never enter the hash. Identity is what was flagged (the rule), where (the
-file), and the flagged line's text with all whitespace removed, so reformatting does not
-change who a finding is. Two identical flagged lines in one file are genuinely two
-findings; a dense rank over their line numbers (0, 1, ...) tells them apart while leaving
-identity untouched when the whole block moves.
-
-The tool's name is deliberately absent: clang-tidy and cppcheck reporting the same rule on
-the same line must produce the same fingerprint, because equal fingerprints from different
-tools are how the store recognizes independent confirmation.
-
-Digests are SHA-256 truncated to 16 hex characters -- 64 bits. A collision would let a new
-finding silently match a baseline entry and vanish, this project's named worst outcome, so
-the margin is generous: by the birthday bound p ~= n^2 / 2^65, one million findings in one
-store collide with probability ~3e-8. The 12-character alternative (48 bits) reaches
-~2e-3 at the same scale, which is one silent suppression per few hundred large stores --
-rejected. Fields are length-prefixed before hashing so adjacent fields can never trade
-characters and collide by construction.
-
-Two identity boundaries are accepted for scheme 1, both pinned by regression tests:
-
-- Stripping all whitespace merges token spellings that differ only by internal spacing
-  (`a + ++b` and `a++ + b` share a fingerprint). Collapsing runs to one space instead
-  would fix that rare pair at the cost of changing identity on every reformat -- and
-  reformats happen daily. Same trade SonarQube chose.
-- Inserting an identical flagged line before existing duplicates rotates their occurrence
-  indices, so attribution among indistinguishable duplicates can shift between runs. The
-  set of fingerprints still grows by exactly the inserted finding, which is the property
-  baseline subtraction needs; attribution among identical lines was never well-defined.
-
-Both would be solved by hashing token context or the enclosing symbol -- the richer
-scheme ADR-0002 defers until real-world collisions demand it. That is what bumping
-SCHEME_VERSION is for.
-
-Naming note: this module is about *finding identity*. The `Fingerprint` class in the
-shared vocabulary is a different, older concept -- a recognized pattern in a profile's
-time distribution. The split is deliberate (ADR-0002, "Two meanings of fingerprint").
+Line numbers never enter the hash -- content moves, identity follows it; see ADR-0002 for
+the full scheme and its normative encoding. SHA-256 truncated to 16 hex chars (64 bits)
+keeps collision probability negligible even at a million findings (~3e-8, by the birthday
+bound); the 12-character alternative reaches ~2e-3 at the same scale and was rejected.
 """
 
 from collections.abc import Callable, Sequence
@@ -57,8 +23,10 @@ _DIGEST_CHARS = 16
 
 
 def _strip_ws(text: str) -> str:
-    # all whitespace, not just the edges: tabs-to-spaces and realignment both leave
-    # identity alone, and str.split() with no argument splits on every whitespace run
+    # all whitespace, not just the edges: str.split() with no argument splits on every
+    # whitespace run. Accepted collision: "a + ++b" and "a++ + b" then share a
+    # fingerprint -- collapsing runs to one space instead would avoid that but change
+    # identity on every reformat, which happens daily.
     return "".join(text.split())
 
 

@@ -1,10 +1,8 @@
 """Run the real probes against the real compilers on this machine.
 
-The unit suite proves the classification; this proves the probes themselves -- that the
-snippets still compile, that each sanitizer still reports the bug planted for it, and that
-what capabilities.py concludes matches what scripts/fixtures.py says this OS supports. It
-compiles and runs a handful of programs per compiler, so it takes tens of seconds and is
-marked integration; `make test` excludes it and `make integration` runs it alone.
+The unit suite proves the classification; this proves the probes: snippets compile, each
+sanitizer reports the bug planted for it, and capabilities.py matches what scripts/fixtures.py
+says this OS supports. Tens of seconds per compiler, hence `make integration`, not `make test`.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from helpers import FIXTURES_SCRIPT
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration

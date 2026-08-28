@@ -1,17 +1,8 @@
-"""Probes what this machine can actually do by compiling and running five-line smoke tests,
-one per sanitizer and analysis, rather than sniffing version numbers — a compiler can report
-a version that supports ThreadSanitizer while the runtime library is missing or a system
-setting blocks it. Results become CapabilityStatus values carrying the reason and a concrete
-suggestion when something is unavailable, and cache to disk fingerprinted on compiler path,
-compiler version, and OS release so only the first run pays the cost.
-
-Every probe compiles a program with a bug planted in it and requires the detector to report
-that bug. A build that succeeded and then said nothing is unavailable, not available: a
-runtime that stays quiet on a known bug would call clean code and buggy code clean alike.
-
-The Platform and Toolchain always arrive as arguments (rule 3). discover_toolchains is the
-one exception, because finding the compilers on a host is host probing, which is this
-module's job.
+"""Probes what this machine can actually do by compiling and running five-line smoke
+tests, rather than sniffing version numbers -- a compiler can report a version that
+supports ThreadSanitizer while the runtime library is missing or a system setting
+blocks it. A build that succeeded and then said nothing about its planted bug is
+unavailable, not available: a quiet runtime would call clean code and buggy code alike.
 """
 
 from __future__ import annotations
@@ -28,9 +19,9 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process, profiler
 from cpp_analysis_mcp.build.single_file import place_runtime_dlls
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import PINNED_RUNTIME_ENV, PROFILE_FLAGS, Toolchain
 
@@ -300,8 +291,23 @@ def fingerprint(toolchain: Toolchain, platform: Platform) -> str:
         "platform": platform.name,
         "env_facts": dict(platform.env_facts),
         "os_release": host_platform.release(),
+        # the clang-tidy probe's outcome depends on a binary the compiler fields say
+        # nothing about: installing, removing, or upgrading it must retire the cache.
+        # mtime stands in for a version query so resolving stays spawn-free
+        "clang_tidy": _tidy_identity(platform),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _tidy_identity(platform: Platform) -> list[str] | None:
+    tidy = find_clang_tidy(platform)
+    if tidy is None:
+        return None
+    try:
+        changed = str(tidy.stat().st_mtime_ns)
+    except OSError:
+        changed = "unreadable"
+    return [str(tidy), changed]
 
 
 def probe_all(
@@ -510,16 +516,13 @@ def _probe_profile(
 ) -> CapabilityStatus:
     """Build the planted hotspot optimized, sample it, and look for its name in the report.
 
-    Three steps rather than two, and all three must succeed, because profiling has three
-    separate ways to half-work and each of them ends in a plausible-looking empty table. The
-    recording can be refused outright -- no perf, or a kernel that will not open a
-    performance counter for this user. It can succeed and collect nothing, which is what a
-    virtualized host with no counters and no software fallback does. Or it can collect
-    plenty and resolve none of it to a name, which is what a stripped binary or a missing
-    llvm looks like, and is the one that reads most convincingly like a flat profile.
-
-    Only the last is caught by the marker; the first two are caught by exit codes, which is
-    why every stage here is must_succeed and the detection is the report's own text.
+    Three steps, all must_succeed, because profiling has three separate ways to half-work
+    and each ends in a plausible-looking empty table: recording can be refused outright (no
+    perf, or a kernel that won't open a performance counter); it can succeed and collect
+    nothing, what a virtualized host with no counters and no fallback does; or it can
+    collect plenty and resolve none of it to a name, what a stripped binary or missing llvm
+    looks like -- the one that reads most convincingly like a flat profile. Only that last
+    case is caught by the marker; the first two are caught by exit codes.
     """
     binary = source.with_suffix(platform.executable_suffix)
     compiled = Stage(

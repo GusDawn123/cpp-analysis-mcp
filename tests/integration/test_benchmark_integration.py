@@ -1,10 +1,8 @@
 """Race real binaries built by the real compiler, and require the ranking to be right.
 
 The unit suite proves the methodology over a fake clock; this proves the whole loop on
-real hardware. Two programs print the same line, one does five orders of magnitude more
-work, and the race has to put the light one first with real statistics attached. Then a
-variant that is instant but answers differently has to lose anyway, because the
-same-answer rule is the tool's whole warranty.
+real hardware, ranking a heavy program correctly against a light one. A variant that's
+instant but wrong must still lose -- the same-answer rule is the tool's whole warranty.
 """
 
 from __future__ import annotations
@@ -15,9 +13,9 @@ import pytest
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains
-from cpp_analysis_mcp.models import BenchmarkReport, Variant
 from cpp_analysis_mcp.pipelines.benchmark import DIFFERS, race
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import BenchmarkReport, Variant
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration
@@ -109,7 +107,6 @@ def test_the_lighter_program_wins_with_real_times(
 def test_an_instant_wrong_answer_still_loses(
     toolchain: Toolchain, host: Platform, tmp_path: Path
 ) -> None:
-    """The warranty on real binaries: speed buys nothing once the output changed."""
     report = run_race(
         [Variant(name="heavy", code=HEAVY), Variant(name="cheat", code=WRONG_AND_INSTANT)],
         toolchain=toolchain,

@@ -1,21 +1,9 @@
 """The MCP tool surface: ten tools, their schemas, and one line each into a pipeline.
 
-Protocol only. Every handler reads the resolved context off the request, hands it to one
-pipeline call and returns what came back -- there is no control flow in this file at all, and
-a test walks it with ast to keep it that way (rule 2). Everything that needed a decision at
-startup was decided in context.py, and everything a call needs to decide is decided in the
-pipeline it delegates to; a handler that grew an `if` would be workflow logic in the layer
-that has no business holding any.
-
-The descriptions below are the product, not documentation of it. MCP hands the assistant a
-menu of names and descriptions and nothing else, so these are the only information it has
-when choosing what to run: they say what each rung of the escalation ladder costs, what it
-can see that the cheaper one cannot, and what it needs to be handed. A vague description
-produces wrong tool choices no matter how good the pipeline underneath is.
-
-Nothing is serialized by hand. The union return annotations are the schema: the SDK reads
-them off the signatures, publishes the JSON shape of every outcome a pipeline can produce,
-and converts the dataclasses on the way out.
+No control flow in this file at all -- a test walks it with ast to keep it that way (rule
+2); every decision lives in context.py or the pipeline a handler delegates to. Nothing is
+serialized by hand: the union return annotations are the schema, which the SDK reads off
+the signatures and converts the dataclasses through on the way out.
 """
 
 from __future__ import annotations
@@ -36,7 +24,8 @@ from pydantic import Field
 
 from cpp_analysis_mcp import battery, context, prompts
 from cpp_analysis_mcp.context import Context
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BenchmarkReport,
@@ -46,7 +35,6 @@ from cpp_analysis_mcp.models import (
     ProfileReport,
     Variant,
 )
-from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
 
 SERVER_NAME = "cpp-analysis"
 

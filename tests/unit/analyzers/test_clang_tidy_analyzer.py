@@ -1,10 +1,8 @@
 """Prove the clang-tidy plugin honors the contract without ever needing a compiler.
 
-The fake check callable is the whole trick: the pipeline's three ordinary outcomes are
-constructed by hand and pushed through the adapter, which must turn every one of them
-into findings -- reports pass through, failures speak up, and a detector that stopped
-watching says so instead of sounding like clean code. The gates get the same treatment
-as the registry's: exact reasons, exact order, no execution during applicability.
+A fake check callable serves the pipeline's three outcomes by hand: reports pass through,
+failures speak up, and a detector that stopped watching says so instead of sounding clean.
+Gates get the same treatment as the registry's: exact reasons, exact order, no execution.
 """
 
 from __future__ import annotations
@@ -141,9 +139,8 @@ def test_only_translation_units_are_checked_and_each_exactly_once() -> None:
 
 
 def test_a_known_build_screens_run_to_its_members() -> None:
-    # the gate passes when one file is a build member; run must then check only that
-    # member -- checking the stray would manufacture the missing-include noise the
-    # membership gate exists to prevent
+    # gate passes when one file is a build member; run must check only that member --
+    # checking the stray would manufacture the missing-include noise the gate exists to prevent
     check = RecordingCheck(a_report())
     analyzer = ClangTidyAnalyzer(check=check)
 

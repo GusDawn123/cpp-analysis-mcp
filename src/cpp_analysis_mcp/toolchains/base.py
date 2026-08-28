@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 # must match the flags scripts/fixtures.py compile_case passes; a test cross-checks the two
 BASE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O1", "-fno-omit-frame-pointer")

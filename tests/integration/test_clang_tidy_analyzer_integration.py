@@ -1,9 +1,8 @@
 """Run the clang-tidy plugin against the real tool and require it to name the planted bug.
 
-The unit suite proves the adapter's shape with scripted outcomes; this proves the shape
-holds when the callable underneath is the real pipeline on a real toolchain. Same doctrine
-as the other integration suites: a fixture whose bug is known, an assertion that the bug
-is named on the marked line, and the clean fixture to show an all-clear is earned.
+The unit suite proves the adapter's shape with scripted outcomes; this proves it holds
+against a real toolchain. Same doctrine as the other integration suites: assert the bug
+lands on its marked line, and the clean fixture proves an all-clear is earned.
 """
 
 from __future__ import annotations
@@ -18,8 +17,8 @@ from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Scope
 from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, Severity
 from cpp_analysis_mcp.pipelines.static_check import check_file
+from cpp_analysis_mcp.store.models import Analysis, Severity
 
 pytestmark = pytest.mark.integration
 
