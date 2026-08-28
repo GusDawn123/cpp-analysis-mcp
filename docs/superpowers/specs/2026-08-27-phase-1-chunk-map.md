@@ -1,11 +1,23 @@
 # Phase 1 chunk map — store core and analyzer contract
 
+**Status: complete (2026-08-28).** Chunk 1.1 landed as PR #6
+(`af4faea`, `4359489`, `debd2d9`); chunk 1.2 as PR #8 (`8ada7e3`, `1b2bec4`,
+`a3e7bec`, `7d69830`, `80a932c`); a follow-up chore, PR #9, retired the
+`models.py` shim, applied the comment policy, and recalibrated the fingerprint
+latency bound to 1.0s for cross-machine headroom. Deviations from the plan
+below, each recorded in its commit: fingerprints ride absolute paths for now
+(the Phase 2 scope resolver owns relativization, and no persisted baseline
+exists yet to orphan); the wiring module once planned for `analyzers/` moved to
+the composition root so the plugin-isolation rule could stay absolute; and
+ADR-0002 gained its normative bit-for-bit encoding mid-chunk, enforced by a
+spec-literal reimplementation test.
+
 Phase 1 builds the two load-bearing pieces of architecture v2: the finding
 store (layer 2) and the analyzer contract (layer 3), proven by porting the two
-cheapest analyzers onto them. At the end of the phase the eight existing MCP
+cheapest analyzers onto them. At the end of the phase the ten existing MCP
 tools behave identically — verified by the existing test suite — but every
-finding flows through fingerprinting and the registry, and the review gate
-(Phase 2) has something to stand on.
+static-check finding flows through fingerprinting and the registry, and the
+review gate (Phase 2) has something to stand on.
 
 Later phases get their own maps when we reach them. Planning two phases ahead
 is how plans rot.

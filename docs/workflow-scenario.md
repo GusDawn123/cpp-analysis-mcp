@@ -4,6 +4,12 @@ A full worked example of somebody using this, start to finish. The point is to
 make the design concrete — every design problem in
 [open-questions.md](open-questions.md) surfaced by walking through this.
 
+Written before the code, and kept as the design's worked example. The tool
+names and the install command below match the shipped server; the JSON bodies
+are illustrative — the real shapes are the dataclasses in
+`src/cpp_analysis_mcp/store/models.py` (`CapabilityStatus`, `AnalysisReport`,
+`Finding`, `ProfileReport`).
+
 ---
 
 ## Setting
@@ -22,15 +28,18 @@ This is the classic profile of a concurrency bug. Reading harder does not help.
 ## Step 0 — Install
 
 ```bash
-claude mcp add cpp-analysis -- uvx cpp-analysis-mcp
+claude mcp add cpp-analysis -- uv run --directory /path/to/cpp-analysis-mcp cpp-analysis-mcp
 ```
 
 The server starts.
 
-It deliberately does **not** check the toolchain yet. Doing so means compiling
-three small test programs before the user has typed anything, and a five-second
-startup delay is the kind of friction that gets a tool uninstalled. Detection is
-deferred to first use and cached to disk afterward.
+It probes the toolchain right away: one planted-bug program per analysis,
+compiled and run concurrently, off the event loop so the MCP handshake is not
+stalled. On this machine that is a few seconds, once — the results are cached to
+disk under a fingerprint of the compiler, the OS, and the tools involved. The
+first draft of this design deferred detection to first use to save startup
+time; measured, the probes were cheap enough that an honest answer at startup
+won.
 
 ---
 
@@ -43,30 +52,20 @@ deferred to first use and cached to disk afterward.
 
 ## Step 2 — The AI checks what this machine can do
 
-Before promising anything, it calls `cpp_capabilities`. This is the first call,
-so detection actually runs — about two seconds to compile and execute the probe
-programs.
+Before promising anything, it calls `capabilities`. Detection already ran at
+startup; this reads the answers back and spawns nothing.
 
 ```json
 {
-  "platform": "linux-x86_64",
-  "toolchains": [
-    {"name": "clang++", "version": "18.1.8", "path": "/usr/bin/clang++"},
-    {"name": "g++",     "version": "13.2.0", "path": "/usr/bin/g++"}
-  ],
-  "build_systems": {"cmake": "3.28.3", "ninja": "1.11.1"},
-  "sanitizers": {
-    "thread":    {"available": true, "verified_by": "smoke_test"},
-    "address":   {"available": true, "verified_by": "smoke_test"},
-    "undefined": {"available": true, "verified_by": "smoke_test"},
-    "leak":      {"available": true, "verified_by": "smoke_test"}
-  },
-  "static": {"clang_tidy": "18.1.8", "thread_safety_analysis": true},
-  "profiler": {
-    "backend": "perf",
-    "version": "6.8",
+  "tsan":          {"available": true, "verified_by": "compiled and ran a planted data race; ThreadSanitizer reported it"},
+  "asan":          {"available": true, "verified_by": "compiled and ran a planted heap buffer overflow; AddressSanitizer reported it"},
+  "lsan":          {"available": true, "verified_by": "compiled and ran a planted memory leak; LeakSanitizer reported it"},
+  "ubsan":         {"available": true, "verified_by": "compiled and ran a planted signed integer overflow; UndefinedBehaviorSanitizer reported it"},
+  "thread-safety": {"available": true, "verified_by": "compiled a planted write to a guarded_by variable with no lock held; -Wthread-safety reported it"},
+  "clang-tidy":    {"available": true, "verified_by": "checked a planted null pointer written as 0; clang-tidy reported it"},
+  "profile": {
     "available": false,
-    "reason": "kernel.perf_event_paranoid = 4 blocks unprivileged profiling",
+    "reason": "the record step failed with exit 255: perf_event_open ... Permission denied",
     "suggestion": "sudo sysctl -w kernel.perf_event_paranoid=1"
   }
 }
@@ -93,25 +92,27 @@ matters in step 6.
 
 ## Step 3 — Cheapest check first
 
-`cpp_static_check`. Seconds, nothing executes.
+`static_check_file` on the suspect file, first with `clang-tidy`, then with
+`thread-safety`. Seconds, nothing executes.
 
 ```json
 {
+  "analysis": "clang-tidy",
   "findings": [
     {
+      "id": "clang-tidy-1",
       "tool": "clang-tidy",
       "severity": "warning",
       "category": "concurrency-mt-unsafe",
       "message": "Function 'localtime' is not thread-safe; use 'localtime_r'",
-      "location": {"file": "src/logging.cpp", "line": 88}
+      "location": {"file": "src/logging.cpp", "line": 88, "column": 16},
+      "fingerprint": "3f9c2a1e7b04d5c6",
+      "fingerprint_scheme": 1
     }
   ],
-  "thread_safety_analysis": {
-    "enabled": false,
-    "reason": "no GUARDED_BY annotations found in project",
-    "note": "Annotating shared members would enable compile-time lock checking"
-  },
-  "summary": {"total": 1, "errors": 0, "warnings": 1}
+  "exit_code": 0,
+  "limitations": [],
+  "verified_by": "checked a planted null pointer written as 0; clang-tidy reported it"
 }
 ```
 
@@ -119,7 +120,9 @@ A real bug, but not *this* bug — wrong file, wrong symptom.
 
 And `-Wthread-safety` found nothing because it *cannot*. It only checks rules you
 have declared, and this project has no annotations, so it has no idea what is
-supposed to be locked. Reported honestly rather than as a clean pass.
+supposed to be locked. An empty report here means a detector that was proved to
+work saw nothing in what it was allowed to see — which is why `verified_by` and
+`limitations` travel with every result rather than being looked up later.
 
 The escalation ladder is working as intended: cheap check ran, came back
 inconclusive, move up.
@@ -129,19 +132,18 @@ inconclusive, move up.
 ## Step 4 — Escalate to ThreadSanitizer
 
 ```json
-{"tool": "cpp_sanitize", "project_dir": ".", "sanitizer": "thread", "timeout_s": 180}
+{"tool": "sanitize_project", "source": ".", "analysis": "tsan"}
 ```
 
-Internally: CMake configures a separate `build-tsan/` directory with
+Internally: CMake configures a fresh scratch build directory with
 `-fsanitize=thread -g -O1`, builds it (about 40 seconds), then runs it with the
 environment that travelled attached to the built binary — so the sanitizer flags
-and the runtime options cannot drift out of sync.
+and the runtime options cannot drift out of sync. The pipeline owns its own
+timeouts; there is nothing for the caller to tune.
 
 ```json
 {
-  "status": "completed",
-  "build": {"ok": true, "duration_s": 41.2, "warnings": []},
-  "run":   {"exit_code": 0, "duration_s": 3.1},
+  "analysis": "tsan",
   "findings": [
     {
       "id": "tsan-1",
@@ -153,29 +155,36 @@ and the runtime options cannot drift out of sync.
       "symbol": "OrderBook::total_volume_",
       "threads": [
         {
-          "id": "T3", "op": "write", "size": 8,
+          "thread_id": "T3", "op": "write", "size": 8,
           "locks_held": [],
           "frames": [
-            {"function": "OrderBook::add_fill",     "file": "src/order_book.cpp", "line": 147},
-            {"function": "FeedHandler::on_message", "file": "src/feed.cpp",       "line": 210}
+            {"function": "OrderBook::add_fill",     "location": {"file": "src/order_book.cpp", "line": 147}},
+            {"function": "FeedHandler::on_message", "location": {"file": "src/feed.cpp",       "line": 210}}
           ]
         },
         {
-          "id": "T1", "op": "read", "size": 8,
+          "thread_id": "T1", "op": "read", "size": 8,
           "locks_held": ["OrderBook::book_mutex_"],
           "frames": [
-            {"function": "OrderBook::snapshot", "file": "src/order_book.cpp", "line": 203}
+            {"function": "OrderBook::snapshot", "location": {"file": "src/order_book.cpp", "line": 203}}
           ]
         }
       ],
-      "memory": {"kind": "heap", "allocated_at": {"file": "src/feed.cpp", "line": 44}}
+      "allocated_at": {"file": "src/feed.cpp", "line": 44},
+      "occurrences": 12,
+      "engine": "local"
     }
   ],
-  "summary": {"total": 1, "by_category": {"data-race": 1}, "truncated": false},
-  "raw_log_path": "/tmp/cpp-analysis-abc123/tsan.log.48211",
-  "coverage_note": "TSan reports only code paths that executed during this run."
+  "build_warnings": [],
+  "exit_code": 66,
+  "limitations": [],
+  "verified_by": "compiled and ran a planted data race; ThreadSanitizer reported it"
 }
 ```
+
+Twelve reports of the same race in the loop collapsed into one finding with
+`occurrences: 12`, and `engine` says where it was witnessed — the host here; a
+WSL distro or a Linux container when one of those ran it.
 
 Look at `locks_held`. Thread T1 held `book_mutex_`. Thread T3 held nothing.
 
@@ -193,13 +202,13 @@ The AI reads `order_book.cpp:147`, sees the unguarded `total_volume_ += qty`,
 and — noting from surrounding code that `book_mutex_` is the established
 convention — adds the lock.
 
-Re-runs `cpp_sanitize`. The build is incremental this time (4 seconds, CMake
-caches), and findings come back empty.
+Re-runs `sanitize_project`, and findings come back empty.
 
-It reports that honestly, because of `coverage_note`: ThreadSanitizer only
-observed the code paths that ran. A clean result means *the exercised paths are
-race-free*, not *the program is race-free*. An AI that says "fixed, guaranteed"
-is overclaiming, and the returned data is shaped to discourage that.
+It reports that honestly, because the tool description says what a sanitizer
+is: ThreadSanitizer only observed the code paths that ran. A clean result means
+*the exercised paths are race-free*, not *the program is race-free*. An AI that
+says "fixed, guaranteed" is overclaiming, and both the tool descriptions and the
+returned data (`verified_by`, `limitations`) are shaped to discourage that.
 
 ---
 
@@ -215,28 +224,38 @@ stored back in step 2:
 > Profiling is disabled on this machine by `kernel.perf_event_paranoid=4`.
 > Run `sudo sysctl -w kernel.perf_event_paranoid=1` and I'll re-check.
 
-They run it. `cpp_profile` builds a release binary — critically with
-`-fno-omit-frame-pointer`, because without frame pointers `perf`'s call graphs on
-optimized builds are unusable garbage — then records and processes the samples.
+They run it — and restart the server, since the probe result is cached under the
+kernel setting that just changed, so the cache retires itself. `profile_project`
+builds at `-O2` — critically with `-fno-omit-frame-pointer`, because without
+frame pointers `perf`'s call graphs on optimized builds are unusable garbage —
+then records and processes the samples.
 
 ```json
 {
-  "backend": "perf",
-  "samples": 84210,
-  "duration_s": 10.0,
+  "analysis": "profile",
   "hotspots": [
     {"function": "__lll_lock_wait", "self_pct": 34.1, "total_pct": 34.1,
-     "note": "futex wait — lock contention"},
-    {"function": "OrderBook::add_fill", "file": "src/order_book.cpp",
-     "self_pct": 8.2, "total_pct": 47.9},
-    {"function": "FeedHandler::decode", "self_pct": 19.4, "total_pct": 21.0}
+     "note": "futex wait -- lock contention"},
+    {"function": "FeedHandler::decode", "self_pct": 19.4, "total_pct": 21.0},
+    {"function": "OrderBook::add_fill", "self_pct": 8.2, "total_pct": 47.9,
+     "location": {"file": "src/order_book.cpp", "line": 147}}
   ],
-  "flamegraph_path": "/tmp/cpp-analysis-abc123/flame.svg"
+  "samples": 84210,
+  "event": "cpu/cycles/P",
+  "fingerprints": [
+    {"category": "lock-contention", "share_pct": 34.1,
+     "statement": "34% of self time waiting on a futex: threads are queued behind a lock",
+     "candidates": ["shrink the critical section", "a lock-free counter", "per-thread accumulation"]}
+  ],
+  "confidence": "84210 samples: percentage differences of a point or more are real",
+  "exit_code": 0
 }
 ```
 
 34% of runtime sitting in futex wait — threads queued up behind the new mutex.
-The correctness fix created a performance bottleneck.
+The correctness fix created a performance bottleneck. Note `samples` and
+`event`: the ranking is worth what it was measured with, and a run inside a VM
+with no hardware counters would say `cpu-clock` here instead.
 
 ---
 
@@ -246,8 +265,12 @@ Now there are grounds for a real solution rather than a guess:
 `std::atomic<uint64_t>` with `fetch_add(qty, std::memory_order_relaxed)`.
 Race-free without serializing threads behind a lock.
 
-Re-run ThreadSanitizer: clean. Re-run the profiler: futex wait gone, p99 back
-under 45µs.
+Rather than trust the reasoning, race it: `benchmark_variants` with the mutex
+version as the baseline and the atomic version as the challenger, same workload,
+outputs compared byte for byte. A rewrite that got faster by answering
+differently is rejected no matter how fast it ran. Then re-run ThreadSanitizer:
+clean. Re-run the profiler: futex wait gone, p99 back under 45µs. The
+`make-it-faster` prompt ships exactly this loop as a slash command.
 
 ---
 
