@@ -10,6 +10,7 @@ manufactured collision.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -111,6 +112,23 @@ def test_fingerprint_stamps_the_scheme_and_keeps_the_original() -> None:
     assert stamped.fingerprint_scheme == SCHEME_VERSION
     assert original.fingerprint == ""  # frozen input untouched; replace() returned a copy
     assert replace(stamped, fingerprint="", fingerprint_scheme=0) == original
+
+
+def test_a_locationless_finding_ignores_whatever_text_is_passed() -> None:
+    # the spec: no location means empty path AND empty text, through every entry point.
+    # a caller handing text to a locationless finding must not mint a second identity
+    homeless = Finding(
+        id="build-0001",
+        tool="cmake",
+        severity=Severity.ERROR,
+        category="configure-failed",
+        message="generator not found",
+    )
+
+    with_text = fingerprint(homeless, "stray text from a confused caller", 0)
+    without = fingerprint(homeless, "", 0)
+
+    assert with_text.fingerprint == without.fingerprint
 
 
 def test_a_finding_with_no_location_still_gets_an_identity() -> None:
@@ -238,3 +256,63 @@ def test_ten_thousand_findings_fingerprint_in_under_a_tenth_of_a_second() -> Non
 
     assert len(stamped) == 10_000
     assert elapsed < 0.1, f"fingerprint_batch took {elapsed:.3f}s for 10k findings"
+
+
+# ---------------------------------------------------------------- the normative spec
+
+
+def spec_literal_fingerprint(rule: str, path: str, text: str, index: int) -> str:
+    """ADR-0002's normative encoding, reimplemented from the document alone.
+
+    Written against the prose, not the production code: each canonicalized field as
+    UTF-8, prefixed with the ASCII decimal byte length and a colon, concatenated,
+    SHA-256, lowercase hex, first sixteen characters. If this and compute_fingerprint
+    ever disagree, one of them changed scheme without saying so.
+    """
+    normalized_path = path.replace("\\", "/").removeprefix("./")
+    stripped = "".join(text.split())
+    blob = b""
+    for part in (rule, normalized_path, stripped, str(index)):
+        encoded = part.encode("utf-8")
+        blob += str(len(encoded)).encode("ascii") + b":" + encoded
+    return hashlib.sha256(blob).hexdigest()[:16]
+
+
+SPEC_CASES = (
+    ("bugprone-use-after-move", "src/order_book.cpp", "    process(std::move(order));", 0),
+    ("bugprone-use-after-move", "src\\order_book.cpp", "process( std::move( order ) );", 0),
+    ("data-race", "src/feed.cpp", "balance += amt;", 1),
+    ("configure-failed", "", "", 0),
+    # non-ASCII in rule-adjacent text and path, with a no-break space (U+00A0) in the
+    # source line: the length prefixes count UTF-8 bytes and the stripper speaks Unicode,
+    # and an implementation counting characters or ASCII whitespace fails exactly here
+    (
+        "bugprone-suspicious-include",
+        "src/misc/h\u00e9ader_users.cpp",
+        'auto\u00a0name = "\u03a9";',
+        0,
+    ),
+)
+
+
+def test_production_matches_the_spec_literal_reimplementation() -> None:
+    for case in SPEC_CASES:
+        assert compute_fingerprint(*case) == spec_literal_fingerprint(*case), case
+
+
+def test_known_answer_digests_are_pinned_forever() -> None:
+    """The ADR's worked example and companions, as constants.
+
+    These hex strings appear in ADR-0002 and here, nowhere derived. A synchronized
+    change to the spec and the implementation still breaks this test -- which is the
+    point: moving these digests is a scheme bump, never a refactor.
+    """
+    expected = (
+        "e56adf7bdc0bf0a3",
+        "e56adf7bdc0bf0a3",
+        "e07f28bdd9615329",
+        "46532caa118af9be",
+        "5ff61dcafa372f42",
+    )
+
+    assert tuple(compute_fingerprint(*case) for case in SPEC_CASES) == expected
