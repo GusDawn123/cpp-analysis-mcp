@@ -38,11 +38,14 @@ CheckFile = Callable[[Path], AnalysisReport | BuildFailure | CapabilityStatus]
 def checkable_sources(scope: Scope, context: AnalyzerContext) -> tuple[str, ...]:
     """The files a compile-time plugin may actually check, gate and run agreeing.
 
-    Suffix first; then, when a compilation database is known, only its members --
-    checking a file the build never compiles manufactures exactly the missing-include
-    noise the membership gate exists to prevent. An empty database means none is known,
-    and the suffixes decide alone.
+    A caller-named scope is checked verbatim: the user pointed at those exact files, and
+    a header parses standalone today. For a scan, suffix first; then, when a compilation
+    database is known, only its members -- checking a file the build never compiles
+    manufactures exactly the missing-include noise the membership gate exists to prevent.
+    An empty database means none is known, and the suffixes decide alone.
     """
+    if scope.caller_named:
+        return scope.files
     sources = tuple(file for file in scope.files if file.endswith(CPP_SOURCE_SUFFIXES))
     if context.translation_units:
         return tuple(file for file in sources if file in context.translation_units)
@@ -52,7 +55,13 @@ def checkable_sources(scope: Scope, context: AnalyzerContext) -> tuple[str, ...]
 def membership_gate(
     scope: Scope, context: AnalyzerContext, *, no_sources_reason: str
 ) -> Applicability:
-    """The two gates every compile-time plugin shares, refusing in the same order."""
+    """The two gates every compile-time plugin shares, refusing in the same order.
+
+    Both are selection gates, so a caller-named scope passes them outright (Scope says
+    why); the capability gate is the registry's and binds regardless.
+    """
+    if scope.caller_named:
+        return Applicability(eligible=True)
     sources = tuple(file for file in scope.files if file.endswith(CPP_SOURCE_SUFFIXES))
     if not sources:
         return Applicability(eligible=False, reason=no_sources_reason)
