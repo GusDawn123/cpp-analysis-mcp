@@ -63,16 +63,27 @@ for profiling.
 
 ## Platform support
 
-|                            | Linux | macOS   | Windows      |
-|----------------------------|-------|---------|--------------|
-| ASan, UBSan, static checks | yes   | yes     | yes          |
-| TSan, LSan                 | yes   | yes     | yes, via WSL |
-| Profiler (perf)            | yes   | not yet | yes, via WSL |
+Every analysis, on every OS, without installing the analyzers
+yourself. That is the goal the design is built around, and Linux is
+how it gets there: Linux is the one platform where all seven
+analyses run natively, so the server treats it as the execution
+floor and brings it to the other two rather than re-implementing
+each tool three times.
 
-On Windows the server finds a WSL distro on its own and routes the
-Linux-only tools through it. You keep passing normal C:\ paths.
-When something cannot run, the server says so plainly and names the
-command that would fix it.
+- Tools the host already has are used directly, once a probe proves
+  they work. That is the fast path, never the definition of support.
+- On Windows the server finds a WSL distro on its own and routes the
+  Linux-only analyses through it today. You keep passing normal C:\
+  paths.
+- The Linux container engine -- one pinned toolbox image carrying the
+  whole roster, for hosts with none of the tools -- is the next
+  engine, and the one that makes the story identical everywhere. The
+  design is [ADR-0004](docs/adr/0004-execution-engines.md); a
+  container runtime is the one prerequisite it asks of a bare machine.
+
+Until it lands, `capabilities` is the honest list for the machine you
+are on. A probe that fails says why, in words, and names the command
+that would fix it.
 
 ## Setup
 
@@ -99,9 +110,10 @@ For any other MCP client, add the same command to its config file:
 }}}
 ```
 
-The first start takes a minute. The server compiles and runs a tiny
-buggy program for each analysis to prove the tool really works on
-your machine, then caches the results.
+The first start takes a few seconds (under one on an M-series Mac).
+The server compiles and runs a tiny buggy program for each analysis
+to prove the tool really works on your machine, then caches the
+results so later starts skip the probes.
 
 ## Why you can trust an empty result
 
@@ -120,12 +132,15 @@ looks exactly like clean code.
 ```
 your AI agent (Claude Code, Cursor, anything that speaks MCP)
         |
-    server.py        ten tools, no logic of its own
+    server.py        ten tools and two prompts, no logic of its own
         |
+    context.py       resolved once at startup: OS, compiler, what the
+        |            probes proved, and which engine each analysis runs on
     battery.py       full_check_file only: fans out to every
         |            correctness pipeline below, in parallel
-    pipelines/       the recipes: check, sanitize, profile
-        |
+    pipelines/       the recipes: check, sanitize, profile, benchmark
+        |            (static checks resolve through analyzers/, the
+        |             plugin registry of the v2 architecture)
    +----------+-------------+
    |          |             |
  build/    process.py    parsers/
@@ -135,19 +150,28 @@ your AI agent (Claude Code, Cursor, anything that speaks MCP)
    |
    +-- platforms/    what Linux, macOS, and Windows each need
    +-- toolchains/   what clang and gcc each need
-   +-- wsl.py        Windows borrowing Linux for what it lacks
+   +-- wsl.py        Windows borrowing Linux for what it lacks:
+   |                 the first engine of ADR-0004, ahead of the container
+   +-- store/        the shared vocabulary, plus finding identity
+                     (content-derived fingerprints) that survives edits
 ```
 
 The layer rules are enforced by tests that parse the source tree,
 so they cannot rot: server.py holds no control flow, only
-process.py may spawn a subprocess, parsers never touch a file, and
-exactly one module is allowed to ask what machine this is.
+process.py may spawn a subprocess, parsers never touch a file,
+exactly one module is allowed to ask what machine this is, and
+analyzer plugins import nothing above themselves.
+
+This is the v1 layout, mid-migration to the five-layer design in
+[docs/architecture-v2.md](docs/architecture-v2.md); the store and
+the analyzer contract are the parts of it that exist today.
 
 ## Tests
 
-507 unit tests run anywhere, no compiler needed. Integration tests
+639 unit tests run anywhere, no compiler needed. Integration tests
 compile and run fixtures with planted bugs, and golden outputs
-captured on Linux, macOS, and Windows keep every parser honest.
+captured on Linux (clang and gcc), macOS, and Windows keep every
+parser honest.
 
 ```bash
 make test

@@ -3,6 +3,13 @@
 Date: 2026-08-12. Status: approved approach ("go ahead and build the WSL bridge"),
 measurements done before writing this.
 
+> **Amended since (2026-08-28):** the bridge now carries the profiler as well —
+> `BRIDGED = {TSAN, LSAN, PROFILE}` in `wsl.py` — so the one-time setup installs
+> `linux-tools-generic` (perf) alongside clang and llvm; current commands are in
+> [getting-started.md](../../getting-started.md). The bridge is also the first
+> instance of the engine abstraction in ADR-0004, which the container engine
+> generalizes to every OS.
+
 ## Goal
 
 On Windows, TSan and LSan stop being denials. When a WSL distro with clang exists,
