@@ -305,3 +305,33 @@ def _callee_name(func: ast.expr) -> str:
     if isinstance(func, ast.Attribute):
         return func.attr
     return ""
+
+
+def test_analyzer_plugins_import_no_upper_layer() -> None:
+    """Plugins receive their tooling injected; they may never reach for it themselves.
+
+    The analyzer contract's promise is that a plugin knows nothing about the protocol,
+    the composition root, or the pipelines behind its injected callable. A plugin
+    importing any of them is a pipeline growing back under a new name -- and the wiring
+    that legitimately composes those layers lives at the composition root, outside
+    analyzers/, precisely so this rule can stay absolute.
+    """
+    forbidden = (
+        "mcp",
+        f"{PACKAGE_NAME}.server",
+        f"{PACKAGE_NAME}.context",
+        f"{PACKAGE_NAME}.pipelines",
+    )
+    violations: list[str] = []
+    for path in modules_in("analyzers"):
+        package = package_of(path)
+        for node, targets in imports_of(parse(path), package):
+            offending = [
+                target for target in targets if any(reaches(target, name) for name in forbidden)
+            ]
+            if offending:
+                violations.append(f"{path}:{node.lineno} imports {offending[0]}")
+
+    assert not violations, "analyzer plugins must not import upper layers:\n" + "\n".join(
+        violations
+    )

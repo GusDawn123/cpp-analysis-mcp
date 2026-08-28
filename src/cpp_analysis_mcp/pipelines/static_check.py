@@ -20,12 +20,15 @@ arguments (rule 3).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
 from cpp_analysis_mcp import compile_db, process
+from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Registry, Resolution, Scope
+from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
+from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
 from cpp_analysis_mcp.models import (
     Analysis,
@@ -37,6 +40,7 @@ from cpp_analysis_mcp.models import (
 from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # nothing runs the checked program, so this only has to cover parsing one translation unit;
@@ -137,22 +141,17 @@ def check_file(
     Three outcomes, all of them ordinary: a report, the failure that stopped one being
     produced, or the capability status saying this machine cannot run this check at all.
     """
-    runner_for = _RUNNERS[analysis]
-    status = capabilities[analysis]
-    if not status.available:
-        return status
-
-    checked = runner_for(
+    outcome, _ = _routed_check(
         source,
+        analysis,
         toolchain=toolchain,
         platform=platform,
+        capabilities=capabilities,
         checks=checks,
         timeout_s=timeout_s,
         runner=runner,
     )
-    if isinstance(checked, CapabilityStatus):
-        return checked
-    return _outcome(checked, analysis, status)
+    return outcome
 
 
 def check_snippet(
@@ -186,6 +185,101 @@ def check_snippet(
         timeout_s=timeout_s,
         runner=runner,
     )
+
+
+def _routed_check(
+    source: Path,
+    analysis: Analysis,
+    *,
+    toolchain: Toolchain,
+    platform: Platform,
+    capabilities: Mapping[Analysis, CapabilityStatus],
+    checks: str | None,
+    timeout_s: int,
+    runner: Runner,
+) -> tuple[AnalysisReport | BuildFailure | CapabilityStatus, tuple[Resolution, ...]]:
+    """The registry decides, the check runs, and every finding leaves carrying identity.
+
+    The gate that used to be an inline capability lookup is now the registry's chain over
+    both compile-time plugins, so a refusal here and a skip in a future plan trace are
+    the same verdict from the same code. A caller-named scope passes the selection gates
+    by design; the capability gate binds regardless, and a refusal returns the probe's
+    own status object, exactly as the inline gate did.
+
+    The plugins' run loop stays out of this path on purpose: it flattens failures into
+    findings for the store, and this surface still owes callers the failure itself. The
+    verdict is the plugins' contribution here; execution stays with the check steps.
+    """
+    runner_for = _RUNNERS[analysis]
+    resolutions = _registry().resolve(
+        Scope(project_root=source.parent, files=(source.name,), caller_named=True),
+        AnalyzerContext(
+            capabilities={
+                ClangTidyAnalyzer.name: capabilities[Analysis.CLANG_TIDY],
+                WarningsAnalyzer.name: capabilities[Analysis.THREAD_SAFETY],
+            }
+        ),
+    )
+    verdict = next(
+        row.verdict for row in resolutions if row.analyzer.name == _PLUGIN_NAMES[analysis]
+    )
+    if not verdict.eligible:
+        return capabilities[analysis], resolutions
+
+    checked = runner_for(
+        source,
+        toolchain=toolchain,
+        platform=platform,
+        checks=checks,
+        timeout_s=timeout_s,
+        runner=runner,
+    )
+    if isinstance(checked, CapabilityStatus):
+        return checked, resolutions
+    outcome = _outcome(checked, analysis, capabilities[analysis])
+    if isinstance(outcome, AnalysisReport):
+        outcome = replace(outcome, findings=fingerprint_batch(outcome.findings, _line_reader()))
+    return outcome, resolutions
+
+
+def _registry() -> Registry:
+    """Both compile-time plugins, registered for their gates alone.
+
+    The sentinel check documents that resolution never executes: if it ever fires, a
+    plugin's run loop entered a path that promised verdicts only.
+    """
+    registry = Registry()
+    registry.register(ClangTidyAnalyzer(check=_no_execution))
+    registry.register(WarningsAnalyzer(check=_no_execution))
+    return registry
+
+
+def _no_execution(source: Path) -> AnalysisReport | BuildFailure | CapabilityStatus:
+    raise RuntimeError(f"gate resolution never runs a tool, but was asked to check {source}")
+
+
+def _line_reader() -> Callable[[str, int], str]:
+    """Read flagged lines for fingerprinting, each file once, misses as empty text.
+
+    Findings name files the way the tool printed them, so the paths here are absolute --
+    which also means these fingerprints are not portable across checkouts yet. That is
+    deferred, deliberately: the Phase 2 scope resolver owns relativization, and no
+    persisted baseline exists today for a later change to orphan.
+    """
+    cache: dict[str, tuple[str, ...]] = {}
+
+    def read_line(file: str, line: int) -> str:
+        lines = cache.get(file)
+        if lines is None:
+            try:
+                text = Path(file).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            lines = tuple(text.splitlines())
+            cache[file] = lines
+        return lines[line - 1] if 1 <= line <= len(lines) else ""
+
+    return read_line
 
 
 def _check_thread_safety(
@@ -342,4 +436,12 @@ def _outcome(
 _RUNNERS: Mapping[Analysis, _Check] = {
     Analysis.THREAD_SAFETY: _check_thread_safety,
     Analysis.CLANG_TIDY: _check_clang_tidy,
+}
+
+# which plugin fronts each analysis in the registry. The warnings plugin answers for the
+# thread-safety probe because that is literally today's gate for the warnings path; the
+# probe rework of a later phase renames probes after the analyzers that own them
+_PLUGIN_NAMES: Mapping[Analysis, str] = {
+    Analysis.THREAD_SAFETY: WarningsAnalyzer.name,
+    Analysis.CLANG_TIDY: ClangTidyAnalyzer.name,
 }
