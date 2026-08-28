@@ -300,8 +300,23 @@ def fingerprint(toolchain: Toolchain, platform: Platform) -> str:
         "platform": platform.name,
         "env_facts": dict(platform.env_facts),
         "os_release": host_platform.release(),
+        # the clang-tidy probe's outcome depends on a binary the compiler fields say
+        # nothing about: installing, removing, or upgrading it must retire the cache.
+        # mtime stands in for a version query so resolving stays spawn-free
+        "clang_tidy": _tidy_identity(platform),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _tidy_identity(platform: Platform) -> list[str] | None:
+    tidy = find_clang_tidy(platform)
+    if tidy is None:
+        return None
+    try:
+        changed = str(tidy.stat().st_mtime_ns)
+    except OSError:
+        changed = "unreadable"
+    return [str(tidy), changed]
 
 
 def probe_all(
