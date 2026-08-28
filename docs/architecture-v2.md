@@ -83,8 +83,8 @@ Every finding records the engine that produced it.
 src/cpp_analysis_mcp/
 ├── surface/        # layer 5: tool definitions, output shaping
 ├── planner/        # layer 4: gates, scheduler, escalation rules + fixtures
-├── analyzers/      # layer 3: one module per analyzer, each owning its parser
-├── store/          # layer 2: models, fingerprints, dedup, baselines, suppressions
+├── analyzers/      # layer 3: one module per analyzer, each owning its parser   (exists)
+├── store/          # layer 2: models, fingerprints, dedup, baselines, suppressions (exists)
 ├── engines/        # layer 1: local / wsl / container, toolchains, process, probes
 └── project/        # cross-cutting state: config, compile_db, caches, cost history
 ```
@@ -105,6 +105,12 @@ Where v1 code lands:
 Files move **when a phase touches them, never in a big-bang rename** — every
 diff stays reviewable, and `git log --follow` keeps each file's history
 legible.
+
+Where things stand (2026-08-28): `models.py` has become `store/models.py` and
+its forwarding shim is retired; `store/` holds the fingerprints and the
+`FindingStore`; `analyzers/` holds the contract, the registry, and the
+clang-tidy and compiler-warnings plugins, which the existing static-check
+tools resolve through. Everything else still sits where v1 put it.
 
 ## Layering rules
 
@@ -152,13 +158,13 @@ minutes it costs to check.
 
 ## Migration phases
 
-| Phase | Ships                                                        |
-| ----- | ------------------------------------------------------------ |
-| 1     | Store core + analyzer contract; clang-tidy and warnings as the first plugins |
-| 2     | Planner + `review()`/`audit()` surface; scope resolver; baseline cache — **the review gate** |
-| 3     | Container engine + toolbox image; cppcheck proves the registry |
-| 4     | Sanitizers and perf as plugins; escalation live; suppressions; Infer |
-| 5     | Eval harness, PyPI, registry listings                        |
+| Phase | Ships                                                        | Status |
+| ----- | ------------------------------------------------------------ | ------ |
+| 1     | Store core + analyzer contract; clang-tidy and warnings as the first plugins | shipped 2026-08-28 (PRs #6, #8, #9) |
+| 2     | Planner + `review()`/`audit()` surface; scope resolver; baseline cache — **the review gate** | next |
+| 3     | Container engine + toolbox image; cppcheck proves the registry — **every analysis on every OS** | — |
+| 4     | Sanitizers and perf as plugins; escalation live; suppressions; Infer | — |
+| 5     | Eval harness, PyPI, registry listings                        | — |
 
 Every phase is releasable. Nothing built in one phase is rebuilt in a later
 one — the end state is this document, and each phase pours into it.

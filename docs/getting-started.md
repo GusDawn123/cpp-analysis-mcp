@@ -106,11 +106,14 @@ Most clients want that wrapped in JSON, keyed by whatever name you choose
 Check your client's docs for its exact config file location and reload
 mechanism — that part is the one thing that isn't standardized.
 
-The first start is slow **on purpose**: the server compiles and runs a small
-planted-bug program for each analysis to prove which ones actually work on your
-machine — a version number claiming ThreadSanitizer support is not the same as
-catching a race. Takes a minute or two, cached in `~/.cache/cpp-analysis-mcp`,
-so later starts are instant.
+The first start does real work **on purpose**: the server compiles and runs a
+small planted-bug program for each analysis to prove which ones actually work
+on your machine — a version number claiming ThreadSanitizer support is not the
+same as catching a race. The probes run concurrently and take a few seconds at
+most (under one second measured on an M-series Mac). Results are cached in
+`~/.cache/cpp-analysis-mcp`, keyed on the compiler, the OS release, and the
+clang-tidy install, so later starts skip the probes; installing or upgrading a
+tool retires the cache on its own.
 
 ## Catch a first bug
 
@@ -147,9 +150,13 @@ Expect a ThreadSanitizer report naming the racing threads and the line they
 collided on. That report — facts from an actual execution, not a plausible
 guess from reading — is the entire point of the project.
 
-Some analyses are platform-limited (leak detection is Linux-only, ThreadSanitizer's
-deadlock detector is inert on macOS). Do not memorize that: the `capabilities`
-tool is the honest list for the machine you are on.
+Some analyses are platform-limited today (leak detection is Linux-only,
+ThreadSanitizer's deadlock detector is inert on macOS, perf is a Linux kernel
+tool). Do not memorize that: the `capabilities` tool is the honest list for the
+machine you are on. And those limits belong to the host, not to the product —
+Linux runs every analysis, and the container engine in
+[ADR-0004](adr/0004-execution-engines.md) is how every OS gets the full set
+the way Windows already gets three of them through WSL.
 
 ## Developing
 
@@ -167,11 +174,19 @@ uv run ruff check .; uv run mypy; uv run pytest -m "not integration"
 uv run pytest -m integration
 ```
 
-The layout is four layers, each only allowed to talk downward — `server.py`
-(protocol) → `context.py` (startup) → `pipelines/` (workflow) → primitives
-(tools, parsers, platforms). The reasons live in
-[architecture.md](architecture.md); the layering rules are enforced by tests,
-so a change that breaks one fails loudly rather than eroding quietly.
+The layout is layered, each layer only allowed to talk downward — `server.py`
+(protocol) → `context.py` (startup) → `battery.py` and `pipelines/` (workflow)
+→ primitives (`build/`, `parsers/`, `platforms/`, `toolchains/`, `process.py`,
+`wsl.py`). Two pieces of the next architecture already sit alongside: static
+checks resolve through the plugin registry in `analyzers/`, and every finding
+they report carries an identity from `store/`. The reasons live in
+[architecture.md](architecture.md) and [architecture-v2.md](architecture-v2.md);
+the layering rules are enforced by tests, so a change that breaks one fails
+loudly rather than eroding quietly.
+
+Read [CLAUDE.md](../CLAUDE.md) at the repo root before changing anything: it
+holds the per-change ritual, the comment policy, and the decisions that are
+frozen.
 
 Branches: `feat/...` off `develop`, PR into `develop`, green CI required.
 `main` only receives merges from `develop`.

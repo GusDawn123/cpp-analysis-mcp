@@ -1,13 +1,23 @@
 # Open questions
 
-Decisions not yet made. Input wanted on all of these — especially #1.
+Decisions not yet made, and the record of the ones that were. Input wanted on
+the open ones — especially #1.
 
 Each section gives the context, the options considered, current thinking, and the
-specific thing that needs deciding.
+specific thing that needs deciding. A status line at the top of each says where
+it stands as of 2026-08-28; resolved questions keep their reasoning and move to
+the list at the bottom.
 
 ---
 
 ## 1. Output volume vs. usefulness
+
+**Status: open.** What exists: `Finding.occurrences` folds repeats of one
+finding into a count, and `FindingStore.ranked()` orders by severity and then
+round-robins across files, so every location is heard from before any repeats —
+the "diversity" option below, chosen. The two-tier index and a `get_finding(id)`
+detail fetch are the v2 surface (Phase 2); N and the raw-log path are still to
+decide.
 
 **The tension.** Every finding returned costs tokens in the AI's limited context
 window. Return too much and the findings crowd out the source code the AI needs
@@ -124,6 +134,12 @@ costs ~20 tokens instead of ~18,000 and preserves full access.
 
 ## 2. Long operations inside a single call
 
+**Status: resolved — block.** Tool calls block for the duration; each pipeline
+owns its own timeouts (a sanitized run's minutes, a syntax check's seconds), and
+the one long operation that could stall the protocol — startup probing — runs off
+the event loop so the MCP handshake completes while it works. Progress
+notifications remain available if evidence ever demands them.
+
 A clean build with sanitizers took 40 seconds in the
 [worked example](workflow-scenario.md). Large projects will take minutes.
 
@@ -212,6 +228,14 @@ false all-clear this project treats as its worst outcome.
 
 ## 4. Capability detection staleness
 
+**Status: resolved — the split was drawn as a cache key, not a second check.**
+Volatile host facts (`Platform.env_facts`, e.g. `vm.mmap_rnd_bits` on Linux)
+are read at detect time and become part of the cache fingerprint alongside the
+compiler, the OS release, the probe schema version, and clang-tidy's path and
+mtime. A setting that changes retires the cache entry, so the next start
+re-probes instead of trusting a stale answer — cheaper than re-checking every
+call and just as honest.
+
 Detection results cache to disk, fingerprinted on compiler path, compiler
 version, and OS release.
 
@@ -230,7 +254,19 @@ read and volatile, so check them every time.
 
 ## 5. Tool surface and granularity
 
-Not yet designed. The rough shape:
+**Status: resolved for v1 — ten tools, shipped.** One tool per *source shape*
+rather than per sanitizer: `sanitize_file` / `_project` / `_snippet` take an
+`analysis` parameter, and so do `static_check_file` / `_snippet`. The snippet
+tools stayed, because code the agent is holding and code the repository has are
+different inputs. Profiling is separate (`profile_file` / `_project`), and two
+tools the sketch below never imagined joined it: `benchmark_variants`, which
+races rewrites and rejects any whose output changed, and `full_check_file`,
+every correctness analysis in one call. The escalation ladder lives in the tool
+descriptions, which are the only thing the agent reads. Architecture v2
+replaces this surface with intent-named `review()` / `audit()` / `verify()` /
+`profile()` in Phase 2.
+
+The original sketch, kept for the record:
 
 ```
 cpp_capabilities()      what can this machine do
@@ -255,6 +291,12 @@ cpp_analyze_snippet()   fast path for a single self-contained file
 ---
 
 ## 6. Memory profiling — a third category we nearly missed
+
+**Status: open.** CPU profiling shipped (perf, via whichever engine runs
+Linux); heap profiling and false-sharing detection have not started. The
+container engine (ADR-0004) changes the calculus below: an x86-Linux-only
+feature like `perf c2c` stops being "no path to the other platforms" once every
+platform runs Linux.
 
 The original goal was tooling for **multithreaded, low-latency, and
 memory-efficient** C++. The first draft of this design covered the first two and
@@ -297,6 +339,13 @@ Linux support is thin, and macOS has nothing comparable.
 
 ## 7. Where to cut v1
 
+**Status: resolved — v1 shipped wider than the candidate below.** Linux, macOS
+and Windows; clang and gcc; the four sanitizers, both compile-time checks, perf
+profiling, and benchmarking. The counter-argument won: "is it slow" was a
+stated goal, and the profiler came in through the one backend (perf) brought to
+every platform rather than three backends. Where a host cannot run something
+natively today, that is the engine layer's job (ADR-0004), not a cut.
+
 Everything above describes the full vision. What actually ships first?
 
 **Candidate v1:** Linux + macOS, clang + gcc, sanitizers and static analysis
@@ -314,6 +363,15 @@ means the tool only does half of what it claims.
 ---
 
 ## Resolved
+
+**Long operations (#2), detection staleness (#4), tool surface (#5), where to
+cut v1 (#7)** — each resolved in place above, with its status line, 2026-08-28.
+
+**Where does every OS get every analysis?**
+Resolved 2026-08-27 by [ADR-0004](adr/0004-execution-engines.md): Linux is
+the execution floor, reached natively, through WSL on Windows today, and through
+a pinned Linux container on any host next. Native execution is the fast path
+the probes unlock, never the definition of what is supported.
 
 **What is the safety model for executing user code?**
 Resolved 2026-08-05 — see [section 3](#3-safety-model) for the full reasoning.

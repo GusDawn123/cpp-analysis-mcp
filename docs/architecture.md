@@ -3,6 +3,14 @@
 Written to be readable without prior context on the project. Start with the
 [README](../README.md) if you have not.
 
+This file describes the v1 layout, which is what runs today (checked against
+the code on 2026-08-28). Where it is heading is
+[architecture-v2.md](architecture-v2.md) and the ADRs. In particular
+[ADR-0004](adr/0004-execution-engines.md) makes Linux — the one OS that runs
+every analysis — the execution floor every other OS reaches through an engine:
+WSL on Windows today, a pinned Linux container everywhere next. Every per-OS
+gap this file mentions is a gap that engine closes.
+
 ---
 
 ## The core problem to solve
@@ -37,8 +45,12 @@ One implementation, plus a small per-platform table of differences.
 ### Tier 2 — genuinely different programs
 
 Profiling. `perf` (Linux), `xctrace` (macOS), and ETW (Windows) share nothing —
-different invocation, different output format, different permission model. These
-need real separate implementations behind a common interface.
+different invocation, different output format, different permission model.
+Three implementations behind one interface was the first plan. What shipped is
+one — `perf` — run wherever Linux is: natively, through WSL on Windows, and
+inside the container engine for macOS once ADR-0004 lands. One backend brought
+to every platform beat three backends kept in step, and it is the same answer
+the rest of the roster gets.
 
 ---
 
@@ -48,13 +60,18 @@ need real separate implementations behind a common interface.
   MCP tool surface        server.py
   what the AI sees                            protocol only, zero logic
   ─────────────────────────────────────────────────────────────────────
-  Orchestration           pipelines/
-  multi-step workflows                        "build, then run, then parse"
+  Composition root        context.py
+  decided once at start                       OS, compiler, probes, engines
   ─────────────────────────────────────────────────────────────────────
-  Primitives              build/  parsers/  platforms/
-                          capabilities  process
+  Orchestration           battery.py  pipelines/  analyzers/
+  multi-step workflows                        "build, then run, then parse";
+                                              static checks resolve through
+                                              the plugin registry
   ─────────────────────────────────────────────────────────────────────
-  Host tools              clang, cmake, perf, xctrace
+  Primitives              build/  parsers/  platforms/  toolchains/
+                          capabilities  process  wsl  compile_db  store/
+  ─────────────────────────────────────────────────────────────────────
+  Host tools              clang, gcc, cmake, clang-tidy, perf
 ```
 
 ### Why the platform split sits low
@@ -71,19 +88,30 @@ about 150–200 lines each — while the roughly 80% that is shared stays in one
 place, fixed once.
 
 ```
-platforms/base.py        the contract every platform must satisfy
+platforms/base.py        the contract every platform must satisfy: what it
+                         refuses, what it caveats, how its tools fail -- as
+                         tables, plus one lookup that matches a crash to
+                         its explanation
 
-platforms/linux.py       llvm-symbolizer
-                         perf profiler backend
-                         detects kernel.perf_event_paranoid blocking
+platforms/linux.py       -pthread on every compile
+                         the measured failure signatures (ASLR width,
+                           missing runtime packages) with their fixes
+                         volatile kernel facts that join the capability
+                           cache key, so a sysctl change retires the cache
 
 platforms/darwin.py      finds brew's llvm (clang-tidy is NOT on PATH
                            by default on macOS)
-                         atos symbolization
-                         xctrace profiler backend
+                         refuses LSan on Apple silicon and perf everywhere,
+                           each naming the way out
+                         TSan's deadlock detector is inert here: reported
+                           as a limitation, never as a clean run
 
-platforms/windows.py     ETW profiler backend
-                         WSL detection and guidance
+platforms/windows.py     .exe suffix; LLVM's own sanitizer runtime pinned
+                           by full path; runtime DLLs copied beside every
+                           sanitized binary; cmake forced onto Ninja
+                         TSan, LSan and perf refused natively, then
+                           routed through WSL when a distro qualifies
+                           (wsl.py) -- the first engine of ADR-0004
 ```
 
 ---
@@ -98,9 +126,10 @@ files. That was wrong. They vary independently:
 - **Which compiler** you use determines the sanitizer flags and which analyses
   are available at all.
 
-Linux can use clang *or* gcc. macOS only has clang. Windows has MSVC or clang-cl.
-Folding these together would mean duplicating gcc knowledge into the Linux file
-and clang knowledge into all three.
+Linux can use clang *or* gcc. macOS only has clang. Windows uses LLVM clang
+against MSVC's headers and linker. Folding these together would mean
+duplicating gcc knowledge into the Linux file and clang knowledge into all
+three.
 
 So they get separate directories:
 
@@ -109,8 +138,11 @@ platforms/       OS concerns
   base.py  linux.py  darwin.py  windows.py
 
 toolchains/      compiler concerns
-  base.py  clang.py  gcc.py  msvc.py
+  base.py  clang.py  gcc.py
 ```
+
+MSVC itself is not a toolchain here and is not planned to be one: it has no
+`-Wthread-safety` and no UBSan, so it would add code without adding checks.
 
 ### What each compiler supports
 
@@ -168,10 +200,13 @@ what that choice costs.
 
 ---
 
-## Four rules that keep it from tangling
+## Five rules that keep it from tangling
 
-These are enforced by tests that inspect the code's structure, not by discipline.
-Discipline erodes; a failing test does not.
+These are enforced by tests that inspect the code's structure
+(`tests/unit/test_architecture.py`), not by discipline. Discipline erodes; a
+failing test does not. Two smaller ratchets ride alongside them: only
+`process.py` may import `subprocess`, so timeouts and environment hygiene
+cannot be bypassed, and only `context.py` may call `platforms.detect()`.
 
 **1. Layers only point downward.**
 Pipelines may use primitives. No primitive may import from `pipelines/`. No
@@ -196,6 +231,13 @@ Text in, findings out. No subprocess calls, no filesystem access.
 This is what makes the cross-platform goal actually testable. Capture real `perf`
 output on Linux *once*, commit that text file, and the Linux profiler parser is
 then fully testable on macOS, in milliseconds, with no Linux anywhere.
+
+**5. Analyzer plugins import nothing above themselves.**
+A plugin under `analyzers/` may not import `server`, `context`, `pipelines`,
+or the MCP SDK. Its tooling arrives as an injected callable, and no toolchain
+discovery happens at import time. A plugin that reached upward would be a
+pipeline growing back under a new name, which is exactly what the analyzer
+contract in architecture-v2 exists to prevent.
 
 ---
 
@@ -234,12 +276,23 @@ Note `warnings` — the build step already produces findings, because
 ```python
 @dataclass(frozen=True)
 class Context:
-    platform: Platform            # the OS does not change mid-run
-    capabilities: Capabilities    # what this machine can actually do
-    workspace: Path               # where every tool call builds and runs
+    platform: Platform                          # the OS does not change mid-run
+    toolchain: Toolchain                        # OS and compiler vary independently
+    capabilities: Mapping[Analysis, CapabilityStatus]   # what the probes proved
+    workspace: Path                             # where every tool call builds and runs
+    runner: Runner                              # the one seam a test replaces
+    engines: Mapping[Analysis, Engine]          # where each analysis runs
 ```
 
 Prevents these being threaded through every function as separate arguments.
+
+`engines` is the seam ADR-0004 stands on. An `Engine` is a toolchain, a
+platform's data, and a way to spawn; every analysis resolves to one at startup,
+the host's own by default. On Windows a probe that passes inside a WSL distro
+reroutes that one analysis to the bridge, and the pipelines never learn a
+second machine exists — they receive an engine's toolchain, platform, and
+runner exactly as they received the host's. The container engine plugs into
+the same field.
 
 An early draft carried a `default_timeout_s` here too. That was the wrong shape: a
 sanitized run is minutes and a syntax check is seconds, so one number is too tight for the
@@ -254,32 +307,44 @@ and each of those gets its own scratch directory under the system temp dir.
 
 ## Capability detection
 
-`capabilities.py` does not check version numbers. It **compiles and runs a
-five-line test program** with each sanitizer to see whether it genuinely works on
-this machine.
+`capabilities.py` does not check version numbers. For each of the seven
+analyses it **compiles and runs a program with a planted bug** — a data race, a
+heap overflow, a leak, a signed overflow, an unguarded write, a `0` where
+`nullptr` belongs, a hot loop — and requires the detector to report it. A
+build that succeeded and then said nothing about its planted bug is
+*unavailable*, not available: a quiet runtime would call clean code and buggy
+code alike.
 
 Version sniffing lies constantly — a compiler can report a version that supports
 ThreadSanitizer while the runtime library is missing, or the platform is
 unsupported, or a system setting blocks it. A smoke test cannot lie.
 
-Results cache to disk, fingerprinted on compiler path, compiler version, and OS
-release, so only the first run pays the cost.
+The probes run concurrently at server startup, off the event loop so the MCP
+handshake is never stalled, and take seconds. Results cache to disk under a
+fingerprint of everything that decides an outcome: the probe schema version,
+compiler family, path and version, platform name, OS release, the platform's
+volatile facts (a kernel setting on Linux), and clang-tidy's path and mtime.
+Change any of them and the cache retires itself.
 
-The payoff is honest failure. Instead of a cryptic permissions error the AI then
-hallucinates an explanation for, the user gets:
+The payoff is honest failure. Instead of a cryptic error the AI then
+hallucinates an explanation for, the user gets a status per analysis:
 
 ```json
-"profiler": {
-  "backend": "perf",
+"tsan": {
+  "available": true,
+  "verified_by": "compiled and ran a planted data race; ThreadSanitizer reported it",
+  "limitations": ["Apple clang's TSan runtime cannot detect deadlocks ..."]
+},
+"profile": {
   "available": false,
-  "reason": "kernel.perf_event_paranoid = 4 blocks unprivileged profiling",
-  "suggestion": "sudo sysctl -w kernel.perf_event_paranoid=1"
+  "reason": "perf is a Linux kernel tool and has no macOS build; profiling needs Linux",
+  "suggestion": "profile on Linux, or use Instruments directly: xcrun xctrace record ..."
 }
 ```
 
-That is a real Linux setting Ubuntu ships in a state that blocks profiling. Most
-of the hard-won value in this project will be gotchas exactly like it, found one
-platform at a time.
+Every refusal names its reason and, where one exists, the command that fixes
+it. Most of the hard-won value in this project is gotchas exactly like these,
+found one platform at a time and carried as data in `platforms/`.
 
 ---
 
@@ -339,46 +404,63 @@ The intended usage pattern is an escalation ladder, cheapest first:
 Running the profiler first would be like calling forensics before checking
 whether the door was locked.
 
+This is the v1 answer. Architecture v2 moves the *what runs* decision into a
+deterministic planner inside the server ([ADR-0001](adr/0001-planner-is-deterministic-code.md))
+so the ladder stops being prose the agent is hoped to follow; the agent keeps
+the other half of the job, deciding what the results mean.
+
 ---
 
-## Planned structure
+## Structure
 
-**Not yet created.** This is the intended layout, recorded here for review.
+As of `develop` on 2026-08-28.
 
 ```
 cpp-analysis-mcp/
-├── pyproject.toml · README.md · LICENSE
+├── pyproject.toml · README.md · LICENSE · CLAUDE.md · Makefile
 │
 ├── src/cpp_analysis_mcp/
-│   ├── server.py           MCP tool definitions, delegate, serialize
-│   ├── models.py           Finding, Hotspot, Capability, BuiltBinary, Context
-│   ├── capabilities.py     host probing via smoke tests
-│   ├── process.py          subprocess, timeouts, confinement
+│   ├── server.py           ten tools and two prompts: declare, delegate, serialize
+│   ├── context.py          the composition root: resolve() once, Engine per analysis
+│   ├── battery.py          full_check_file: every correctness analysis, merged
+│   ├── prompts.py          the checkup and make-it-faster recipes
+│   ├── capabilities.py     host probing via planted-bug smoke tests, cached
+│   ├── process.py          the only place a subprocess is spawned
+│   ├── compile_db.py       find compile_commands.json, take a file's flags
+│   ├── profiler.py         the two perf invocations
+│   ├── fingerprints.py     read a hotspot ranking back in plain words
+│   ├── wsl.py              Windows borrowing Linux: discovery, path translation
 │   │
 │   ├── pipelines/          the orchestrators
-│   │   └── sanitize · static_check · profile
+│   │   └── static_check · sanitize · profile · benchmark
 │   │       (snippets are an entry point of each pipeline, not a pipeline of
 │   │        their own: a snippet is a source shape, and rule 1 -- no
 │   │        pipeline imports another -- would leave a snippet module
 │   │        rebuilding the same build-run-parse chain instead of reusing it)
 │   │
+│   ├── analyzers/          v2 layer 3: the contract, the registry, the
+│   │                       clang_tidy and warnings plugins, a shared adapter
+│   ├── store/              v2 layer 2: models (the shared vocabulary),
+│   │                       fingerprints (finding identity), the FindingStore
 │   ├── build/              cmake · single_file
-│   ├── parsers/            tsan · asan · ubsan · clang_tidy · perf · xctrace
+│   ├── parsers/            tsan · asan · lsan · ubsan · clang_tidy · diagnostics · perf
 │   ├── platforms/          base · linux · darwin · windows      (OS concerns)
-│   └── toolchains/         base · clang · gcc · msvc            (compiler concerns)
+│   └── toolchains/         base · clang · gcc                   (compiler concerns)
+│
+├── scripts/fixtures.py     stdlib-only: captures and validates the goldens
 │
 └── tests/
-    ├── unit/               mirrors src/ — no toolchain needed, runs anywhere
-    │   └── parsers/ · platforms/ · toolchains/
-    ├── integration/        needs a real compiler, skipped where unavailable
+    ├── unit/               mirrors src/ -- no toolchain needed, runs anywhere
+    │   └── analyzers/ · build/ · parsers/ · pipelines/ · platforms/ · store/ · toolchains/
+    ├── integration/        needs a real compiler, skips where a tool is absent
     └── fixtures/
         ├── cpp/            deliberately-buggy programs with known bugs
-        │                   data_race · heap_overflow · use_after_free
-        │                   deadlock · hot_loop
-        └── golden/         captured real tool output, per compiler and OS
-                            tsan_data_race.linux-clang.txt
-                            tsan_data_race.linux-gcc.txt
-                            tsan_data_race.darwin-clang.txt
+        │                   data_race · race_with_lock · deadlock · heap_overflow
+        │                   use_after_free · leak · signed_overflow
+        │                   unguarded_write · nullptr_zero · clean
+        ├── cmake_project/  a two-file CMake project for the project tools
+        └── golden/         captured real tool output, per compiler and OS:
+                            linux-clang · linux-gcc · darwin-clang · windows-clang
 ```
 
 Two things worth noting about `tests/`:
