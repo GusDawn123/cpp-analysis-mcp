@@ -1,16 +1,9 @@
 """The analyzer contract: one shape every tool fits, static or dynamic (layer 3).
 
-clang-tidy reads code in seconds; ThreadSanitizer builds and runs it for minutes. The
-layers above must not care. Each analyzer declares what it costs, what unit it works in,
-and whether it applies to a given scope -- and the registry turns those declarations
-into verdicts the planner can schedule from. Nothing in this module executes a tool:
-resolving is layer 3's job, running is layer 4's, and keeping that line is what keeps
-an analyzer a plugin instead of a pipeline.
-
-A verdict is never a bare boolean. Every gate that says no says why, in words, because
-the plan trace reports skips and "cppcheck skipped: no capability probe result" is the
-same honesty the capability report already practices -- an absent tool must be
-distinguishable from an unconsulted one.
+Nothing here executes a tool -- resolving is layer 3's job, running is layer 4's, and
+keeping that line is what keeps an analyzer a plugin instead of a pipeline. clang-tidy
+reads code in seconds; ThreadSanitizer builds and runs it for minutes, and the layers
+above must not care.
 """
 
 from collections.abc import Mapping
@@ -69,11 +62,10 @@ class Scope:
 
     project_root: Path
     files: tuple[str, ...]
-    # whether a caller pointed at these exact files, as opposed to a scan resolving them.
-    # Selection gates -- suffix, build membership -- exist to pick files out of a scan,
-    # and there is no picking to do when the user already pointed; capability gates bind
-    # either way. The same line black and ESLint each drew half of: explicit naming wins
-    # over selection, and nothing wins over a tool that cannot run.
+    # whether a caller pointed at these exact files, rather than a scan resolving them.
+    # Selection gates (suffix, build membership) exist to pick files out of a scan and
+    # have nothing to pick when the user already pointed; capability gates bind either
+    # way. Explicit naming wins over selection; nothing wins over a tool that cannot run.
     caller_named: bool = False
 
 
@@ -121,10 +113,8 @@ class Applicability:
 class Analyzer(Protocol):
     """What every tool implements -- structurally, no base class to inherit.
 
-    `applicable` holds the tool-specific gates (do these files concern me, are they in
-    the build); the registry wraps it with the generic gates it should not have to
-    repeat. `run` executes on an already-approved scope and returns findings destined
-    for the store.
+    `applicable` holds the tool-specific gates (do these files concern me, are they in the
+    build); the registry wraps it with the generic gates so it doesn't have to repeat them.
     """
 
     name: str

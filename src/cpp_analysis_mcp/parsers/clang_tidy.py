@@ -1,21 +1,9 @@
 """Turn clang-tidy output into Findings.
 
-clang-tidy borrows the compiler's diagnostic line -- `file:line:col: severity: message
-[suffix]` -- but the bracket holds something else. A compiler names the flag that produced
-the warning; clang-tidy names the check that fired, with no `-W` in front of it, and
-occasionally several checks comma-separated when one line trips more than one. Sharing the
-line shape with parsers.diagnostics while disagreeing about the bracket is why this is its
-own module: one reader would have to guess which tool wrote the text it was handed.
-
-Compile errors in the checked code come through here too, filed by clang-tidy under
-`clang-diagnostic-error` and followed by `note:` lines. They stay findings rather than
-becoming a failure, because an error carrying a file and a line is worth more than the same
-error inside a blob of output.
-
-Only `warning:` and `error:` lines become Findings. Everything else clang-tidy prints -- the
-tallies, the "Error while processing" banner, the echoed source, the caret, the fix-it's
-replacement text, and the notes -- is skipped. Text in, Findings out: nothing here reads a
-file or spawns.
+Shares its diagnostic line shape with parsers.diagnostics but disagrees about what the
+trailing bracket means -- a compiler names the flag, clang-tidy names the check (no `-W`,
+sometimes several comma-separated) -- which is why this is its own module rather than a
+shared reader guessing which tool wrote the text.
 """
 
 from __future__ import annotations
@@ -43,6 +31,8 @@ CHECK_SUFFIX = re.compile(r"\s*\[(?P<checks>[^\]]+)\]$")
 # Quoted source holding a colon and the word error parses as a diagnostic without this.
 CARET_BLOCK = re.compile(r"^\s*\d*\s*\|")
 
+# "error" on purpose: compile errors in checked code arrive as clang-diagnostic-error lines
+# and stay findings -- an error carrying a file and a line beats the same text in a blob
 SEVERITIES = {"warning": Severity.WARNING, "error": Severity.ERROR}
 
 # what makes two diagnostic lines the same one: file, line, column, severity, message, checks

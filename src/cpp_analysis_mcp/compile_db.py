@@ -1,21 +1,9 @@
 """Find the compilation database near a source file, and read the flags it needs to parse.
 
-A compile-time check on one file out of a real project fails for a boring reason before it
-can fail for an interesting one: the file opens with `#include "orderbook/OrderBook.hpp"` and
-nothing has told the compiler where `orderbook/` is. What comes back is "file not found",
-which says nothing about the code and stops the cheapest rung of the ladder being usable on
-any project big enough to have subdirectories -- which is most of them.
-
-The answer already exists on disk. Every build system writes compile_commands.json, the flags
-each file was really compiled with, and every other C++ tool reads it. So this finds it and
-takes the part that decides whether a file parses: include directories, macro definitions and
-the language standard. Nothing else. Optimization levels, warning flags, sanitizers and output
-paths all belong to a build that is not happening here, and copying them across would make the
-check answer for a different compilation than the one it is doing.
-
-Pure apart from reading files it was pointed at: no subprocess, and nothing here decides which
-tool runs. Relative paths in a database are relative to that entry's own `directory`, so they
-are made absolute on the way out -- the check runs from somewhere else entirely.
+A compile-time check on one file out of a real project fails on a missing include before
+it can fail on anything interesting, so this finds compile_commands.json and takes only
+what decides whether a file parses -- include directories, macro definitions, the
+language standard -- never optimization, warnings, sanitizers, or output paths.
 """
 
 from __future__ import annotations
@@ -174,15 +162,14 @@ def _flags(entry: dict[str, object]) -> tuple[str, ...]:
 def _tokens(entry: dict[str, object], base: Path) -> list[str]:
     """Read an entry's command line, in either shape a database writes it.
 
-    `arguments` is already a list and needs nothing. `command` is one string, and is split
-    without POSIX rules because on Windows those eat the backslashes that make up the paths;
-    the quotes that survive that are stripped by hand.
+    `arguments` is already a list. `command` is one string, split without POSIX rules
+    because on Windows those eat the backslashes that make up paths; surviving quotes
+    are stripped by hand.
 
-    Either shape can hand the include directories over indirectly, as `@some/file.rsp`, and
-    on Windows that is the common case rather than the exotic one: command lines there are
-    capped near 32k, so cmake moves the include flags into a response file as soon as a
-    project has a few of them. Read without expanding it, such an entry looks like a
-    compilation with no include paths at all -- which is exactly the bug this module exists
+    Either shape can hand off include directories indirectly as `@some/file.rsp` -- the
+    common case on Windows, where a capped ~32k command line pushes cmake into a response
+    file as soon as a project has a few includes. Read without expanding it, such an entry
+    looks like a compilation with no include paths at all: the same bug this module exists
     to fix, wearing a different hat.
     """
     return _expanded(_raw(entry), base)

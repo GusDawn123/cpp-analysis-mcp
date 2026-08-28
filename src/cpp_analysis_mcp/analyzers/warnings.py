@@ -1,14 +1,9 @@
-"""The compiler's own warnings behind the analyzer contract: plugin #2, and the proof.
-
-The contract's claim is that tools with nothing procedurally in common fit one shape.
-clang-tidy is a separate program hunted down on PATH; these findings fall out of a
-compile the toolchain was doing anyway (-fsyntax-only, -Wthread-safety among the flags).
-Same gates, same outcome mapping, one class each -- the shared spine carries both, which
-is the extraction earning its keep.
+"""The compiler's own warnings behind the analyzer contract: plugin #2, and the proof
+that tools with nothing procedurally in common still fit one shape -- these findings
+fall out of a compile the toolchain was doing anyway (-fsyntax-only, -Wthread-safety).
 
 Thread-safety analysis is clang's alone, and this module never mentions that: gcc hosts
-probe it unavailable, the registry's capability gate refuses with the probe's own reason,
-and the plugin stays compiler-agnostic. Layering doing its job.
+probe it unavailable and the capability gate refuses with the probe's own reason.
 """
 
 from cpp_analysis_mcp.analyzers._adapter import (

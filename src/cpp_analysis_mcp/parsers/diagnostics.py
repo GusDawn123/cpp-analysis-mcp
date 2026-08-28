@@ -1,13 +1,9 @@
 """Turn compiler diagnostic lines into Findings.
 
-gcc and clang both print `file:line:col: severity: message [-Wflag]`, with the column and
-the flag suffix each optional. This is where -Wthread-safety findings come from: they are
-reported while compiling, so the build layer parses its own build output rather than
-waiting for a run that would never mention them.
-
-Only `warning:` and `error:` lines become Findings. A `note:` elaborates the diagnostic
-above it -- counting one would report the same problem twice, the second time without the
-sentence that says what it is. Text in, Findings out: nothing here reads a file or spawns.
+gcc and clang both print `file:line:col: severity: message [-Wflag]`, column and flag
+each optional. This is where -Wthread-safety findings come from: reported while
+compiling, so the build layer parses its own output rather than waiting for a run that
+would never mention them. A `note:` elaborates the diagnostic above it and is skipped.
 """
 
 from __future__ import annotations

@@ -1,10 +1,8 @@
 """Run the sanitize chain through the real WSL bridge, on a machine that has one.
 
-The unit suite proves the bridge composes the measured command shapes; this proves the
-shapes still work: discover a real distro, probe TSan and LSan through it with the real
-planted bugs, then require the pipeline to blame the fixture's marked line from inside a
-Linux the caller never sees. Skips on every machine without a distro that has clang --
-which includes all of CI, where the unit fakes carry the coverage instead.
+The unit suite proves the bridge composes the right commands; this proves they still work:
+a real distro, TSan/LSan against real planted bugs, blamed from inside a Linux the caller
+never sees. Skips without a clang-capable distro -- all of CI -- where unit fakes cover it.
 """
 
 from __future__ import annotations
@@ -106,10 +104,8 @@ def test_lsan_finds_the_leak_from_inside_the_distro(
 
 
 def test_resolve_routes_tsan_onto_this_bridge_end_to_end(tmp_path: Path) -> None:
-    """The contract a real server start relies on, with nothing handed in: resolve() must
-    discover this same bridge on its own, reroute the denied analyses onto it, and the
-    engine it picked must catch a real race. Covers the seam the direct tests above skip
-    -- a regression in the routing itself would pass them and fail here."""
+    """resolve() must discover this bridge on its own and reroute onto it -- the seam the
+    direct tests above skip. A routing regression would pass them and fail only here."""
     context = resolve(cache_dir=None, workspace=tmp_path / "workspace")
     engine = context.engines[Analysis.TSAN]
     if engine.platform.name != "wsl":

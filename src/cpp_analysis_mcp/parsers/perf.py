@@ -1,19 +1,9 @@
 """Read `perf report`'s delimited table into Hotspots. Pure: no subprocess, no filesystem.
 
-perf can print its table with a chosen field separator, and the pipeline asks for one, so
-this splits on a delimiter rather than guessing at column widths. That matters more here than
-it looks: the Symbol column is padded to the widest demangled C++ name in the profile, and a
-template-heavy program produces names hundreds of characters long, so column positions move
-with the contents of the very profile being read.
-
-Two things are pulled out of the header rather than the rows, because without them the
-percentages cannot be judged. `Samples:` is how many the profiler took -- a ranking built on
-a few dozen is noise wearing a decimal point -- and `of event` is what was counted, since a
-host with no hardware counters silently profiles a timer instead and the table looks the same
-either way.
-
-Anything that does not parse is dropped rather than guessed at. A profile is a ranking, and a
-row invented from a line this reader did not understand would compete with measured ones.
+Splits on a chosen delimiter rather than column widths, because the Symbol column is
+padded to the widest demangled C++ name in the profile -- a template-heavy program makes
+column positions move with the very profile being read. Anything that fails to parse is
+dropped rather than guessed at, so an invented row never competes with a measured one.
 """
 
 from __future__ import annotations
@@ -26,7 +16,10 @@ from cpp_analysis_mcp.store.models import Hotspot, Location
 # input have to agree on this, so it lives here and the pipeline imports it
 SEPARATOR = ";"
 
-# "# Samples: 282  of event 'cpu/cycles/P'" -- both numbers a reader needs to weigh the table
+# "# Samples: 282  of event 'cpu/cycles/P'" -- both numbers a reader needs to weigh the
+# table: a ranking built on a few dozen samples is noise wearing a decimal point, and a
+# host with no hardware counters silently profiles a timer instead, with the table
+# looking the same either way.
 HEADER = re.compile(r"^#\s*Samples:\s*([\dKMG]+)\s+of\s+event\s+'([^']*)'", re.MULTILINE)
 
 # perf abbreviates large sample counts in the header; the table itself is percentages, so

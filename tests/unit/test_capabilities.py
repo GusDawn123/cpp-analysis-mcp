@@ -1,10 +1,8 @@
 """Probe the prober with no compiler anywhere: every runner here is a fake.
 
-A capability counts as available only when a planted bug came back reported, so most of
-what these tests script is a probe that compiles, runs, and then says nothing -- the false
-all-clear the whole module exists to prevent. The platform and toolchain tables are built
-by hand from the real ones, the same way tests/unit/platforms/test_platforms.py does, so
-Linux's link errors and macOS's arm64 denial are both exercised from one machine.
+A capability counts available only when a planted bug came back reported -- most tests
+script a probe that compiles, runs, and says nothing, the false all-clear this module
+exists to prevent. Hand-built platform tables let Linux and macOS both run from one machine.
 """
 
 from __future__ import annotations
