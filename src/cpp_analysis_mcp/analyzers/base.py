@@ -69,6 +69,12 @@ class Scope:
 
     project_root: Path
     files: tuple[str, ...]
+    # whether a caller pointed at these exact files, as opposed to a scan resolving them.
+    # Selection gates -- suffix, build membership -- exist to pick files out of a scan,
+    # and there is no picking to do when the user already pointed; capability gates bind
+    # either way. The same line black and ESLint each drew half of: explicit naming wins
+    # over selection, and nothing wins over a tool that cannot run.
+    caller_named: bool = False
 
 
 _NO_CAPABILITIES: Mapping[str, CapabilityStatus] = MappingProxyType({})

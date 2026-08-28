@@ -205,6 +205,57 @@ def test_a_detector_that_stopped_watching_says_so_instead_of_sounding_clean() ->
     assert finding.message == "clang-tidy is not on PATH"
 
 
+# ---------------------------------------------------------------- caller-named scopes
+
+
+def test_a_scope_is_scan_resolved_unless_it_says_otherwise() -> None:
+    assert Scope(project_root=ROOT, files=("src/a.cpp",)).caller_named is False
+
+
+def test_a_caller_named_header_is_eligible() -> None:
+    """Selection gates pick files out of a scan; there is no picking when the caller
+    pointed at one file. Headers parse standalone today and must keep doing so."""
+    analyzer = ClangTidyAnalyzer(check=RecordingCheck())
+
+    verdict = analyzer.applicable(
+        Scope(project_root=ROOT, files=("include/a.hpp",), caller_named=True),
+        AnalyzerContext(),
+    )
+
+    assert verdict.eligible
+
+
+def test_a_caller_named_file_outside_the_build_is_checked_anyway() -> None:
+    check = RecordingCheck(a_report())
+    analyzer = ClangTidyAnalyzer(check=check)
+
+    analyzer.run(
+        Scope(project_root=ROOT, files=("include/a.hpp",), caller_named=True),
+        AnalyzerContext(translation_units=frozenset({"src/other.cpp"})),
+    )
+
+    assert check.checked == [ROOT / "include/a.hpp"]
+
+
+def test_a_caller_named_file_still_answers_to_the_capability_gate() -> None:
+    """Pointing at a file overrides selection, never capability: a tool that cannot run
+    refuses in the probe's own words no matter how explicitly it was asked."""
+    registry = Registry()
+    registry.register(ClangTidyAnalyzer(check=RecordingCheck()))
+
+    (resolution,) = registry.resolve(
+        Scope(project_root=ROOT, files=("include/a.hpp",), caller_named=True),
+        AnalyzerContext(
+            capabilities={
+                "clang-tidy": CapabilityStatus(available=False, reason="clang-tidy is not on PATH")
+            }
+        ),
+    )
+
+    assert not resolution.verdict.eligible
+    assert resolution.verdict.reason == "clang-tidy is not on PATH"
+
+
 # ---------------------------------------------------------------- conformance
 
 

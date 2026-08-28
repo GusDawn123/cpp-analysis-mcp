@@ -15,6 +15,7 @@ many times something was called.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, Capa
 from cpp_analysis_mcp.pipelines.static_check import (
     CHECK_TIMEOUT_S,
     DEFAULT_CHECKS,
+    _routed_check,
     check_file,
     check_snippet,
 )
@@ -714,6 +716,103 @@ def test_a_tidy_run_killed_at_its_timeout_names_the_clang_tidy_stage(
 
     assert failure.stage == "clang-tidy"
     assert failure.timed_out is True
+
+
+# ---------------------------------------------------------------- identity and routing
+
+FINGERPRINT_SHAPE = re.compile(r"^[0-9a-f]{16}$")
+
+
+def test_report_findings_carry_their_identity(tmp_path: Path) -> None:
+    """The re-front's visible promise: every finding leaves stamped, scheme and all."""
+    runner = ScriptedRunner([RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))])
+
+    report = reported(check(tmp_path, runner))
+
+    finding = report.findings[0]
+    assert FINGERPRINT_SHAPE.match(finding.fingerprint), finding.fingerprint
+    assert finding.fingerprint_scheme == 1
+
+
+def test_identical_flagged_lines_are_two_findings_with_two_identities(tmp_path: Path) -> None:
+    """The occurrence rank at work through the whole pipeline: same rule, same text,
+    different lines -- merging them would hide the second bug."""
+    source = tmp_path / "twice.cpp"
+    source.write_text("int a = 0;\nint x = 1;\nint x = 1;\n", encoding="utf-8")
+    output = (
+        f"{source}:2:5: warning: declaration shadows a variable [-Wshadow]\n"
+        f"{source}:3:5: warning: declaration shadows a variable [-Wshadow]\n"
+    )
+    runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+
+    report = reported(
+        check_file(
+            source,
+            Analysis.THREAD_SAFETY,
+            toolchain=a_clang(),
+            platform=a_linux(),
+            capabilities=statuses(a_working_status()),
+            runner=runner,
+        )
+    )
+
+    first, second = report.findings
+    assert FINGERPRINT_SHAPE.match(first.fingerprint)
+    assert first.fingerprint != second.fingerprint
+
+
+def test_fingerprints_are_the_same_on_every_run(tmp_path: Path) -> None:
+    """Identity that changes between identical runs is not identity."""
+    replay = RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))
+
+    once = reported(check(tmp_path, ScriptedRunner([replay])))
+    again = reported(check(tmp_path, ScriptedRunner([replay])))
+
+    assert [finding.fingerprint for finding in once.findings] == [
+        finding.fingerprint for finding in again.findings
+    ]
+
+
+def test_the_routed_check_records_a_verdict_for_every_analyzer(tmp_path: Path) -> None:
+    """The registry is consulted for real: both plugins answer, and the requested one's
+    verdict is what let the check run."""
+    runner = ScriptedRunner([CLEAN])
+
+    _, resolutions = _routed_check(
+        a_source(tmp_path),
+        Analysis.THREAD_SAFETY,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=statuses(a_working_status()),
+        checks=None,
+        timeout_s=CHECK_TIMEOUT_S,
+        runner=runner,
+    )
+
+    verdicts = {row.analyzer.name: row.verdict.eligible for row in resolutions}
+    assert verdicts == {"clang-tidy": True, "compiler-warnings": True}
+
+
+def test_a_refused_gate_still_returns_todays_exact_status(tmp_path: Path) -> None:
+    """The registry decides, and the caller still receives the probe's own object --
+    the identity assertion the pre-registry tests already pin, kept under routing."""
+    status = a_denied_status()
+
+    outcome, resolutions = _routed_check(
+        a_source(tmp_path),
+        Analysis.THREAD_SAFETY,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=statuses(status),
+        checks=None,
+        timeout_s=CHECK_TIMEOUT_S,
+        runner=RefusingRunner(),
+    )
+
+    assert outcome is status
+    verdict = next(row.verdict for row in resolutions if row.analyzer.name == "compiler-warnings")
+    assert not verdict.eligible
+    assert verdict.reason == GCC_DENIED_REASON
 
 
 # ------------------------------------------------------------------------------ snippets
