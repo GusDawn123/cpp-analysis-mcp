@@ -384,6 +384,10 @@ def cmd_capture(args: argparse.Namespace) -> int:
             continue
 
         output, reason = build_and_run(case, args.compiler)
+        if not reason:
+            # same bar as validate: a golden whose output lacks the planted bug's marker
+            # would poison every parser test that replays it, silently
+            reason = check_output(case, output)
         if reason:
             failed += 1
             print(f"FAIL  {label(case)} {reason}")

@@ -1,12 +1,8 @@
 """Drive the race with no compiler and no child process anywhere.
 
-Only the subprocess boundary and the clock are faked. Validation, the build composition,
-the warmup ordering, the round-robin interleave, the answer comparison, and the ranking
-math are all the real code.
-
-What these pin is mostly what the race must never do: time a variant before its answer is
-checked, keep timing a variant that started answering differently, hand a rejected variant
-numbers, or rank anything when the baseline itself cannot hold its own answer steady.
+Only the subprocess boundary and the clock are faked; validation, build composition, warmup
+ordering, interleave, answer comparison, and ranking math are real code. Pinned: the race must
+never time before the answer's checked, keep timing a liar, or rank on an unstable baseline.
 """
 
 from __future__ import annotations
@@ -17,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp.models import BenchmarkReport, BuildFailure, Variant, VariantResult
 from cpp_analysis_mcp.pipelines import benchmark
 from cpp_analysis_mcp.pipelines.benchmark import race
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BenchmarkReport, BuildFailure, Variant, VariantResult
 from cpp_analysis_mcp.toolchains.base import BENCH_FLAGS, Toolchain
 
 CLANG = "clang++"

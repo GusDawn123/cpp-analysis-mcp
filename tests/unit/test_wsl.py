@@ -1,10 +1,8 @@
 """The WSL bridge with no WSL anywhere: the only fake is the subprocess boundary.
 
-Discovery, the platform table, the path respelling and the wrapping runner are all the real
-code running; what the fakes script is what wsl.exe and the distros inside it would have
-answered. The measured shapes these tests pin -- the UTF-16 listing, the --exec env spawn,
-the --cd Windows path -- come from the 2026-08-12 spec's measurements, so a refactor that
-drifts from what the real wsl.exe accepts fails here first.
+Discovery, the platform table, path respelling, and the wrapping runner are real code; the
+fakes script only what wsl.exe would answer. The pinned shapes -- UTF-16 listing, --exec env
+spawn, --cd Windows path -- come from the 2026-08-12 spec, so drift from real wsl.exe fails here.
 """
 
 from __future__ import annotations
@@ -17,9 +15,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import wsl
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms import linux
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis
 
 # where the fake PATH puts wsl.exe; spelled through Path so comparisons hold on any OS
 WSL_PATH = str(Path("/windows/system32/wsl.exe"))

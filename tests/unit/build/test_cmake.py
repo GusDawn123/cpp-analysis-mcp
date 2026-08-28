@@ -1,17 +1,8 @@
 """Build a cmake project with no cmake anywhere: every runner here is a fake.
 
-The trick that makes this possible is that cmake answers the "which targets did you build
-and where did they land" question through files. A fake configure can write that reply tree
-itself, so target selection, the executable filter and the index rule are all exercised at
-unit speed, with the real thing left to the integration suite.
-
-Every expectation is written down rather than read from the code under test -- the configure
-argv, the joined flag string, the pinned TSan options, the sanitizer variables that must not
-survive. A test that asked cmake.py what it composes would agree with it forever, including
-the day it composes the wrong thing.
-
-The Toolchain and Platform are built by hand, the way tests/unit/build/test_single_file.py
-does it, so the Linux command line is exercised on macOS (rule 3).
+cmake answers "which targets did you build and where did they land" through files; a fake
+configure writes that reply tree itself, so target selection, the executable filter, and
+the index rule all run at unit speed, with the real thing left to the integration suite.
 """
 
 from __future__ import annotations
@@ -24,9 +15,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp.build.cmake import build_project
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.platforms.base import FailureSignature, Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations

@@ -1,15 +1,9 @@
 """clang-tidy behind the analyzer contract: the first real tool to fit the shape.
 
-This module is deliberately thin. The static_check pipeline already knows how to find
-clang-tidy, choose a check set, ride the compilation database, and read what came back;
-the shared adapter spine owns the gates and the outcome mapping. What is left here is
-exactly what makes this plugin this plugin: its name, its tiers, and its refusal words.
-
-The check step arrives as a constructor argument rather than being built here: composing
-the real one takes a toolchain, a platform, and probe results, all of which are resolved
-per-request by the layer that owns them. A default would mean toolchain discovery at
-import time, which is how a library grows a hidden global. The wiring hands in a
-partially-applied check_file; tests hand in fakes and never need a compiler.
+Deliberately thin -- the static_check pipeline and shared adapter own the real work;
+this holds only this plugin's name, tiers, and refusal words. The check step arrives as
+a constructor argument rather than being built here, so import time never triggers
+toolchain discovery -- a default would grow this into a library with a hidden global.
 """
 
 from cpp_analysis_mcp.analyzers._adapter import (

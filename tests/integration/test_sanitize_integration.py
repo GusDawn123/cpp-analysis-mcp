@@ -1,14 +1,8 @@
 """Run the whole sanitize chain against the real compiler and the real fixtures.
 
-The unit suite replays captured output through a fake process; this proves the loop that
-output came from -- probe the host, compile a fixture whose bug is known, run it under the
-environment the build handed back, and require the parser to name the planted bug. A
-pipeline that dropped the runtime environment, ran the wrong binary or parsed with the
-wrong reader all produce the same empty report here, which is the failure this suite is
-built to catch.
-
-The clean fixture matters as much as the buggy ones: an all-clear is only worth anything
-from a chain that was demonstrated to report when there is something to report.
+The unit suite replays captured output through a fake process; this proves the real loop
+end to end -- a dropped runtime environment, the wrong binary, or the wrong parser would
+all look like the same empty report. The clean fixture proves that all-clear is earned.
 """
 
 from __future__ import annotations
@@ -21,9 +15,9 @@ from helpers import FIXTURES_DIR, bug_line, cpp_source
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file, analyze_project, analyze_snippet
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration
@@ -93,11 +87,8 @@ def toolchain() -> Toolchain:
 
 @pytest.fixture(scope="module")
 def capabilities(toolchain: Toolchain, host: Platform) -> Capabilities:
-    """Probe once for the whole module: every case here goes through the same gate.
-
-    The cache is off, so these are this machine's answers today rather than a file written
-    by some earlier run.
-    """
+    """Probe once for the module, with the cache off so these are today's answers, not a file
+    some earlier run wrote."""
     return probe_all(toolchain, host, cache_dir=None)
 
 
@@ -117,7 +108,6 @@ def analyze(
     capabilities: Capabilities,
     tmp_path: Path,
 ) -> AnalysisReport | CapabilityStatus:
-    """Analyze one fixture, failing with what the build said when nothing was produced."""
     result = analyze_file(
         cpp_source(stem),
         analysis,

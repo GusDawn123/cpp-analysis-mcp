@@ -1,14 +1,9 @@
 """Everything server.py would otherwise have to decide at startup, decided one layer down.
 
-server.py holds no control flow at all (rule 2), and startup is nothing but decisions: which
-OS this is, which compilers the machine has, which of them to build with, what this machine
-can actually do, and where work is allowed to happen. Each of those needs a branch, so each
-lives here and the server's lifespan is one call whose result it hands to every pipeline.
-
-resolve() is the composition root -- the one sanctioned caller of platforms.detect() outside
-tests. Nothing below server.py may call it: a pipeline that resolved its own context would be
-looking the platform up globally, which is exactly what rule 3 forbids, and would stop being
-testable from one machine the moment it did.
+server.py holds no control flow (rule 2); startup is nothing but decisions -- OS, compilers,
+what this machine can do, where work happens -- so each lives here instead. resolve() is
+the composition root, the one sanctioned caller of platforms.detect() outside tests (rule
+3): a pipeline resolving its own context would be looking the platform up globally.
 """
 
 from __future__ import annotations
@@ -20,10 +15,10 @@ from pathlib import Path
 from types import MappingProxyType
 
 from cpp_analysis_mcp import capabilities, platforms, process, wsl
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms import windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 CLANG_FAMILY = "clang"
@@ -43,7 +38,8 @@ NO_COMPILER = (
     f"{' and '.join(capabilities.COMPILER_CANDIDATES)}): neither is on PATH, or one is there "
     "but could not report a version when asked. Install or repair one: xcode-select --install "
     "or brew install llvm on macOS, sudo apt install clang or sudo apt install g++ on Debian "
-    "and Ubuntu."
+    "and Ubuntu, winget install LLVM.LLVM on Windows (then add its bin directory to PATH; "
+    "the installer offers a checkbox for it)."
 )
 
 
@@ -65,15 +61,12 @@ class Engine:
 class Context:
     """What one server process resolved once at startup and hands down to every call.
 
-    The Context docs/architecture.md sketches, with two fields added and one dropped. The
-    toolchain is here because the OS and the compiler vary independently and every pipeline
-    needs both. The runner is here because it is the one testability seam this project
-    allows: a fake replaces the subprocess boundary and nothing else, so a test drives the
-    real discovery, the real gate and the real composition without a compiler anywhere.
-
-    default_timeout_s is gone. Each pipeline knows what its own steps cost -- a sanitized run
-    is minutes and a syntax check is seconds -- so one number here would be too tight for one
-    and meaningless for the other.
+    Differs from the Context docs/architecture.md sketches by two additions and one drop.
+    Toolchain is here because the OS and the compiler vary independently and every pipeline
+    needs both. Runner is here because it is the one testability seam this project allows: a
+    fake replaces the subprocess boundary and nothing else. default_timeout_s is gone --
+    each pipeline knows its own steps' cost, and one number here would be too tight for a
+    sanitized run's minutes and meaningless for a syntax check's seconds.
     """
 
     platform: Platform  # the OS does not change mid-run
@@ -106,17 +99,11 @@ class Context:
 def prefer(toolchains: Sequence[Toolchain]) -> Toolchain:
     """Choose which discovered compiler to build with: clang when the machine has one.
 
-    clang is the preference for the reasons docs/architecture.md gives under "Why clang is
-    still the default" -- it is the only compiler present on all three target platforms,
-    -Wthread-safety exists on no other, and its sanitizers are LLVM's own rather than a
-    periodic snapshot of them. It is never a requirement: a machine with only gcc gets gcc,
-    and the capability probes report what that costs.
-
-    Discovery order must not be what decides this. COMPILER_CANDIDATES happens to list
-    clang++ before g++ today, and a preference that rode on that would quietly invert the
-    day someone reordered the tuple.
-
-    Callers guarantee a non-empty sequence; resolve() is where the empty case is answered.
+    Clang is the preference for the reasons docs/architecture.md gives under "Why clang is
+    still the default"; never a requirement, though -- a machine with only gcc gets gcc, and
+    the probes report what that costs. Discovery order must not decide this:
+    COMPILER_CANDIDATES happens to list clang++ before g++ today, and relying on that would
+    quietly invert if the tuple's order ever changed. Callers guarantee a non-empty sequence.
     """
     return next((chain for chain in toolchains if chain.family == CLANG_FAMILY), toolchains[0])
 
@@ -129,15 +116,13 @@ def resolve(
 ) -> Context:
     """Read this host once and bind everything a request will need into one immutable value.
 
-    cache_dir defaults to CACHE_DIR rather than to None so a live server pays the probe cost
-    once per machine instead of once per start. Passing None explicitly is the way to say
-    "remember nothing", which is what probe_all already understands and what a caller who
-    must not write to a home directory asks for.
+    cache_dir defaults to CACHE_DIR, not None, so a live server pays the probe cost once per
+    machine rather than once per start; explicit None means "remember nothing", which is
+    what probe_all understands and what a caller barred from writing a home directory needs.
 
-    The workspace is settled first because it is the only question here that costs nothing to
-    answer. Everything after it spawns -- two version queries, then six compiles and six runs
-    -- and a configured path that can never hold a build should not surface at the end of all
-    that.
+    The workspace is settled first because it is the only question here that costs nothing
+    to answer -- everything after it spawns two version queries, then six compiles and six
+    runs, and a misconfigured path that can never hold a build should not surface at the end.
     """
     platform = platforms.detect()
     workspace = _workspace(workspace)
@@ -150,13 +135,11 @@ def resolve(
     toolchain = prefer(toolchains)
     statuses = capabilities.probe_all(toolchain, platform, cache_dir=cache_dir, runner=runner)
 
-    # Windows is the one OS with analyses it structurally cannot run and a Linux nearby
-    # that can. When a WSL distro answers for clang, the bridged analyses are probed
-    # through it -- same planted bugs, same cache, its own fingerprint -- and each one
-    # whose probe passed is rerouted: the bridged status replaces the denial and the
-    # engine points into the distro. A bridged probe that failed changes nothing: the
-    # native denial's suggestion already says what to fix, and no analysis is ever routed
-    # somewhere its probe did not pass.
+    # On Windows, a WSL distro that answers for clang gets probed too (same planted bugs,
+    # its own cache fingerprint), and each analysis whose bridged probe passed is rerouted:
+    # bridged status replaces the native denial, and the engine points into the distro. A
+    # failed bridged probe changes nothing -- no analysis is ever routed where its own
+    # probe didn't pass.
     engines: dict[Analysis, Engine] = {}
     bridge = wsl.discover(runner=runner) if platform.name == windows.NAME else None
     if bridge is not None:

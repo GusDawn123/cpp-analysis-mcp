@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     AccessOp,
     Analysis,
@@ -238,7 +238,6 @@ def test_built_binary_unshares_the_mapping_it_was_handed() -> None:
 
 
 def test_build_failure_defaults() -> None:
-    """A failed build reports facts: which step died and what the tool said."""
     failure = a_build_failure()
 
     assert failure.stage == "compile"

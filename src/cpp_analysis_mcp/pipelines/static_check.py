@@ -1,21 +1,9 @@
-"""Gate on the capability, run one compile-time check, parse -- the cheapest rung of the ladder.
+"""Gate on the capability, run one compile-time check, parse -- one static analysis.
 
-Two analyses arrive here and they look nothing alike from outside: -Wthread-safety is a flag on
-the compiler already in hand, clang-tidy is a separate program that has to be found first.
-Underneath they are the same three steps against the same gate, which is why they share a file
-rather than each growing their own idea of what an unavailable analysis returns.
-
-The gate is a hard stop, not a note on the report. Both refusals come through it and neither is
-special-cased here: gcc has no -Wthread-safety to offer, and a machine with no clang-tidy
-installed has nothing to run -- the probe wrote both down as an unavailable status already.
-Checking anyway would produce an empty finding list that reads exactly like clean code, which is
-the false all-clear this project exists to avoid.
-
-Nothing is linked and nothing is executed. -fsyntax-only is the whole point: the warnings are
-the product, and a snippet with no main() still has to be checkable, which a link step refuses.
-
-Composes primitives only, never another pipeline (rule 1); the Platform and Toolchain arrive as
-arguments (rule 3).
+-Wthread-safety is a flag on the compiler already in hand; clang-tidy is a separate
+program found first. They look nothing alike from outside, but underneath they are the
+same three steps against the same gate, which is why they share a file rather than each
+growing its own idea of what an unavailable analysis returns.
 """
 
 from __future__ import annotations
@@ -30,17 +18,17 @@ from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Registry, Resolutio
 from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BuildFailure,
     CapabilityStatus,
     Finding,
 )
-from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
-from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # nothing runs the checked program, so this only has to cover parsing one translation unit;
@@ -200,15 +188,10 @@ def _routed_check(
 ) -> tuple[AnalysisReport | BuildFailure | CapabilityStatus, tuple[Resolution, ...]]:
     """The registry decides, the check runs, and every finding leaves carrying identity.
 
-    The gate that used to be an inline capability lookup is now the registry's chain over
-    both compile-time plugins, so a refusal here and a skip in a future plan trace are
-    the same verdict from the same code. A caller-named scope passes the selection gates
-    by design; the capability gate binds regardless, and a refusal returns the probe's
-    own status object, exactly as the inline gate did.
-
-    The plugins' run loop stays out of this path on purpose: it flattens failures into
-    findings for the store, and this surface still owes callers the failure itself. The
-    verdict is the plugins' contribution here; execution stays with the check steps.
+    Routes through the registry's gate chain over both compile-time plugins, so a refusal
+    here and a skip in a future plan trace are the same verdict from the same code. A
+    caller-named scope passes the selection gates by design; the capability gate binds
+    regardless, returning the probe's own status object on refusal.
     """
     runner_for = _RUNNERS[analysis]
     resolutions = _registry().resolve(

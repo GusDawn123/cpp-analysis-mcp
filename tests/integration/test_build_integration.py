@@ -1,14 +1,8 @@
 """Build the real fixtures with the real compilers on this machine, then run them.
 
-The unit suite proves what command gets composed; this proves the loop that command exists
-for -- compile a planted bug under AddressSanitizer, run the binary under exactly the
-environment the build handed back, and require the sanitizer to report. A build whose
-runtime_env was dropped or wrong would run clean here, which is the one failure this layer
-is built to make impossible.
-
-The second half covers the compile-time half of the same idea: -Wthread-safety fires while
-building, so a successful clang build already carries findings, and a gcc build of the same
-source carries none because gcc has no such analysis.
+Proves the loop the unit suite only composes commands for: an ASan build must run under
+its returned environment and report the bug, or a dropped runtime_env would pass silently.
+Also: -Wthread-safety fires only for clang, so gcc's silence means no such analysis exists.
 """
 
 from __future__ import annotations
@@ -21,8 +15,8 @@ from helpers import cpp_source
 from cpp_analysis_mcp import platforms, process
 from cpp_analysis_mcp.build.single_file import compile_file
 from cpp_analysis_mcp.capabilities import discover_toolchains
-from cpp_analysis_mcp.models import BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration
@@ -65,7 +59,6 @@ def build(
     sanitizer: SanitizerKind | None,
     tmp_path: Path,
 ) -> BuiltBinary:
-    """Compile one fixture, failing with what the compiler said when it did not build."""
     result = compile_file(
         cpp_source(stem),
         toolchain=toolchain,
@@ -81,7 +74,6 @@ def build(
 def test_an_asan_build_runs_and_reports_its_planted_bug(
     toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
 ) -> None:
-    """The whole point of the layer: build, run under the environment it returned, detect."""
     for chain in toolchains:
         if not can_sanitize(host, chain):
             continue
@@ -129,7 +121,6 @@ def test_clang_reports_the_lock_bug_while_compiling(
 def test_gcc_finds_no_lock_bug_because_it_has_no_such_analysis(
     toolchains: tuple[Toolchain, ...], host: Platform, tmp_path: Path
 ) -> None:
-    """Not a weaker version: gcc has no equivalent, so its silence means nothing was looked for."""
     found = family(toolchains, "gcc")
     if not found:
         pytest.skip("no gcc on this machine")

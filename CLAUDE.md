@@ -29,8 +29,8 @@ newer the maintainer says, the maintainer wins — then update this file.
 1. **Plan** — goal, files touched, interface changes, test plan, performance notes
    (data structures with complexity stated), risks and judgment calls.
 2. **Refine** — the maintainer tears it up; nothing is written before their blessing.
-3. **Implement** — tests first, code second, in the repo's voice (narrative, reasoned
-   docstrings; comments say *why*; match what surrounds you).
+3. **Implement** — tests first, code second, in the repo's voice (see "Comments &
+   docs" below; comments say *why*; match what surrounds you).
    - **3.5 Self-review** — a deliberate pass for simplicity, naming, dead weight,
      idiom-match, before any external review.
 4. **Review** — CodeRabbit CLI on exactly that diff (`coderabbit review --agent -t
@@ -43,6 +43,30 @@ newer the maintainer says, the maintainer wins — then update this file.
 
 Chunk completion: full suite + goldens green → PR to `develop` linking the chunk's
 spec → the maintainer merges.
+
+## Comments & docs (policy of 2026-08-27, replacing the earlier literary style)
+
+- Module docstrings: 3–5 lines. Long "why" stories live in ADRs or `docs/`, so files
+  scan fast.
+- Comment only non-obvious logic: regex/parser edge cases, security and timeouts,
+  platform quirks, measured tool behavior. Never restate what the code says.
+- Not every function gets a docstring — public contracts and weird corners only;
+  private helpers with clear names stay quiet.
+- Product copy lives in `server.py` alone (tool descriptions, instructions). No other
+  module re-teaches the escalation ladder.
+
+## Clean habits
+
+- Let the architecture tests be the guardrails — `make all` before every commit, not
+  review, is what catches layer violations.
+- Prefer data tables over `if platform == ...` — new OS or compiler differences land
+  in `platforms/` and `toolchains/`, never as scattered branches.
+- Inject dependencies (`Runner`, `Platform`, `Toolchain`) — no hidden globals, and
+  tests stay fast.
+- Don't DRY test fakes until the boundary is stable — a shared fake grown to serve
+  four suites stops resembling the boundary any of them tests.
+- Assert on what a fake recorded and on what came back, never on how many times
+  something was called.
 
 ## Quality bars
 

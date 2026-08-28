@@ -1,14 +1,8 @@
-"""Enforce the layer rules from docs/architecture.md by reading the source tree.
+"""Enforce the layer rules from docs/architecture.md by reading the source tree with ast.
 
-Each of the four rules is checked by parsing the real files under src/cpp_analysis_mcp
-with ast, so a violation fails a test instead of relying on review discipline. One
-narrower rule rides along: subprocess belongs to process.py alone. Most of the package
-is still docstring stubs; these tests are the ratchet for what gets added.
-
-Rule 3 is checked from its exception inwards. Something has to call platforms.detect(),
-and the rule is only worth anything while that something stays singular, so the tests
-below name the one sanctioned caller and refuse every other -- including the second-hand
-version, a pipeline importing the composition root to resolve a context of its own.
+A violation fails a test instead of relying on review discipline. Most of the package is
+still docstring stubs, so these tests are a ratchet for what gets added. Each rule's own
+test below explains its own reasoning, including Rule 3's sanctioned exception.
 """
 
 from __future__ import annotations

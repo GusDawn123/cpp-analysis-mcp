@@ -1,11 +1,9 @@
 """Prove the store answers the review gate's questions and destroys nothing.
 
-The operations under test are the product's spine: duplicates become counts,
-cross-tool agreement becomes confirmation instead of noise, `new_since` reports only
-what a change introduced, suppression hides without deleting, and ranking spends a
-reader's limited budget on variety before repetition. Determinism gets its own
-assertions because a gate that orders findings differently on identical inputs
-cannot be golden-tested -- or trusted.
+Covers dedup into counts, cross-tool agreement into confirmations, new_since diffing,
+suppression that hides without deleting, and ranking that spreads variety before
+repetition. Determinism gets its own tests: a gate ordering findings differently on
+identical inputs can't be golden-tested, or trusted.
 """
 
 from __future__ import annotations

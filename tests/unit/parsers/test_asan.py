@@ -13,8 +13,8 @@ from dataclasses import dataclass
 import pytest
 from helpers import GOLDEN_DIR
 
-from cpp_analysis_mcp.models import Severity
 from cpp_analysis_mcp.parsers import asan
+from cpp_analysis_mcp.store.models import Severity
 
 
 @dataclass(frozen=True)
@@ -208,7 +208,6 @@ def test_garbage_text_reports_nothing() -> None:
 
 
 def test_headline_text_inside_program_output_is_not_a_report() -> None:
-    """A program printing headline-shaped text mid-line must not fake a finding."""
     embedded = "log: saw ERROR: AddressSanitizer: heap-buffer-overflow in the wild\n"
     assert asan.parse(embedded) == []
 
