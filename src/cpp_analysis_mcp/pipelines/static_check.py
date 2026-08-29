@@ -16,7 +16,7 @@ from cpp_analysis_mcp import process
 from cpp_analysis_mcp.analyzers import clang_tidy as tidy_plugin
 from cpp_analysis_mcp.analyzers import warnings as warnings_plugin
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Registry, Resolution, Scope
-from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
+from cpp_analysis_mcp.analyzers.clang_tidy import CHECK_TIMEOUT_S, ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.planner.scope import line_reader, relativizer
 from cpp_analysis_mcp.platforms.base import Platform
@@ -29,10 +29,6 @@ from cpp_analysis_mcp.store.models import (
     CapabilityStatus,
 )
 from cpp_analysis_mcp.toolchains.base import Toolchain
-
-# nothing runs the checked program, so this only has to cover parsing one translation unit;
-# it is generous next to the seconds either check usually takes
-CHECK_TIMEOUT_S = 60
 
 SNIPPET_STEM = "snippet"
 

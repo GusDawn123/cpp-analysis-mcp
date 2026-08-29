@@ -124,6 +124,10 @@ def first_line(text: str) -> str:
 
 STANDARD = "-std=c++20"
 
+# nothing runs the checked program, so this only has to cover parsing one translation
+# unit; it is generous next to the seconds either check usually takes
+CHECK_TIMEOUT_S = 60
+
 NO_DATABASE_NOTE = (
     "no compile_commands.json was found near this file, so the check ran with no project "
     "include directories; a file that includes a project header will fail to parse"

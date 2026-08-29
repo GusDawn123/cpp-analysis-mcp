@@ -86,6 +86,23 @@ class ChangedScope:
     files: tuple[str, ...]
 
 
+_NO_GIT = CapabilityStatus(
+    available=False,
+    reason="git is not on PATH, so nothing can say what changed; name files explicitly",
+)
+
+
+def repo_root(directory: Path, *, runner: Runner = process.run) -> Path | CapabilityStatus:
+    """The repository root the directory belongs to, or git's own refusal."""
+    if shutil.which("git") is None:
+        return _NO_GIT
+    top = runner(_git(directory, "rev-parse", "--show-toplevel"), timeout_s=GIT_TIMEOUT_S)
+    if top.exit_code != 0:
+        return _refused(top)
+    # line endings only: a root that genuinely ends in a space must survive the trim
+    return Path(top.output.strip("\r\n"))
+
+
 def changed_since(
     directory: Path, ref: str, *, runner: Runner = process.run
 ) -> ChangedScope | CapabilityStatus:
@@ -94,16 +111,9 @@ def changed_since(
     Deletes are dropped and a rename counts as its new name. Refusals carry git's own
     words, and a missing git refuses too: scope never silently widens to a full scan.
     """
-    if shutil.which("git") is None:
-        return CapabilityStatus(
-            available=False,
-            reason="git is not on PATH, so nothing can say what changed; name files explicitly",
-        )
-    top = runner(_git(directory, "rev-parse", "--show-toplevel"), timeout_s=GIT_TIMEOUT_S)
-    if top.exit_code != 0:
-        return _refused(top)
-    # line endings only: a root that genuinely ends in a space must survive the trim
-    root = Path(top.output.strip("\r\n"))
+    root = repo_root(directory, runner=runner)
+    if isinstance(root, CapabilityStatus):
+        return root
     # both questions run at the root: ls-files answers cwd-relative and cwd-limited, so
     # asked from a subdirectory it would silently drop untracked files everywhere else
     diffed = runner(_git(root, "diff", "--name-status", "-z", ref), timeout_s=GIT_TIMEOUT_S)
@@ -119,6 +129,40 @@ def changed_since(
     fresh = (name for name in untracked.output.split("\0") if name)
     files = dict.fromkeys((*_diffed_files(diffed.output), *fresh))
     return ChangedScope(root=root, files=tuple(files))
+
+
+def tracked_files(
+    directory: Path, *, runner: Runner = process.run
+) -> ChangedScope | CapabilityStatus:
+    """Every file git tracks, from the root -- the audit's whole-project scope.
+
+    Selection stays with the analyzer gates: non-C++ files ride along and are refused
+    there, so scope resolution never grows its own idea of relevance.
+    """
+    root = repo_root(directory, runner=runner)
+    if isinstance(root, CapabilityStatus):
+        return root
+    listed = runner(_git(root, "ls-files", "-z"), timeout_s=GIT_TIMEOUT_S)
+    if listed.exit_code != 0:
+        return _refused(listed)
+    return ChangedScope(root=root, files=tuple(name for name in listed.output.split("\0") if name))
+
+
+def current_ref(directory: Path, *, runner: Runner = process.run) -> str | CapabilityStatus:
+    """The label a baseline recorded now naturally carries: the branch name, or the
+    commit itself when the head is detached and no branch name exists."""
+    if shutil.which("git") is None:
+        return _NO_GIT
+    named = runner(_git(directory, "rev-parse", "--abbrev-ref", "HEAD"), timeout_s=GIT_TIMEOUT_S)
+    if named.exit_code != 0:
+        return _refused(named)
+    ref = named.output.strip()
+    if ref != "HEAD":
+        return ref
+    pinned = runner(_git(directory, "rev-parse", "HEAD"), timeout_s=GIT_TIMEOUT_S)
+    if pinned.exit_code != 0:
+        return _refused(pinned)
+    return pinned.output.strip()
 
 
 def analyzer_context(root: Path, capabilities: Mapping[str, CapabilityStatus]) -> AnalyzerContext:
