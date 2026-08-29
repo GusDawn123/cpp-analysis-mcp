@@ -1,14 +1,24 @@
-"""Canonical path spellings for identity, one per file however a tool spelled it.
+"""Scope resolution: canonical path spellings, and what changed since a git ref.
 
 Fingerprints hash project-relative POSIX paths (ADR-0002); tools print absolute ones
-in whatever style the OS taught them. relativizer() bridges the two, so the same
-finding carries the same identity on every machine and in every checkout.
+in whatever style the OS taught them, and git already speaks the canonical form.
+relativizer() bridges the first gap; changed_since() asks git the review question.
 """
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+
+from cpp_analysis_mcp import process
+from cpp_analysis_mcp.process import Runner, RunResult
+from cpp_analysis_mcp.store.models import CapabilityStatus
+
+# one plumbing question per spawn; even huge repos answer in seconds, and a hung git
+# must not stall a review
+GIT_TIMEOUT_S = 30
 
 
 def relativizer(root: Path) -> Callable[[str], str]:
@@ -42,3 +52,77 @@ def _canonical(path: str, root: Path) -> str:
         return resolved.relative_to(root).as_posix()
     except ValueError:
         return resolved.as_posix()
+
+
+@dataclass(frozen=True, slots=True)
+class ChangedScope:
+    """What a diff against a ref resolved to: the repo root and the files to look at."""
+
+    root: Path
+    # repo-relative POSIX, exactly as git prints them -- already the canonical form
+    files: tuple[str, ...]
+
+
+def changed_since(
+    directory: Path, ref: str, *, runner: Runner = process.run
+) -> ChangedScope | CapabilityStatus:
+    """Ask git what changed between the working tree and ref, untracked files included.
+
+    Deletes are dropped and a rename counts as its new name. Refusals carry git's own
+    words, and a missing git refuses too: scope never silently widens to a full scan.
+    """
+    if shutil.which("git") is None:
+        return CapabilityStatus(
+            available=False,
+            reason="git is not on PATH, so nothing can say what changed; name files explicitly",
+        )
+    top = runner(_git(directory, "rev-parse", "--show-toplevel"), timeout_s=GIT_TIMEOUT_S)
+    if top.exit_code != 0:
+        return _refused(top)
+    # line endings only: a root that genuinely ends in a space must survive the trim
+    root = Path(top.output.strip("\r\n"))
+    # both questions run at the root: ls-files answers cwd-relative and cwd-limited, so
+    # asked from a subdirectory it would silently drop untracked files everywhere else
+    diffed = runner(_git(root, "diff", "--name-status", "-z", ref), timeout_s=GIT_TIMEOUT_S)
+    if diffed.exit_code != 0:
+        return _refused(diffed)
+    untracked = runner(
+        _git(root, "ls-files", "--others", "--exclude-standard", "-z"),
+        timeout_s=GIT_TIMEOUT_S,
+    )
+    if untracked.exit_code != 0:
+        return _refused(untracked)
+
+    fresh = (name for name in untracked.output.split("\0") if name)
+    files = dict.fromkeys((*_diffed_files(diffed.output), *fresh))
+    return ChangedScope(root=root, files=tuple(files))
+
+
+def _git(directory: Path, *args: str) -> list[str]:
+    return ["git", "-C", str(directory), *args]
+
+
+def _refused(result: RunResult) -> CapabilityStatus:
+    lines = result.output.strip().splitlines()
+    return CapabilityStatus(
+        available=False, reason=lines[0] if lines else "git answered with nothing"
+    )
+
+
+def _diffed_files(output: str) -> list[str]:
+    # -z framing: NUL after every field, so names with spaces or exotic bytes survive
+    tokens = [token for token in output.split("\0") if token]
+    files: list[str] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        if status.startswith(("R", "C")):
+            # a rename or copy carries old then new; the new name is the one on disk
+            files.append(tokens[index + 2])
+            index += 3
+        elif status.startswith("D"):
+            index += 2
+        else:
+            files.append(tokens[index + 1])
+            index += 2
+    return files
