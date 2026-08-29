@@ -7,6 +7,7 @@ complete record stays readable, in the same spirit as raw tool logs surviving on
 
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import replace
 
 from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
@@ -79,6 +80,27 @@ class FindingStore:
             if include_suppressed or fingerprint not in self._suppressed
         )
 
+    def identities(self, *, include_suppressed: bool = False) -> frozenset[str]:
+        """The fingerprint set on record -- what a persisted baseline is made of."""
+        return frozenset(
+            fingerprint
+            for fingerprint in self._by_fingerprint
+            if include_suppressed or fingerprint not in self._suppressed
+        )
+
+    def new_against(self, baseline: AbstractSet[str]) -> tuple[Finding, ...]:
+        """The findings whose identity the given baseline set never saw.
+
+        The set-shaped twin of new_since, for baselines loaded from disk: only
+        identities persist across runs, never the findings that carried them.
+        Set-shaped on purpose -- membership must stay O(1) per finding.
+        """
+        return tuple(
+            finding
+            for fingerprint, finding in self._by_fingerprint.items()
+            if fingerprint not in baseline and fingerprint not in self._suppressed
+        )
+
     def new_since(self, baseline: "FindingStore") -> tuple[Finding, ...]:
         """The findings this store has and the baseline does not -- the review gate.
 
@@ -86,11 +108,7 @@ class FindingStore:
         or reordered still matches, and only genuinely new findings survive the
         subtraction. Suppressed findings are not news either way.
         """
-        return tuple(
-            finding
-            for fingerprint, finding in self._by_fingerprint.items()
-            if fingerprint not in baseline._by_fingerprint and fingerprint not in self._suppressed
-        )
+        return self.new_against(baseline._by_fingerprint.keys())
 
     def suppress(self, fingerprints: Iterable[str]) -> None:
         """Hide these identities from queries without touching the record."""
