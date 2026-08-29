@@ -1,0 +1,10 @@
+[
+  {
+    "tool": "clang-tidy",
+    "severity": "note",
+    "category": "bugprone-use-after-move",
+    "message": "'order' used after it was moved",
+    "file": "src/order_book.cpp",
+    "line": 40
+  }
+]
