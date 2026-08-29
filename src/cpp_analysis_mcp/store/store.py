@@ -41,19 +41,22 @@ class FindingStore:
         self,
         findings: Sequence[Finding],
         read_line: Callable[[str, int], str],
+        *,
+        canonical: Callable[[str], str] | None = None,
     ) -> None:
         """Fingerprint one run's findings and fold them in.
 
         One run enters whole: occurrence indices resolve within a single call to
         `fingerprint_batch`, so splitting a run across several ingests would let
         identical duplicate lines land on the same index and wrongly merge.
+        `canonical` rides through to the hash exactly as fingerprint_batch takes it.
 
         A repeat from the tool that already reported a fingerprint grows its
         occurrence count. A report from a *different* tool attaches a Confirmation
         and nothing else -- the first tool's evidence stays the finding of record,
         and a tool confirms any one finding at most once.
         """
-        for stamped in fingerprint_batch(findings, read_line):
+        for stamped in fingerprint_batch(findings, read_line, canonical=canonical):
             existing = self._by_fingerprint.get(stamped.fingerprint)
             if existing is None:
                 self._by_fingerprint[stamped.fingerprint] = stamped

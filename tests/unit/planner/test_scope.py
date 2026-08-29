@@ -23,7 +23,9 @@ from cpp_analysis_mcp.planner.scope import (
     ChangedScope,
     analyzer_context,
     changed_since,
+    current_ref,
     relativizer,
+    tracked_files,
 )
 from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.store.models import CapabilityStatus
@@ -284,6 +286,62 @@ def test_the_three_git_questions_are_pinned_with_their_timeouts(
         [*at_repo, "ls-files", "--others", "--exclude-standard", "-z"],
     ]
     assert runner.timeouts == [GIT_TIMEOUT_S] * 3
+
+
+def test_tracked_files_lists_the_whole_repo_from_the_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Selection stays with the analyzer gates: non-C++ files ride along on purpose."""
+    with_git(monkeypatch)
+    runner = GitScript([at_root(), RunResult(exit_code=0, output="src/a.cpp\0docs/readme.md\0")])
+
+    scoped = resolved(tracked_files(tmp_path, runner=runner))
+
+    assert scoped.root == Path("/repo")
+    assert scoped.files == ("src/a.cpp", "docs/readme.md")
+    assert runner.spawns[1] == ["git", "-C", str(Path("/repo")), "ls-files", "-z"]
+
+
+def test_tracked_files_refuses_outside_a_repo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with_git(monkeypatch)
+    complaint = "fatal: not a git repository (or any of the parent directories): .git"
+    runner = GitScript([RunResult(exit_code=128, output=f"{complaint}\n")])
+
+    assert refused(tracked_files(tmp_path, runner=runner)).reason == complaint
+
+
+def test_current_ref_is_the_branch_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    with_git(monkeypatch)
+    runner = GitScript([RunResult(exit_code=0, output="main\n")])
+
+    assert current_ref(tmp_path, runner=runner) == "main"
+    assert runner.spawns == [["git", "-C", str(tmp_path), "rev-parse", "--abbrev-ref", "HEAD"]]
+
+
+def test_a_detached_head_answers_with_its_commit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # a detached checkout has no branch name; the commit is the only honest label
+    with_git(monkeypatch)
+    runner = GitScript(
+        [
+            RunResult(exit_code=0, output="HEAD\n"),
+            RunResult(exit_code=0, output="0123abcd0123abcd\n"),
+        ]
+    )
+
+    assert current_ref(tmp_path, runner=runner) == "0123abcd0123abcd"
+
+
+def test_current_ref_refuses_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    result = current_ref(Path("/repo"), runner=no_spawns)
+
+    assert isinstance(result, CapabilityStatus)
+    assert result.available is False
 
 
 # ------------------------------------------------------------------- the gate context
