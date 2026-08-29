@@ -1,18 +1,19 @@
-"""Scope resolution: canonical path spellings, and what changed since a git ref.
+"""Scope resolution: one canonical language for paths, and the review's two questions.
 
-Fingerprints hash project-relative POSIX paths (ADR-0002); tools print absolute ones
-in whatever style the OS taught them, and git already speaks the canonical form.
-relativizer() bridges the first gap; changed_since() asks git the review question.
+Fingerprints hash project-relative POSIX paths (ADR-0002); relativizer() turns tool
+spellings into that form, changed_since() asks git what changed, and
+analyzer_context() asks the compilation database what is actually in the build.
 """
 
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from cpp_analysis_mcp import process
+from cpp_analysis_mcp import compile_db, process
+from cpp_analysis_mcp.analyzers.base import AnalyzerContext
 from cpp_analysis_mcp.process import Runner, RunResult
 from cpp_analysis_mcp.store.models import CapabilityStatus
 
@@ -96,6 +97,21 @@ def changed_since(
     fresh = (name for name in untracked.output.split("\0") if name)
     files = dict.fromkeys((*_diffed_files(diffed.output), *fresh))
     return ChangedScope(root=root, files=tuple(files))
+
+
+def analyzer_context(root: Path, capabilities: Mapping[str, CapabilityStatus]) -> AnalyzerContext:
+    """One place answers "which files are in the build?" for every gate.
+
+    The database's files come back canonical (root-relative POSIX), so membership and
+    fingerprints speak one language. No database, or a broken one, means the empty
+    set -- the meaning the gates already give it.
+    """
+    database = compile_db.find_under(root)
+    if database is None:
+        return AnalyzerContext(capabilities=capabilities)
+    canonical = relativizer(root)
+    units = frozenset(canonical(str(source)) for source in compile_db.sources(database))
+    return AnalyzerContext(translation_units=units, capabilities=capabilities)
 
 
 def _git(directory: Path, *args: str) -> list[str]:

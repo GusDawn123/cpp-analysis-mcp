@@ -90,6 +90,45 @@ def test_a_file_with_no_database_anywhere_finds_none(tmp_path: Path) -> None:
     assert compile_db.find(source) is None
 
 
+def test_find_under_prefers_beside_the_root_over_a_build_tree(tmp_path: Path) -> None:
+    source, _ = a_project(tmp_path)
+    write_db(tmp_path / "build", [{"directory": str(tmp_path), "file": str(source)}])
+    beside = write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+
+    assert compile_db.find_under(tmp_path) == beside
+
+
+def test_find_under_stays_inside_the_root(tmp_path: Path) -> None:
+    """find() walks upward on purpose; a project-scoped lookup must not, or a parent
+    checkout's database would describe someone else's build."""
+    source, _ = a_project(tmp_path)
+    write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert compile_db.find_under(child) is None
+
+
+def test_sources_lists_every_named_file_resolved(tmp_path: Path) -> None:
+    """Absolute entries pass through; relative ones resolve against their own entry's
+    directory, exactly as entry matching already treats them."""
+    source, _ = a_project(tmp_path)
+    build = tmp_path / "build"
+    database = write_db(
+        build,
+        [
+            {"directory": str(build), "file": str(source), "command": "clang++"},
+            {"directory": str(source.parent), "file": source.name, "command": "clang++"},
+            {"directory": str(build), "command": "clang++"},
+        ],
+    )
+
+    named = compile_db.sources(database)
+
+    # the entry with no file contributes nothing; the two spellings mean one file
+    assert [path.resolve() for path in named] == [source.resolve(), source.resolve()]
+
+
 # -------------------------------------------------------------------------- reading the flags
 
 
