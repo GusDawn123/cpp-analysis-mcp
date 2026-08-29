@@ -23,20 +23,22 @@ up to. This project is that wiring.
 
 ## What it does
 
-Ten tools, five questions:
+Thirteen tools, six questions:
 
-| Question                  | Tools                                     | Cost    |
-|---------------------------|-------------------------------------------|---------|
-| Does anything look wrong? | `static_check_file` / `_snippet`          | seconds |
-| Is it actually wrong?     | `sanitize_file` / `_project` / `_snippet` | minutes |
-| Where is it slow?         | `profile_file` / `_project`               | minutes |
-| Which rewrite is faster?  | `benchmark_variants`                      | minutes |
-| Everything at once?       | `full_check_file`                         | minutes |
+| Question                    | Tools                                     | Cost    |
+|-----------------------------|-------------------------------------------|---------|
+| Does anything look wrong?   | `static_check_file` / `_snippet`          | seconds |
+| Did *my* change break it?   | `review` / `audit` / `get_finding`        | seconds |
+| Is it actually wrong?       | `sanitize_file` / `_project` / `_snippet` | minutes |
+| Where is it slow?           | `profile_file` / `_project`               | minutes |
+| Which rewrite is faster?    | `benchmark_variants`                      | minutes |
+| Everything at once?         | `full_check_file`                         | minutes |
 
 The agent starts cheap and escalates only when it has to, or calls
 `full_check_file` to run both compile-time checks and all four
 sanitizers in parallel and get one merged, deduplicated report. The
-tenth tool, capabilities, reports what this machine can really run.
+thirteenth tool, capabilities, reports what this machine can really
+run.
 
 benchmark_variants is the one that ends arguments: it races up to
 five versions of a program on your machine, feeds them the same
@@ -60,6 +62,53 @@ Under the hood: ThreadSanitizer for data races, AddressSanitizer
 for memory corruption, LeakSanitizer for leaks, UBSan for undefined
 behavior, clang-tidy and -Wthread-safety at compile time, and perf
 for profiling.
+
+## The review gate
+
+Every other tool answers "is this code wrong?". The review gate
+answers the question an agent has to answer before it says done:
+did *I* break anything?
+
+Point a linter at a real codebase and it returns hundreds of
+findings that were there before anyone showed up. The signal an
+agent needs is the handful its own edit just added.
+
+Two calls. Once, on a clean checkout:
+
+```
+audit(project_dir)          scans everything git tracks,
+                            records the result as a baseline
+```
+
+Then after any amount of work, as many times as you like:
+
+```
+review(project_dir, against="main")
+```
+
+`review` asks git which files changed, runs the compile-time
+analyzers over exactly those, and subtracts the baseline. What
+comes back is what your change added, and nothing else.
+
+The report has four parts:
+
+- **An index** of every new finding, one line each, with a
+  fingerprint. `get_finding` fetches any one of them whole by that
+  fingerprint, so a long report never crowds out the code you are
+  reasoning about.
+- **Full detail** for the top few, picked for severity and spread
+  rather than the first few in file order.
+- **A plan trace**: what ran, what was skipped, and why, in words.
+- **Escalation proposals**: static evidence that a runtime check
+  would be worth its minutes. It proposes. It never spends your
+  minutes behind your back.
+
+It also knows when to stop trusting itself. A baseline retires the
+moment the world moves under it: a different compiler, changed
+build flags, an edited .clang-tidy. Subtracting a stale baseline
+would quietly hide real bugs, so instead review reports every
+finding in the changed files and says the baseline is gone. No
+baseline, no silent guess.
 
 ## Platform support
 
@@ -120,11 +169,20 @@ looks exactly like clean code.
 ```
 your AI agent (Claude Code, Cursor, anything that speaks MCP)
         |
-    server.py        ten tools, no logic of its own
+    server.py        thirteen tools, no logic of its own
         |
     battery.py       full_check_file only: fans out to every
         |            correctness pipeline below, in parallel
-    pipelines/       the recipes: check, sanitize, profile
+    pipelines/       the recipes: review, check, sanitize, profile
+        |
+    planner/         what runs and why: git scope, gates, cost
+        |            tiers, parallel dispatch, escalation rules
+        |
+    analyzers/       one contract, N plugins, each owning its own
+        |            invocation and its own gate
+        |
+    store/           where findings become one thing: fingerprints,
+        |            baselines, the subtraction, ranking
         |
    +----------+-------------+
    |          |             |
@@ -138,16 +196,33 @@ your AI agent (Claude Code, Cursor, anything that speaks MCP)
    +-- wsl.py        Windows borrowing Linux for what it lacks
 ```
 
+Imports point one way, down. The planner is ordinary deterministic
+code and never an LLM, because a review gate that plans differently
+on identical input is not a gate. The only LLM in the system is the
+agent calling it, and no layer here holds an API key.
+
 The layer rules are enforced by tests that parse the source tree,
 so they cannot rot: server.py holds no control flow, only
-process.py may spawn a subprocess, parsers never touch a file, and
+process.py may spawn a subprocess, parsers never touch a file,
+analyzer plugins may not import the server or the MCP SDK, and
 exactly one module is allowed to ask what machine this is.
+
+The reasoning behind the load-bearing choices lives in
+[docs/architecture.md](docs/architecture.md),
+[docs/architecture-v2.md](docs/architecture-v2.md),
+[docs/design-patterns.md](docs/design-patterns.md), and the ADRs in
+[docs/adr](docs/adr).
 
 ## Tests
 
-507 unit tests run anywhere, no compiler needed. Integration tests
+730 unit tests run anywhere, no compiler needed. Integration tests
 compile and run fixtures with planted bugs, and golden outputs
 captured on Linux, macOS, and Windows keep every parser honest.
+
+The review gate has an acceptance test with nothing faked in it: a
+real git repository whose first commit already carries a real bug,
+audited with a real clang-tidy, then a second bug planted on top.
+Review has to come back with exactly the planted one.
 
 ```bash
 make test
