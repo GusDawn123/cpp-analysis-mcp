@@ -8,6 +8,7 @@ half is driven through a scripted runner; real git answers in the integration su
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import time
@@ -20,6 +21,7 @@ import pytest
 from cpp_analysis_mcp.planner.scope import (
     GIT_TIMEOUT_S,
     ChangedScope,
+    analyzer_context,
     changed_since,
     relativizer,
 )
@@ -282,3 +284,64 @@ def test_the_three_git_questions_are_pinned_with_their_timeouts(
         [*at_repo, "ls-files", "--others", "--exclude-standard", "-z"],
     ]
     assert runner.timeouts == [GIT_TIMEOUT_S] * 3
+
+
+# ------------------------------------------------------------------- the gate context
+
+
+def a_capability() -> dict[str, CapabilityStatus]:
+    return {"clang-tidy": CapabilityStatus(available=True, verified_by="probe")}
+
+
+def a_database(root: Path, entries: list[dict[str, object]]) -> None:
+    build = root / "build"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "compile_commands.json").write_text(json.dumps(entries), encoding="utf-8")
+
+
+def test_a_database_under_the_root_names_the_translation_units(tmp_path: Path) -> None:
+    """Membership answers in canonical form, the same language fingerprints speak."""
+    capabilities = a_capability()
+    a_database(
+        tmp_path,
+        [{"directory": str(tmp_path / "build"), "file": str(tmp_path / "src" / "a.cpp")}],
+    )
+
+    context = analyzer_context(tmp_path, capabilities)
+
+    assert context.translation_units == frozenset({"src/a.cpp"})
+    assert context.capabilities is capabilities
+
+
+def test_a_relative_database_entry_lands_in_the_same_canon(tmp_path: Path) -> None:
+    a_database(tmp_path, [{"directory": str(tmp_path / "src"), "file": "a.cpp"}])
+
+    context = analyzer_context(tmp_path, a_capability())
+
+    assert context.translation_units == frozenset({"src/a.cpp"})
+
+
+def test_no_database_means_an_empty_membership_set(tmp_path: Path) -> None:
+    context = analyzer_context(tmp_path, a_capability())
+
+    assert context.translation_units == frozenset()
+
+
+def test_a_database_file_outside_the_root_stays_whole(tmp_path: Path) -> None:
+    elsewhere = tmp_path / "vendor" / "v.cpp"
+    root = tmp_path / "proj"
+    a_database(root, [{"directory": str(root), "file": str(elsewhere)}])
+
+    context = analyzer_context(root, a_capability())
+
+    assert context.translation_units == frozenset({elsewhere.resolve().as_posix()})
+
+
+def test_a_broken_database_reads_as_having_no_files(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    build.mkdir(parents=True)
+    (build / "compile_commands.json").write_text("{not json", encoding="utf-8")
+
+    context = analyzer_context(tmp_path, a_capability())
+
+    assert context.translation_units == frozenset()
