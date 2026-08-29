@@ -48,6 +48,8 @@ spec → the maintainer merges.
 
 - Module docstrings: 3–5 lines. Long "why" stories live in ADRs or `docs/`, so files
   scan fast.
+- Every paragraph comment or docstring body: 3–5 lines max, and write at the floor,
+  not the cap. A one-thought comment stays a single line.
 - Comment only non-obvious logic: regex/parser edge cases, security and timeouts,
   platform quirks, measured tool behavior. Never restate what the code says.
 - Not every function gets a docstring — public contracts and weird corners only;

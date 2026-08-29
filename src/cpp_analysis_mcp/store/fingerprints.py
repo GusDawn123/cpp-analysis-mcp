@@ -97,9 +97,8 @@ def fingerprint_batch(
     so the second identical flagged line is index 1 wherever the block sits -- and two
     reports of the same line share index, fingerprint, and therefore identity.
 
-    `canonical` rewrites each path before it enters the hash and the occurrence key --
-    never the reads and never the finding, which keep the tool's own spelling.
-    Findings come back in the order they arrived; ranking never reorders the caller.
+    `canonical` rewrites paths entering the hash and the rank key; the finding and the
+    reads keep the tool's spelling. Findings come back in the order they arrived.
     """
     texts: list[str] = []
     keys: list[tuple[str, str, str]] = []
