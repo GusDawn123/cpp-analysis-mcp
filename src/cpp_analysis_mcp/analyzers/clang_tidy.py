@@ -1,16 +1,23 @@
-"""clang-tidy behind the analyzer contract: the first real tool to fit the shape.
+"""clang-tidy behind the analyzer contract: the plugin, and its real invocation.
 
-Deliberately thin -- the static_check pipeline and shared adapter own the real work;
-this holds only this plugin's name, tiers, and refusal words. The check step arrives as
-a constructor argument rather than being built here, so import time never triggers
-toolchain discovery -- a default would grow this into a library with a hidden global.
+The plugin's check step arrives as a constructor argument, so import time never
+triggers toolchain discovery; file_check() builds the real one, binding a toolchain,
+platform, and runner it is handed -- never ones it goes looking for.
 """
 
+from pathlib import Path
+
 from cpp_analysis_mcp.analyzers._adapter import (
+    CHECK_TIMEOUT_S,
+    NO_DATABASE_NOTE,
+    STANDARD,
+    Checked,
     CheckFile,
     as_findings,
     checkable_sources,
     membership_gate,
+    outcome,
+    project_flags,
 )
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
@@ -19,9 +26,47 @@ from cpp_analysis_mcp.analyzers.base import (
     Scope,
     UnitOfWork,
 )
-from cpp_analysis_mcp.store.models import Finding
+from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
+from cpp_analysis_mcp.parsers.clang_tidy import parse as parse_tidy
+from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.process import Runner, hygienic_env
+from cpp_analysis_mcp.store.models import (
+    Analysis,
+    AnalysisReport,
+    BuildFailure,
+    CapabilityStatus,
+    Finding,
+)
+from cpp_analysis_mcp.toolchains.base import Toolchain
 
-__all__ = ["ClangTidyAnalyzer"]
+__all__ = [
+    "CHECK_TIMEOUT_S",
+    "DEFAULT_CHECKS",
+    "DEFAULT_CHECKS_NOTE",
+    "ClangTidyAnalyzer",
+    "file_check",
+]
+
+STAGE = "clang-tidy"
+
+# the files clang-tidy itself looks for above a source file, in its own order
+TIDY_CONFIG_NAMES = (".clang-tidy", "_clang-tidy")
+
+# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy above the
+# file, clang-tidy 22 exits 1 printing "Error: no checks enabled." and its whole usage text,
+# which parses to no findings and reads as a broken tool. Measured. So a project that has
+# committed no configuration gets one, and is told that it did.
+#
+# Correctness and cost, not style: these are the families whose findings are worth acting on
+# without knowing anything about a project's conventions. readability-* and modernize-* are
+# deliberately absent -- they are opinions about how code should look, and handing someone a
+# hundred of them unasked buries the four that matter.
+DEFAULT_CHECKS = "bugprone-*,clang-analyzer-*,performance-*,portability-*"
+
+DEFAULT_CHECKS_NOTE = (
+    f"this project committed no .clang-tidy, so a default check set was used: "
+    f"{DEFAULT_CHECKS}. Pass `checks` to choose your own, or commit a .clang-tidy file"
+)
 
 
 class ClangTidyAnalyzer:
@@ -44,6 +89,101 @@ class ClangTidyAnalyzer:
     def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
         findings: list[Finding] = []
         for file in checkable_sources(scope, context):
-            outcome = self._check(scope.project_root / file)
-            findings.extend(as_findings(outcome, file, self.name))
+            checked = self._check(scope.project_root / file)
+            findings.extend(as_findings(checked, file, self.name))
         return tuple(findings)
+
+
+def file_check(
+    *,
+    toolchain: Toolchain,
+    platform: Platform,
+    status: CapabilityStatus,
+    checks: str | None,
+    timeout_s: int,
+    runner: Runner,
+) -> CheckFile:
+    """Bind the real clang-tidy invocation into the contract's one-argument shape.
+
+    Everything a spawn needs travels in the closure, and the probe's status rides
+    along so a report can say who verified the capability.
+    """
+
+    def check(source: Path) -> AnalysisReport | BuildFailure | CapabilityStatus:
+        checked = _invoke(
+            source,
+            toolchain=toolchain,
+            platform=platform,
+            checks=checks,
+            timeout_s=timeout_s,
+            runner=runner,
+        )
+        if isinstance(checked, CapabilityStatus):
+            return checked
+        return outcome(checked, Analysis.CLANG_TIDY, status)
+
+    return check
+
+
+def _invoke(
+    source: Path,
+    *,
+    toolchain: Toolchain,
+    platform: Platform,
+    checks: str | None,
+    timeout_s: int,
+    runner: Runner,
+) -> Checked | CapabilityStatus:
+    """Run clang-tidy over the file; the build compiler is not involved in what it checks."""
+    tidy = find_clang_tidy(platform)
+    if tidy is None:
+        # the gate already passed, so the probe found clang-tidy -- but that answer can be
+        # a cached one, and the binary may have been uninstalled since it was written
+        return CapabilityStatus(
+            available=False,
+            reason=f"{CLANG_TIDY} is not on PATH and not in this platform's tool directories",
+            suggestion=platform.install_hints.get(Analysis.CLANG_TIDY),
+        )
+
+    database, project = project_flags(source)
+    effective, chosen_note = _tidy_checks(source, checks)
+    result = runner(
+        [
+            str(tidy),
+            # omitted only when the project committed a .clang-tidy: that file is then what
+            # decides, which is what a project asking for its own checks means
+            *((f"--checks={effective}",) if effective is not None else ()),
+            str(source),
+            # everything past -- is the compilation this file would have had
+            "--",
+            STANDARD,
+            *platform.compile_extras,
+            # and what it really did have, when a build wrote that down
+            *project,
+        ],
+        timeout_s=timeout_s,
+        env=hygienic_env({}),
+    )
+    return Checked(
+        stage=STAGE,
+        result=result,
+        findings=parse_tidy(result.output),
+        notes=(*chosen_note, *(() if database is not None else (NO_DATABASE_NOTE,))),
+        database=database,
+    )
+
+
+def _tidy_checks(source: Path, checks: str | None) -> tuple[str | None, tuple[str, ...]]:
+    """Decide what to enable, and what the caller has to be told about that decision.
+
+    Three cases and only the last of them chooses anything. An explicit `checks` is the
+    caller's. A committed .clang-tidy is the project's, and is left to decide by passing no
+    --checks at all. Nothing at all is the case that used to come back as usage text.
+    """
+    if checks is not None:
+        return checks, ()
+    if any(
+        (directory / name).is_file() for directory in source.parents for name in TIDY_CONFIG_NAMES
+    ):
+        return None, ()
+    return DEFAULT_CHECKS, (DEFAULT_CHECKS_NOTE,)

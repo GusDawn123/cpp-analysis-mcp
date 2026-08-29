@@ -44,12 +44,23 @@ TOOL_NAMES = frozenset(
         "profile_project",
         "benchmark_variants",
         "full_check_file",
+        "review",
+        "audit",
+        "get_finding",
     }
 )
 
 # the two tools that publish no CapabilityStatus outcome: capabilities returns the statuses
 # themselves, and the race gates on nothing -- a plain compile-and-run cannot break silently
-UNGATED_TOOLS = ("capabilities", "benchmark_variants", "full_check_file")
+UNGATED_TOOLS = (
+    "capabilities",
+    "benchmark_variants",
+    "full_check_file",
+    # the review gate returns its own report shapes; its outcome test lives below
+    "review",
+    "audit",
+    "get_finding",
+)
 
 SANITIZER_TOOLS = ("sanitize_file", "sanitize_project", "sanitize_snippet")
 CHECK_TOOLS = ("static_check_file", "static_check_snippet")
@@ -379,7 +390,7 @@ def result_of(structured: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_ten_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
+async def test_the_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
     """The names are the API. A client config lists them, so a rename breaks every caller,
     and an extra one is a rung nobody documented."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
@@ -388,6 +399,25 @@ async def test_the_ten_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Pat
         listed = await client.list_tools()
 
     assert {tool.name for tool in listed.tools} == TOOL_NAMES
+
+
+@pytest.mark.anyio
+async def test_the_review_gate_tools_teach_the_audit_then_review_flow(tmp_path: Path) -> None:
+    """The gate only works as a pair, and the descriptions are where an assistant learns
+    that: review names audit as the source of its baseline, audit says it records one,
+    and get_finding says what key it answers to."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    docs = {tool.name: tool.description or "" for tool in listed.tools}
+    assert "audit" in docs["review"]
+    assert "baseline" in docs["review"]
+    assert "get_finding" in docs["review"]
+    assert "record" in docs["audit"]
+    assert "baseline" in docs["audit"]
+    assert "fingerprint" in docs["get_finding"]
 
 
 @pytest.mark.anyio
@@ -508,6 +538,24 @@ async def test_the_races_own_outcomes_are_in_its_published_schema(tmp_path: Path
     assert properties["variants"]["maxItems"] == 5
     assert properties["repeats"]["minimum"] == 2
     assert properties["repeats"]["maximum"] == 20
+
+
+@pytest.mark.anyio
+async def test_the_review_gates_outcomes_are_in_their_published_schemas(tmp_path: Path) -> None:
+    """Refusals and misses are ordinary returns here too: a client that cannot validate a
+    CapabilityStatus from review, or a NoSuchFinding from get_finding, retries a protocol
+    fault instead of reading an answer."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    published = {
+        tool.name: set((tool.output_schema or {}).get("$defs", {})) for tool in listed.tools
+    }
+    assert published["review"] >= {"ReviewReport", "CapabilityStatus", "Proposal", "Skip"}
+    assert published["audit"] >= {"AuditReport", "CapabilityStatus", "IndexEntry"}
+    assert published["get_finding"] >= {"Finding", "NoSuchFinding"}
 
 
 @pytest.mark.anyio

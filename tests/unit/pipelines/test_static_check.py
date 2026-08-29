@@ -17,9 +17,8 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
+from cpp_analysis_mcp.analyzers.clang_tidy import CHECK_TIMEOUT_S, DEFAULT_CHECKS
 from cpp_analysis_mcp.pipelines.static_check import (
-    CHECK_TIMEOUT_S,
-    DEFAULT_CHECKS,
     _routed_check,
     check_file,
     check_snippet,

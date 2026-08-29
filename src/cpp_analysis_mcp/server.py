@@ -1,4 +1,4 @@
-"""The MCP tool surface: ten tools, their schemas, and one line each into a pipeline.
+"""The MCP tool surface: every tool, its schema, and one line each into a pipeline.
 
 No control flow in this file at all -- a test walks it with ast to keep it that way (rule
 2); every decision lives in context.py or the pipeline a handler delegates to. Nothing is
@@ -25,12 +25,15 @@ from pydantic import Field
 from cpp_analysis_mcp import battery, context, prompts
 from cpp_analysis_mcp.context import Context
 from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
+from cpp_analysis_mcp.pipelines import review as review_pipeline
+from cpp_analysis_mcp.pipelines.review import AuditReport, NoSuchFinding, ReviewReport
 from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
     BenchmarkReport,
     BuildFailure,
     CapabilityStatus,
+    Finding,
     FullCheckReport,
     ProfileReport,
     Variant,
@@ -60,6 +63,12 @@ above it structurally cannot, and pays for them in time:
 Reaching for a sanitizer first is like calling forensics before checking whether the door was
 locked. Escalating is the point, though: a clean compile-time result is not an all-clear,
 because a data race, a leak and a use-after-free exist only while the program is running.
+
+For "did MY change break anything?", the review gate: audit records a ref's whole picture
+once, then review reports only the findings your change introduced, with proposals naming
+which runtime check would be worth its minutes:
+
+  audit, review, get_finding                seconds   the compile-time tier over git scope
 
 For "why is this code slow?", that ladder is the wrong tool entirely and no amount of
 climbing it will answer the question:
@@ -143,6 +152,43 @@ program is running.
 
 `text` has to be a complete program with a main(): it is compiled, linked and executed. The
 file written for it stays behind on purpose, since every frame in the report names it.
+"""
+
+REVIEW_DOC = """\
+Reports only the findings your current change introduced, compared against a git ref.
+
+The review gate: run this before declaring work done. It asks git what changed since
+`against`, runs every applicable compile-time analyzer over exactly those files, and
+subtracts the ref's recorded baseline so pre-existing findings stay out of the way. What
+comes back is an index of every new finding with its fingerprint, full detail for the top
+few, the plan trace saying what ran and what was skipped and why, and any escalation
+proposals -- static evidence that a runtime check would be worth its minutes.
+
+Subtraction needs a memory: run audit on the ref once to record its baseline. With no
+trustworthy baseline, everything found is reported and a note says so -- never a silent
+guess. Fetch any indexed finding whole with get_finding.
+"""
+
+AUDIT_DOC = """\
+Scans everything git tracks in a project and records the result as a baseline.
+
+The whole picture at one ref, and the memory the review gate subtracts against: run this
+on a clean checkout (main, just merged) and review can afterward report only what a change
+added. The baseline is recorded under `record_as` -- defaulting to the current branch
+name, or the commit when detached -- and retires itself the moment the world changes: a
+new compiler, changed flags, an edited clang-tidy config.
+
+Costs seconds per file and executes nothing. The report is the same shape review returns:
+an index of everything, detail for the top few, and the plan trace.
+"""
+
+GET_FINDING_DOC = """\
+Fetch one finding whole, by the fingerprint a review or audit index listed.
+
+The index is deliberately thin so a big report cannot crowd out the code you are reasoning
+about; this is the other half of that bargain. Answers from the remembered last run on
+disk, so it spawns nothing. A miss explains itself: no remembered run for this project, or
+a fingerprint that run never held.
 """
 
 STATIC_CHECK_FILE_DOC = """\
@@ -429,6 +475,61 @@ def full_check_file(
     )
 
 
+def review(
+    project_dir: str,
+    against: str,
+    ctx: ServerContext[Context],
+) -> ReviewReport | CapabilityStatus:
+    """Delegate to the review pipeline; the compile-time engines are never bridged, so the
+    clang-tidy engine speaks for the whole static tier."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.review_project(
+        Path(project_dir),
+        against,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
+        capabilities=app.capabilities,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
+def audit(
+    project_dir: str,
+    ctx: ServerContext[Context],
+    record_as: str | None = None,
+) -> AuditReport | CapabilityStatus:
+    """Delegate to the review pipeline's audit; the baseline lands beside the probe cache."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.audit_project(
+        Path(project_dir),
+        record_as=record_as,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
+        capabilities=app.capabilities,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
+def get_finding(
+    project_dir: str,
+    fingerprint: str,
+    ctx: ServerContext[Context],
+) -> Finding | NoSuchFinding:
+    """Delegate to the remembered-run lookup; one identity in, one whole finding out."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.remembered_finding(
+        Path(project_dir),
+        fingerprint,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
 def static_check_file(
     source: str,
     analysis: CompileTimeCheck,
@@ -493,6 +594,9 @@ def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
     server.add_tool(sanitize_snippet, description=SANITIZE_SNIPPET_DOC)
     server.add_tool(static_check_file, description=STATIC_CHECK_FILE_DOC)
     server.add_tool(static_check_snippet, description=STATIC_CHECK_SNIPPET_DOC)
+    server.add_tool(review, description=REVIEW_DOC)
+    server.add_tool(audit, description=AUDIT_DOC)
+    server.add_tool(get_finding, description=GET_FINDING_DOC)
     server.add_tool(profile_file, description=PROFILE_FILE_DOC)
     server.add_tool(profile_project, description=PROFILE_PROJECT_DOC)
     server.add_tool(benchmark_variants, description=BENCHMARK_VARIANTS_DOC)
