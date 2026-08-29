@@ -8,6 +8,7 @@ platform, and runner it is handed -- never ones it goes looking for.
 from pathlib import Path
 
 from cpp_analysis_mcp.analyzers._adapter import (
+    CHECK_TIMEOUT_S,
     NO_DATABASE_NOTE,
     STANDARD,
     Checked,
@@ -38,7 +39,13 @@ from cpp_analysis_mcp.store.models import (
 )
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
-__all__ = ["DEFAULT_CHECKS", "DEFAULT_CHECKS_NOTE", "ClangTidyAnalyzer", "file_check"]
+__all__ = [
+    "CHECK_TIMEOUT_S",
+    "DEFAULT_CHECKS",
+    "DEFAULT_CHECKS_NOTE",
+    "ClangTidyAnalyzer",
+    "file_check",
+]
 
 STAGE = "clang-tidy"
 
