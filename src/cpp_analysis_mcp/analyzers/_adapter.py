@@ -1,4 +1,4 @@
-"""The shared spine of the compile-time plugins: gates, screening, and outcome mapping.
+"""The shared spine of the compile-time plugins: gates, screening, invocation, outcomes.
 
 Private on purpose -- plugins share this spine, but it isn't contract surface, and
 nothing outside analyzers/ may import it. Extracted once a second plugin (compiler
@@ -6,10 +6,13 @@ warnings, alongside clang-tidy) needed the same TU-grained, seconds-cheap shape.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
+from cpp_analysis_mcp import compile_db, process
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Applicability, Scope
 from cpp_analysis_mcp.store.models import (
+    Analysis,
     AnalysisReport,
     BuildFailure,
     CapabilityStatus,
@@ -117,3 +120,83 @@ def first_line(text: str) -> str:
         if line.strip():
             return line.strip()
     return "the tool produced no output"
+
+
+STANDARD = "-std=c++20"
+
+NO_DATABASE_NOTE = (
+    "no compile_commands.json was found near this file, so the check ran with no project "
+    "include directories; a file that includes a project header will fail to parse"
+)
+
+# what clang says when an include could not be resolved, and the only case where the missing
+# database is the explanation rather than a guess about someone else's compile error
+MISSING_INCLUDE = "file not found"
+
+NO_DATABASE_SUGGESTION = (
+    "generate a compilation database and this check will find it by itself: configure with "
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, or run bear -- <your build> for a non-CMake build"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """What one check step produced: which step it was, what it printed, what that parsed to."""
+
+    stage: str
+    result: process.RunResult
+    findings: tuple[Finding, ...]
+    # what the caller has to know to read this result: the check set nobody chose,
+    # the include paths that were never found
+    notes: tuple[str, ...] = ()
+    # whether a compilation database was behind the flags, which decides whether a parse
+    # failure is explained by its absence or by the code
+    database: Path | None = None
+
+
+def project_flags(source: Path) -> tuple[Path | None, tuple[str, ...]]:
+    """Find this file's compilation database and take the flags it needs to parse.
+
+    Both checks want the same thing and neither can do its job without it: a file that
+    includes a project header is unparseable until something says where that header lives,
+    and the build already wrote it down.
+    """
+    database = compile_db.find(source)
+    if database is None:
+        return None, ()
+    return database, compile_db.flags_for(database, source)
+
+
+def outcome(
+    checked: Checked, analysis: Analysis, status: CapabilityStatus
+) -> AnalysisReport | BuildFailure:
+    """Decide whether what came back is a report or the failure that replaced one."""
+    if checked.result.timed_out:
+        return BuildFailure(stage=checked.stage, output=checked.result.output, timed_out=True)
+    # a nonzero exit with findings behind it is code that does not compile, and clang-tidy
+    # files those under clang-diagnostic-error like any other check -- structured beats a
+    # text blob. A nonzero exit with nothing parsed is the tool itself failing, and that
+    # output is the only thing that explains it.
+    if checked.result.exit_code != 0 and not checked.findings:
+        # an unresolved include with no database behind the check is the one failure this
+        # layer can explain and fix; every other one belongs to the code and the tool's
+        # own words are the answer, so no reason is invented for it
+        unresolved = checked.database is None and MISSING_INCLUDE in checked.result.output
+        return BuildFailure(
+            stage=checked.stage,
+            output=checked.result.output,
+            reason=NO_DATABASE_NOTE if unresolved else None,
+            suggestion=NO_DATABASE_SUGGESTION if unresolved else None,
+        )
+
+    return AnalysisReport(
+        analysis=analysis,
+        findings=checked.findings,
+        build_warnings=(),
+        exit_code=checked.result.exit_code,
+        timed_out=False,
+        # the platform's caveats and this run's own, which are about what was decided for
+        # the caller rather than about the machine
+        limitations=(*status.limitations, *checked.notes),
+        verified_by=status.verified_by,
+    )

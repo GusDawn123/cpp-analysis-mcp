@@ -42,6 +42,28 @@ def relativizer(root: Path) -> Callable[[str], str]:
     return canonical
 
 
+def line_reader() -> Callable[[str, int], str]:
+    """Read flagged lines for fingerprinting, each file once, misses as empty text.
+
+    Reads use the paths exactly as the tool printed them; how a path enters the hash
+    is the caller's `canonical` to decide, never this reader's.
+    """
+    cache: dict[str, tuple[str, ...]] = {}
+
+    def read_line(file: str, line: int) -> str:
+        lines = cache.get(file)
+        if lines is None:
+            try:
+                text = Path(file).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            lines = tuple(text.splitlines())
+            cache[file] = lines
+        return lines[line - 1] if 1 <= line <= len(lines) else ""
+
+    return read_line
+
+
 def _canonical(path: str, root: Path) -> str:
     spelled = Path(path)
     if not spelled.is_absolute():
