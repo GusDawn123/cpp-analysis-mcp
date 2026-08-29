@@ -60,6 +60,35 @@ def find(source: Path) -> Path | None:
     return found[0] if found else None
 
 
+def find_under(root: Path) -> Path | None:
+    """Return the database a project keeps at its root: beside it, or in a build tree there.
+
+    Never walks upward -- find() does, on purpose, but a project-scoped lookup that left
+    the root would hand back a parent checkout's database describing someone else's build.
+    """
+    beside = root / DATABASE
+    if beside.is_file():
+        return beside
+    return next(iter(sorted(root.glob(f"{BUILD_GLOB}/{DATABASE}"))), None)
+
+
+def sources(database: Path) -> tuple[Path, ...]:
+    """Return the absolute path of every file the database names, in its own order.
+
+    Relative `file` entries resolve against their entry's `directory`, exactly as entry
+    matching treats them; entries with no file (or a malformed one) contribute nothing.
+    """
+    named: list[Path] = []
+    for entry in _entries(database):
+        file = entry.get("file")
+        if not isinstance(file, str):
+            continue
+        directory = entry.get("directory")
+        base = Path(directory) if isinstance(directory, str) else Path.cwd()
+        named.append(Path(_absolute(file, base)))
+    return tuple(named)
+
+
 def flags_for(database: Path, source: Path) -> tuple[str, ...]:
     """Return the flags this file needs to parse, taken from the database.
 

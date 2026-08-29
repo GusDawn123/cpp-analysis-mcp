@@ -260,6 +260,38 @@ def test_ten_thousand_findings_fingerprint_in_under_a_second() -> None:
     assert elapsed < 1.0, f"fingerprint_batch took {elapsed:.3f}s for 10k findings"
 
 
+def test_batch_hashes_the_canonical_path_when_one_is_given() -> None:
+    """The identity seam: the hash sees the canonical spelling, the finding keeps the
+    tool's own. Without this, a snippet's random scratch directory is part of who
+    its findings are, and the same snippet is a different finding every call."""
+    printed = "C:\\scratch\\tmp1a2b\\snippet.cpp"
+
+    (stamped,) = fingerprint_batch(
+        (a_finding(file=printed),),
+        source_where({(printed, 40): LINE_TEXT}),
+        canonical=lambda path: "snippet.cpp",
+    )
+
+    assert stamped.fingerprint == compute_fingerprint(RULE, "snippet.cpp", LINE_TEXT, 0)
+    assert stamped.location is not None
+    assert stamped.location.file == printed
+
+
+def test_two_spellings_of_one_file_share_identity_under_a_canonical() -> None:
+    # the occurrence rank must group on the canonical path too, or two checkouts'
+    # spellings of the same line would rank -- and so fingerprint -- independently
+    here = "C:\\checkout-one\\src\\a.cpp"
+    there = "/home/ci/checkout-two/src/a.cpp"
+
+    stamped = fingerprint_batch(
+        (a_finding(file=here), a_finding(file=there)),
+        source_where({(here, 40): LINE_TEXT, (there, 40): LINE_TEXT}),
+        canonical=lambda path: "src/a.cpp",
+    )
+
+    assert stamped[0].fingerprint == stamped[1].fingerprint
+
+
 # ---------------------------------------------------------------- the normative spec
 
 

@@ -19,6 +19,7 @@ from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
 from cpp_analysis_mcp.parsers import clang_tidy, diagnostics
+from cpp_analysis_mcp.planner.scope import relativizer
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.store.fingerprints import fingerprint_batch
@@ -163,7 +164,7 @@ def check_snippet(
     source = build_dir / f"{SNIPPET_STEM}.cpp"
     source.write_text(text, encoding="utf-8")
 
-    return check_file(
+    outcome, _ = _routed_check(
         source,
         analysis,
         toolchain=toolchain,
@@ -172,7 +173,11 @@ def check_snippet(
         checks=checks,
         timeout_s=timeout_s,
         runner=runner,
+        # the scratch directory is minted fresh per call; hashing paths relative to it
+        # is what makes the same snippet the same finding on every machine and run
+        canonical=relativizer(build_dir),
     )
+    return outcome
 
 
 def _routed_check(
@@ -185,6 +190,7 @@ def _routed_check(
     checks: str | None,
     timeout_s: int,
     runner: Runner,
+    canonical: Callable[[str], str] | None = None,
 ) -> tuple[AnalysisReport | BuildFailure | CapabilityStatus, tuple[Resolution, ...]]:
     """The registry decides, the check runs, and every finding leaves carrying identity.
 
@@ -192,6 +198,10 @@ def _routed_check(
     here and a skip in a future plan trace are the same verdict from the same code. A
     caller-named scope passes the selection gates by design; the capability gate binds
     regardless, returning the probe's own status object on refusal.
+
+    File checks fingerprint the tool's printed absolute paths (no `canonical`): their
+    project root arrives with the git-aware scope, and no persisted baseline exists yet
+    for that change to orphan. Snippet checks pass one rooted at their scratch dir.
     """
     runner_for = _RUNNERS[analysis]
     resolutions = _registry().resolve(
@@ -221,7 +231,8 @@ def _routed_check(
         return checked, resolutions
     outcome = _outcome(checked, analysis, capabilities[analysis])
     if isinstance(outcome, AnalysisReport):
-        outcome = replace(outcome, findings=fingerprint_batch(outcome.findings, _line_reader()))
+        stamped = fingerprint_batch(outcome.findings, _line_reader(), canonical=canonical)
+        outcome = replace(outcome, findings=stamped)
     return outcome, resolutions
 
 
@@ -244,10 +255,8 @@ def _no_execution(source: Path) -> AnalysisReport | BuildFailure | CapabilitySta
 def _line_reader() -> Callable[[str, int], str]:
     """Read flagged lines for fingerprinting, each file once, misses as empty text.
 
-    Findings name files the way the tool printed them, so the paths here are absolute --
-    which also means these fingerprints are not portable across checkouts yet. That is
-    deferred, deliberately: the Phase 2 scope resolver owns relativization, and no
-    persisted baseline exists today for a later change to orphan.
+    Reads use the paths exactly as the tool printed them; how a path enters the hash
+    is the caller's `canonical` to decide, never this reader's.
     """
     cache: dict[str, tuple[str, ...]] = {}
 

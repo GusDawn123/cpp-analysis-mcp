@@ -315,6 +315,9 @@ def test_analyzer_plugins_import_no_upper_layer() -> None:
         f"{PACKAGE_NAME}.server",
         f"{PACKAGE_NAME}.context",
         f"{PACKAGE_NAME}.pipelines",
+        # the planner sits directly above the analyzers; a plugin importing it is the
+        # same upward reach one layer nearer
+        f"{PACKAGE_NAME}.planner",
     )
     violations: list[str] = []
     for path in modules_in("analyzers"):
