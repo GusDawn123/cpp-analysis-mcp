@@ -1,0 +1,10 @@
+[
+  {
+    "tool": "clang-tidy",
+    "severity": "warning",
+    "category": "modernize-use-nullptr",
+    "message": "use nullptr",
+    "file": "src/order_book.cpp",
+    "line": 5
+  }
+]
