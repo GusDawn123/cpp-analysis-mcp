@@ -14,11 +14,9 @@ from pathlib import Path
 def relativizer(root: Path) -> Callable[[str], str]:
     """Canonicalize spellings against the root, resolving each distinct one once.
 
-    Absolute paths under the root come back relative POSIX ("src/a.cpp"); outside it
-    they stay whole, since truncating a caller-named file to a basename would collide
-    two same-named files in different projects. Relative spellings pass through
-    untouched: they are relative to some tool's working directory, and resolving them
-    against this process's own cwd would invent a location nobody used.
+    Under the root: relative POSIX ("src/a.cpp"). Outside it: kept whole, so two
+    same-named files cannot collide. Relative spellings pass through untouched --
+    only the tool that printed one knows what it was relative to.
     """
     settled = root.resolve()
     cache: dict[str, str] = {}
