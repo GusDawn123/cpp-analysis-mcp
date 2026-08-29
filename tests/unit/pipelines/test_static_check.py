@@ -26,6 +26,7 @@ from cpp_analysis_mcp.pipelines.static_check import (
 )
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.fingerprints import compute_fingerprint
 from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -766,6 +767,33 @@ def test_fingerprints_are_the_same_on_every_run(tmp_path: Path) -> None:
     ]
 
 
+def test_a_file_checks_identity_still_hashes_the_printed_path(tmp_path: Path) -> None:
+    """The deferral, pinned: file checks have no project root until the git-aware scope
+    supplies one, so their identity hashes the tool's own absolute spelling. Making
+    this portable is a decision for that chunk, not a drive-by."""
+    source = tmp_path / "v.cpp"
+    source.write_text("int x = 1;\n", encoding="utf-8")
+    output = f"{source}:1:5: warning: unused variable 'x' [-Wunused-variable]\n"
+    runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+
+    report = reported(
+        check_file(
+            source,
+            Analysis.THREAD_SAFETY,
+            toolchain=a_clang(),
+            platform=a_linux(),
+            capabilities=statuses(a_working_status()),
+            runner=runner,
+        )
+    )
+
+    (finding,) = report.findings
+    assert finding.location is not None
+    assert finding.fingerprint == compute_fingerprint(
+        finding.category, finding.location.file, "int x = 1;", 0
+    )
+
+
 def test_the_routed_check_records_a_verdict_for_every_analyzer(tmp_path: Path) -> None:
     """The registry is consulted for real: both plugins answer, and the requested one's
     verdict is what let the check run."""
@@ -832,3 +860,40 @@ def test_a_snippet_is_written_down_before_it_is_checked(tmp_path: Path) -> None:
     assert snippet.read_text(encoding="utf-8") == text
     assert str(snippet) in runner.checked.cmd
     assert [finding.category for finding in report.findings] == [THREAD_SAFETY_CATEGORY]
+
+
+def test_the_same_snippet_shares_identity_across_scratch_directories(tmp_path: Path) -> None:
+    """Two calls, two random scratch directories, one snippet: the fingerprints agree.
+
+    Snippet paths are minted fresh per call, so hashing them verbatim would make the
+    same snippet a new finding every time -- dedup and baselines would never hold.
+    """
+    text = "int shadowed() { int x = 1; { int x = 2; } return x; }\n"
+
+    def checked_in(directory: Path) -> AnalysisReport:
+        snippet = directory / "snippet.cpp"
+        # the fake prints the real scratch path, exactly as the compiler would
+        output = f"{snippet}:1:29: warning: declaration shadows a local [-Wshadow]\n"
+        runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+        return reported(
+            check_snippet(
+                text,
+                Analysis.THREAD_SAFETY,
+                toolchain=a_clang(),
+                platform=a_linux(),
+                capabilities=statuses(a_working_status()),
+                build_dir=directory,
+                runner=runner,
+            )
+        )
+
+    first = checked_in(tmp_path / "one")
+    second = checked_in(tmp_path / "two")
+
+    assert [finding.fingerprint for finding in first.findings] == [
+        finding.fingerprint for finding in second.findings
+    ]
+    # the visible location still names each call's own real file
+    location = first.findings[0].location
+    assert location is not None
+    assert location.file == str(tmp_path / "one" / "snippet.cpp")
