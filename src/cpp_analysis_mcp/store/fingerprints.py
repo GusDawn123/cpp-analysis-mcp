@@ -55,7 +55,13 @@ def compute_fingerprint(rule: str, path: str, line_text: str, occurrence_index: 
     return sha256(bytes(blob)).hexdigest()[:_DIGEST_CHARS]
 
 
-def fingerprint(finding: Finding, line_text: str, occurrence_index: int) -> Finding:
+def fingerprint(
+    finding: Finding,
+    line_text: str,
+    occurrence_index: int,
+    *,
+    canonical: Callable[[str], str] | None = None,
+) -> Finding:
     """Return the finding carrying its identity; the original is left untouched.
 
     A finding with no location fingerprints on rule and empty file and text -- build
@@ -63,11 +69,16 @@ def fingerprint(finding: Finding, line_text: str, occurrence_index: int) -> Find
     being one identity is the behavior a baseline wants for them. The text argument is
     ignored for those on purpose: the spec says locationless findings contribute empty
     text, and which entry point computed a fingerprint must never change it.
+
+    `canonical`, when given, rewrites the path before it enters the hash; the
+    finding's visible location keeps the tool's own spelling either way.
     """
     if finding.location is None:
         path, line_text = "", ""
-    else:
+    elif canonical is None:
         path = finding.location.file
+    else:
+        path = canonical(finding.location.file)
     digest = compute_fingerprint(finding.category, path, line_text, occurrence_index)
     return replace(finding, fingerprint=digest, fingerprint_scheme=SCHEME_VERSION)
 
@@ -75,6 +86,8 @@ def fingerprint(finding: Finding, line_text: str, occurrence_index: int) -> Find
 def fingerprint_batch(
     findings: Sequence[Finding],
     read_line: Callable[[str, int], str],
+    *,
+    canonical: Callable[[str], str] | None = None,
 ) -> tuple[Finding, ...]:
     """Fingerprint a whole run, resolving occurrence indices across it.
 
@@ -84,6 +97,8 @@ def fingerprint_batch(
     so the second identical flagged line is index 1 wherever the block sits -- and two
     reports of the same line share index, fingerprint, and therefore identity.
 
+    `canonical` rewrites each path before it enters the hash and the occurrence key --
+    never the reads and never the finding, which keep the tool's own spelling.
     Findings come back in the order they arrived; ranking never reorders the caller.
     """
     texts: list[str] = []
@@ -94,7 +109,8 @@ def fingerprint_batch(
             text, path, line = "", "", -1
         else:
             text = _strip_ws(read_line(finding.location.file, finding.location.line))
-            path = _normalize_path(finding.location.file)
+            file = finding.location.file if canonical is None else canonical(finding.location.file)
+            path = _normalize_path(file)
             line = finding.location.line
         texts.append(text)
         keys.append((finding.category, path, text))
@@ -109,6 +125,6 @@ def fingerprint_batch(
     }
 
     return tuple(
-        fingerprint(finding, text, rank[key][line])
+        fingerprint(finding, text, rank[key][line], canonical=canonical)
         for finding, text, key, line in zip(findings, texts, keys, lines, strict=True)
     )
