@@ -8,9 +8,12 @@ as "no baseline" rather than a wrong subtraction that would hide real findings.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from cpp_analysis_mcp.store.baselines import Baseline, load, save
+from cpp_analysis_mcp.store.models import Finding, Location, Severity
+from cpp_analysis_mcp.store.store import FindingStore
 
 REF = "main"
 SCHEME = 1
@@ -157,3 +160,83 @@ def test_ten_thousand_identities_round_trip_in_under_a_second(tmp_path: Path) ->
     assert loaded is not None
     assert len(loaded.fingerprints) == 10_000
     assert elapsed < 1.0, f"a 10k-identity round trip took {elapsed:.3f}s"
+
+
+# ------------------------------------------------------------- the gate, end to end
+
+
+LINE = "    process(std::move(order));"
+OTHER_LINE = "int y = compute();"
+
+
+def source_where(mapping: dict[tuple[str, int], str]) -> Callable[[str, int], str]:
+    def read_line(file: str, line: int) -> str:
+        return mapping.get((file, line), "")
+
+    return read_line
+
+
+def a_reader() -> Callable[[str, int], str]:
+    return source_where({("src/order_book.cpp", 40): LINE, ("src/order_book.cpp", 90): OTHER_LINE})
+
+
+def a_finding(line: int, rule: str = "bugprone-use-after-move") -> Finding:
+    return Finding(
+        id=f"tidy-{line:04d}",
+        tool="clang-tidy",
+        severity=Severity.WARNING,
+        category=rule,
+        message="'order' used after it was moved",
+        location=Location(file="src/order_book.cpp", line=line),
+    )
+
+
+def test_identities_are_the_stores_unsuppressed_fingerprints() -> None:
+    store = FindingStore()
+    store.ingest([a_finding(40)], a_reader())
+    (finding,) = store.findings()
+    store.suppress([finding.fingerprint])
+
+    assert store.identities() == frozenset()
+    assert store.identities(include_suppressed=True) == frozenset({finding.fingerprint})
+
+
+def test_new_against_reports_only_what_the_baseline_never_saw() -> None:
+    before = FindingStore()
+    before.ingest([a_finding(40)], a_reader())
+    after = FindingStore()
+    after.ingest([a_finding(40), a_finding(90, rule="misc-unused")], a_reader())
+
+    fresh = after.new_against(before.identities())
+
+    assert [finding.category for finding in fresh] == ["misc-unused"]
+
+
+def test_new_since_and_new_against_tell_one_story() -> None:
+    before = FindingStore()
+    before.ingest([a_finding(40)], a_reader())
+    after = FindingStore()
+    after.ingest([a_finding(40), a_finding(90, rule="misc-unused")], a_reader())
+
+    assert after.new_since(before) == after.new_against(before.identities(include_suppressed=True))
+
+
+def test_the_review_gate_end_to_end(tmp_path: Path) -> None:
+    """Run once and remember; change the code and run again; only the new finding
+    survives the subtraction."""
+    root = tmp_path / "proj"
+    first = FindingStore()
+    first.ingest([a_finding(40)], a_reader())
+    save(
+        tmp_path,
+        root,
+        Baseline(ref=REF, fingerprints=first.identities(), scheme=SCHEME, key=a_key()),
+    )
+
+    second = FindingStore()
+    second.ingest([a_finding(40), a_finding(90, rule="misc-unused")], a_reader())
+    remembered = load(tmp_path, root, ref=REF, scheme=SCHEME, key=a_key())
+
+    assert remembered is not None
+    fresh = second.new_against(remembered.fingerprints)
+    assert [finding.category for finding in fresh] == ["misc-unused"]
