@@ -271,3 +271,21 @@ def test_the_runner_translates_its_own_output() -> None:
 def test_bridged_platforms_resolve_tools_on_their_own_path() -> None:
     platform = container.container_platform({container.DIGEST_FACT: "sha256:x"})
     assert capabilities.find_clang_tidy(platform) == Path(capabilities.CLANG_TIDY)
+
+
+# --------------------------------------------------------------------------- the toolbox
+
+
+def test_the_packaged_dockerfile_is_where_discovery_says() -> None:
+    """The build-it-yourself suggestion points here, so the file has to ship with the code."""
+    dockerfile = container.dockerfile_dir() / "Dockerfile"
+    assert dockerfile.is_file()
+    text = dockerfile.read_text(encoding="utf-8")
+    assert "FROM ubuntu" in text
+    assert "clang-tidy" in text
+
+
+def test_the_publish_workflow_ships_the_image_discovery_asks_for() -> None:
+    """One string in two places: the workflow's tag and container.IMAGE must never drift."""
+    workflow = Path(__file__).parents[2] / ".github" / "workflows" / "publish-toolbox.yml"
+    assert container.IMAGE in workflow.read_text(encoding="utf-8")
