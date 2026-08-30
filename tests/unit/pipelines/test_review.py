@@ -2,7 +2,7 @@
 
 Dispatch runs the two plugins in parallel, so the fake routes by what was asked --
 git by call order (sequential), each tool by its own command shape -- and the tests
-tell the product's story: audit remembers, review subtracts, escalation proposes.
+tell the product's story: audit remembers, review subtracts.
 """
 
 from __future__ import annotations
@@ -200,9 +200,6 @@ def test_audit_remembers_and_review_reports_only_the_new_finding(
     assert report.total_new == 1
     assert [entry.category for entry in report.index] == [DANGLING]
     assert report.detailed[0].category == DANGLING
-    # the new finding is exactly what the shipped escalation rule watches for
-    (proposal,) = report.proposals
-    assert proposal.run is Analysis.ASAN
     # and the remembered run can answer a later get_finding
     assert runs.find(cache, Path(report.root), report.detailed[0].fingerprint) is not None
 

@@ -108,8 +108,9 @@ spec → the maintainer merges.
 - **"Fingerprint" means two things on purpose**: finding identity
   (`store/fingerprints.py`) and profile patterns (`Fingerprint` in the shared
   vocabulary, which has seniority). No rename without an ADR.
-- **Escalation rules are data, never code** (ADR-0003): YAML with a Sigma-style
-  lifecycle, propose-by-default, fixture tests mandatory.
+- **Escalation rules are retired** (ADR-0005): the review gate runs its whole
+  static tier, and dynamic verification is a step the caller asks for. A rules
+  engine returns only with a new ADR and field evidence.
 - **The planner is deterministic code, never an LLM** (ADR-0001).
 
 ## Current state pointers
