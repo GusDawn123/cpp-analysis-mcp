@@ -1,8 +1,6 @@
-"""Prove the clang-tidy plugin honors the contract without ever needing a compiler.
-
-A fake check callable serves the pipeline's three outcomes by hand: reports pass through,
-failures speak up, and a detector that stopped watching says so instead of sounding clean.
-Gates get the same treatment as the registry's: exact reasons, exact order, no execution.
+"""Prove the clang-tidy plugin honors the contract without ever needing a compiler. A fake
+check callable serves the pipeline's three outcomes by hand; gates get the same treatment
+as the registry's: exact reasons, exact order, no execution.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
-"""Build the real fixtures with the real compilers on this machine, then run them.
-
-Proves the loop the unit suite only composes commands for: an ASan build must run under
-its returned environment and report the bug, or a dropped runtime_env would pass silently.
-Also: -Wthread-safety fires only for clang, so gcc's silence means no such analysis exists.
+"""Build the real fixtures with the real compilers on this machine, then run them: an ASan
+build must run under its returned environment and report the bug, or a dropped runtime_env
+would pass silently. -Wthread-safety fires only for clang; gcc's silence means no analysis.
 """
 
 from __future__ import annotations

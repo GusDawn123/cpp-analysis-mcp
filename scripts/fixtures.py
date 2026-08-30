@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-"""Compile and run the C++ bug fixtures under sanitizers.
-
-    validate    check every fixture still produces the output it is supposed to
-    capture     save raw sanitizer output into tests/fixtures/golden/
-
-`validate` doubles as the CI integration job. Stdlib only and no imports from
-src/ -- this script predates the package and runs bare in CI.
+"""Compile and run the C++ bug fixtures under sanitizers: `validate` checks every fixture
+still produces what it should (doubling as the CI integration job), `capture` saves raw
+output into tests/fixtures/golden/. Stdlib only, no src/ imports -- it runs bare in CI.
 """
 
 from __future__ import annotations
@@ -33,9 +29,8 @@ RUN_TIMEOUT_S = 30
 KILL_GRACE_S = 10
 
 # Where LLVM on Windows keeps the sanitizer runtimes, one directory per clang version.
-# Two measured quirks live there: UBSan's libraries must be linked by full path (the
-# linker otherwise takes MSVC's incompatible copy, searched first), and ASan's runtime
-# is a DLL the loader only finds beside the binary.
+# Two measured quirks: UBSan's libraries must be linked by full path (MSVC's incompatible
+# copy is searched first), and ASan's runtime is a DLL found only beside the binary.
 LLVM_ROOT = Path(r"C:\Program Files\LLVM")
 UBSAN_LIBS = (
     "clang_rt.ubsan_standalone-x86_64.lib",
@@ -162,12 +157,12 @@ SUPPORT: list[Case] = [
 
 
 def current_os() -> str:
-    """Return darwin, linux or windows."""
+    """The lower-cased platform.system(): darwin, linux or windows on supported hosts."""
     return platform.system().lower()
 
 
 def compiler_family(compiler: str) -> str:
-    """Map a compiler command to gcc or clang; anything not g++ counts as clang."""
+    """gcc when the name says g++ or gcc without "clang"; anything else counts as clang."""
     name = Path(compiler).name
     # "g++" is a substring of "clang++", so rule clang out first.
     is_gcc = "clang" not in name and ("g++" in name or "gcc" in name)
@@ -204,9 +199,8 @@ def run_command(
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        # POSIX: start_new_session made the child its own group leader, so its pid is
-        # the pgid; it may also exit on its own between the timeout and the kill.
-        # Windows has no groups to signal, so taskkill /T walks the tree instead.
+        # POSIX: start_new_session made the child its own group leader, so its pid is the
+        # pgid. Windows has no groups to signal, so taskkill /T walks the tree instead.
         # sys.platform rather than os.name because mypy only narrows the former.
         if sys.platform == "win32":
             # by full path: bare "taskkill" is resolved through a search that can
@@ -358,12 +352,9 @@ def golden_name(case: Case, compiler: str) -> str:
 
 
 def scrubbed(output: str) -> str:
-    """Drop this checkout's own location from output that is about to be committed.
-
-    Sanitizer frames carry absolute paths, and those begin at wherever the capturing
-    machine keeps the repo -- which on Windows includes a username. The machine-specific
-    head is replaced with the neutral root the Linux goldens already carry (/w, C:\\w),
-    keeping the tail that parsers and readers actually use.
+    """Drop this checkout's own location from output that is about to be committed:
+    sanitizer frames carry absolute paths that on Windows include a username. The head is
+    replaced with the neutral root the goldens already carry (/w, C:\\w), keeping the tail.
     """
     neutral = r"C:\w" if current_os() == "windows" else "/w"
     return output.replace(str(REPO_ROOT), neutral)

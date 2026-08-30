@@ -1,9 +1,6 @@
-"""Turn compiler diagnostic lines into Findings.
-
-gcc and clang both print `file:line:col: severity: message [-Wflag]`, column and flag
-each optional. This is where -Wthread-safety findings come from: reported while
-compiling, so the build layer parses its own output rather than waiting for a run that
-would never mention them. A `note:` elaborates the diagnostic above it and is skipped.
+"""Turn compiler diagnostic lines into Findings: gcc and clang both print
+`file:line:col: severity: message [-Wflag]`, column and flag each optional. This is where
+-Wthread-safety findings come from; a `note:` elaborates the line above and is skipped.
 """
 
 from __future__ import annotations
@@ -23,7 +20,6 @@ DIAGNOSTIC = re.compile(
     r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<column>\d+))?: "
     r"(?P<severity>warning|error): (?P<message>.*?)\s*$"
 )
-# the compiler names the flag that produced the diagnostic, in brackets, at the end
 FLAG_SUFFIX = re.compile(r"\s*\[-W(?P<flag>[^\]]+)\]$")
 
 SEVERITIES = {"warning": Severity.WARNING, "error": Severity.ERROR}

@@ -1,8 +1,6 @@
-"""Results as a markdown table, plus the one number the whole run comes down to.
-
-Skipped tasks stay visible with their reason and stay out of the denominator: a
-harness that scored an unrun task as a pass would be lying, and one that scored it as
-a failure would punish an unset env var.
+"""Results as a markdown table, plus the one number the whole run comes down to. Skipped
+tasks stay visible with their reason and stay out of the denominator: scoring an unrun
+task as a pass would lie, and scoring it as a failure would punish an unset env var.
 """
 
 from __future__ import annotations

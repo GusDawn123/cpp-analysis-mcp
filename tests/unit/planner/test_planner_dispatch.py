@@ -1,7 +1,6 @@
-"""Dispatch runs the plan and nothing else, deterministically.
-
-Thread timing must never reach the caller: results arrive in the plan's own step
-order, tiers run strictly one after another, and a skipped analyzer never runs.
+"""Dispatch runs the plan and nothing else, deterministically. Thread timing must never
+reach the caller: results arrive in the plan's own step order, tiers run strictly one
+after another, and a skipped analyzer never runs.
 """
 
 from __future__ import annotations

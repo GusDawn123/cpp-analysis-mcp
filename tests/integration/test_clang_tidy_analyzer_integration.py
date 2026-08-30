@@ -1,8 +1,6 @@
 """Run the clang-tidy plugin against the real tool and require it to name the planted bug.
-
-The unit suite proves the adapter's shape with scripted outcomes; this proves it holds
-against a real toolchain. Same doctrine as the other integration suites: assert the bug
-lands on its marked line, and the clean fixture proves an all-clear is earned.
+The unit suite proves the adapter's shape with scripted outcomes; this proves it holds on
+a real toolchain: the bug lands on its marked line, and the clean fixture earns its pass.
 """
 
 from __future__ import annotations

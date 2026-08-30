@@ -1,7 +1,5 @@
-"""Analyzers: one contract, N plugins (layer 3 of architecture v2).
-
-The contract and registry live in `base`; each tool gets one module here as the
-phase advances -- clang-tidy and compiler warnings first, the rest as plugins.
+"""Analyzers: one contract, N plugins (layer 3 of architecture v2). The contract and
+registry live in `base`; each tool gets one module here as the phase advances.
 """
 
 from cpp_analysis_mcp.analyzers.base import (

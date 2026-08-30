@@ -1,8 +1,6 @@
-"""Pin the compiler-diagnostic parser against a captured -Wthread-safety run.
-
-Every number here was read off the golden by eye, not computed from the parser it checks,
-so a drifted line, severity, or category fails instead of moving with it. Synthetic cases
-cover what macOS clang alone can't show: gcc's flagless diagnostics, missing columns, and notes.
+"""Pin the compiler-diagnostic parser against a captured -Wthread-safety run. Every number
+was read off the golden by eye, not computed from the parser it checks. Synthetic cases
+cover what macOS clang alone can't: gcc's flagless diagnostics, missing columns, notes.
 """
 
 from __future__ import annotations
@@ -111,9 +109,8 @@ def test_errors_keep_their_severity() -> None:
 
 def test_a_promoted_warning_is_an_error_filed_under_its_own_flag() -> None:
     """-Werror=flag prints [-Werror=flag]: the severity is promoted, the category is not.
-
-    A category of "error=thread-safety-analysis" would slip past every filter that looks
-    for the flag's name, which is exactly how a promoted lock bug would go unreported.
+    A category of "error=thread-safety-analysis" would slip past every filter looking for
+    the flag's name -- exactly how a promoted lock bug would go unreported.
     """
     text = (
         "a.cpp:21:5: error: writing variable 'counter' requires holding mutex "

@@ -1,9 +1,6 @@
-"""Turn ThreadSanitizer console output into Findings.
-
-TSan prints one report per race or lock-order inversion, each opening with a
-`WARNING: ThreadSanitizer:` headline and closing with a `SUMMARY:` line. Inside a
-race report every thread that touched the memory gets an access block -- a header
-naming the op, the size and any mutexes that thread held, followed by its stack.
+"""Turn ThreadSanitizer console output into Findings: one report per race or lock-order
+inversion, from its `WARNING: ThreadSanitizer:` headline to its `SUMMARY:` line. Inside a
+race report every thread that touched the memory gets an access block plus its stack.
 """
 
 from __future__ import annotations
@@ -56,10 +53,8 @@ def parse(text: str) -> list[Finding]:
 
 
 def _split_reports(text: str) -> list[tuple[str, list[str]]]:
-    """Cut the output into one (headline, body) pair per report.
-
-    A report runs from its WARNING line to its SUMMARY line, or to the next WARNING
-    when a run was killed before TSan printed the summary.
+    """Cut the output into one (headline, body) pair per report: WARNING line to SUMMARY
+    line, or to the next WARNING when a run was killed before TSan printed the summary.
     """
     reports: list[tuple[str, list[str]]] = []
     headline: str | None = None
@@ -102,7 +97,6 @@ def _finding(number: int, headline: str, body: Sequence[str]) -> Finding:
 
 
 def _category(message: str) -> str:
-    """Kebab-case the headline up to its parenthetical: "data race" -> "data-race"."""
     return message.split(" (")[0].strip().lower().replace(" ", "-")
 
 
@@ -164,7 +158,6 @@ def _every_frame(body: Sequence[str]) -> tuple[Frame, ...]:
 
 def _frame(body: str) -> Frame:
     """Split `bump() a.cpp:12:9 (bin+0xf48d0) (BuildId: f8)` into function and source point.
-
     The function name carries spaces, parens and colons of its own, so the file token is
     taken from the end once the module and build-id suffixes are peeled off.
     """

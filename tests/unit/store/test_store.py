@@ -1,9 +1,6 @@
-"""Prove the store answers the review gate's questions and destroys nothing.
-
-Covers dedup into counts, cross-tool agreement into confirmations, new_since diffing,
-suppression that hides without deleting, and ranking that spreads variety before
-repetition. Determinism gets its own tests: a gate ordering findings differently on
-identical inputs can't be golden-tested, or trusted.
+"""Prove the store answers the review gate's questions and destroys nothing: dedup into
+counts, agreement into confirmations, new_since diffing, suppression that hides without
+deleting, ranking that spreads variety. Determinism gets its own tests.
 """
 
 from __future__ import annotations
@@ -201,12 +198,9 @@ def test_ranking_is_deterministic_for_the_same_ingest_history() -> None:
 
 
 def test_new_since_across_two_ten_thousand_finding_stores_is_fast() -> None:
-    """The gate's hot path: a key-difference walk, not a comparison of contents.
-
-    Latency assertions ride with the unit suite on purpose -- hot paths are benchmarked
-    every increment, not in a job nobody runs. The bound carries ~20x headroom over the
-    expected cost so CI noise cannot flake it; if this ever trips, the walk stopped
-    being linear, which is exactly the news it exists to deliver.
+    """The gate's hot path: a key-difference walk, not a comparison of contents. The bound
+    carries ~20x headroom so CI noise cannot flake it; if it trips, the walk stopped being
+    linear, which is exactly the news it exists to deliver.
     """
 
     def bulk(store: FindingStore, start: int) -> None:

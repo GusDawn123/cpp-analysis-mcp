@@ -1,7 +1,5 @@
-"""Turn LeakSanitizer output into findings.
-
-A run reports one record per leaked allocation site, each a `Direct leak`/`Indirect
-leak` headline followed by the allocation stack. Each record becomes one Finding.
+"""Turn LeakSanitizer output into findings: one record per leaked allocation site, each a
+`Direct leak`/`Indirect leak` headline plus its allocation stack, becomes one Finding.
 """
 
 from __future__ import annotations
@@ -15,11 +13,9 @@ TOOL = "lsan"
 RECORD = re.compile(r"^(?P<kind>Direct|Indirect) leak of\b")
 FRAME = re.compile(r"^\s*#\d+\s+0x[0-9a-f]+\s+(?P<rest>.*)$")
 
-# a frame carries source only when the symbolizer resolved it, and then it trails
-# the line: `#1 0x... in main /w/leak.cpp:6:28`. Paths containing spaces truncate
-# here: the format is unquoted and function names carry spaces too, so the
-# boundary between them cannot be recovered. A drive letter's own colon is the one
-# colon a file may keep.
+# a frame carries source only when the symbolizer resolved it, trailing the line:
+# `#1 0x... in main /w/leak.cpp:6:28`. Paths with spaces truncate here (unquoted format,
+# names carry spaces); a drive letter's colon is the one colon a file may keep
 FRAME_SOURCE = re.compile(r"(?P<file>(?:[A-Za-z]:)?[^\s():]+):(?P<line>\d+)(?::(?P<column>\d+))?$")
 
 # gcc resolves its own new/delete interceptors, so a leak stack can open on

@@ -1,7 +1,6 @@
-"""Loading and validating the task files.
-
-A task that loads but means nothing -- a typo'd tool name, a check kind nobody
-implements -- would grade green forever, so the loader refuses instead of shrugging.
+"""Loading and validating the task files. A task that loads but means nothing -- a typo'd
+tool name, a check kind nobody implements -- would grade green forever, so the loader
+refuses instead of shrugging.
 """
 
 from __future__ import annotations

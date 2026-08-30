@@ -1,8 +1,6 @@
 """The review gate end to end, with every subprocess faked and answered by command.
-
-Dispatch runs the two plugins in parallel, so the fake routes by what was asked --
-git by call order (sequential), each tool by its own command shape -- and the tests
-tell the product's story: audit remembers, review subtracts.
+Dispatch runs the two plugins in parallel, so the fake routes by what was asked -- git by
+call order, each tool by its command shape. The story: audit remembers, review subtracts.
 """
 
 from __future__ import annotations
@@ -110,10 +108,9 @@ def a_checkout(tmp_path: Path) -> Path:
 
 
 def offset_in(root: Path, text: str) -> int:
-    """Where that text starts in the checked-out file, in bytes.
-
-    Bytes, not characters: a fix-it's offsets index the file as the tool read it, and a
-    checkout written through text mode holds CRLF on Windows.
+    """Where that text starts in the checked-out file, in bytes -- not characters: a
+    fix-it's offsets index the file as the tool read it, and a checkout written through
+    text mode holds CRLF on Windows.
     """
     return (root / "src" / "a.cpp").read_bytes().index(text.encode())
 
@@ -132,10 +129,9 @@ def a_database(root: Path, name: str) -> None:
 
 @dataclass
 class AnsweringRunner:
-    """Answer git in call order and each tool by its command shape, thread-safely.
-
-    The static tier runs both plugins in parallel, so a purely ordered script would
-    race; git questions happen before dispatch and stay sequential.
+    """Answer git in call order and each tool by its command shape, thread-safely: the
+    static tier runs both plugins in parallel, so a purely ordered script would race;
+    git questions happen before dispatch and stay sequential.
     """
 
     git: list[RunResult]
@@ -243,7 +239,6 @@ def test_review_without_a_baseline_reports_everything_and_says_so(
     assert any("audit" in note for note in report.notes)
     assert USE_AFTER_MOVE in [entry.category for entry in report.index]
     assert report.total_new == len(report.index)
-    # both static plugins ran; the trace says so
     assert sorted(step.analyzer for step in report.steps) == ["clang-tidy", "compiler-warnings"]
 
 

@@ -1,8 +1,6 @@
 """The review gate: audit remembers a ref, review reports only what a change added.
-
-Everything composed here exists one layer down -- scope, plan, dispatch, store,
-baselines. Baselines are recorded on purpose by audit and never built behind the
-caller's back; a missing one reports everything and says so.
+Composes the layer below (scope, plan, dispatch, store, baselines). Baselines are recorded
+only by audit, never behind the caller's back; a missing one reports everything and says so.
 """
 
 from __future__ import annotations
@@ -75,11 +73,9 @@ class IndexEntry:
 
 @dataclass(frozen=True, slots=True)
 class Detailed:
-    """One expanded finding with what the tools can add around it.
-
-    The extras ride beside the finding because the Finding schema is frozen (ADR-0002):
-    `suggested_fix` is the check's own edit where it offered one, and `verify_with` names
-    the runtime analysis that could watch this class of defect happen.
+    """One expanded finding with what the tools can add around it: the extras ride beside
+    the finding because the Finding schema is frozen (ADR-0002). `suggested_fix` is the
+    check's own edit; `verify_with` names the runtime analysis that could watch it happen.
     """
 
     finding: Finding
@@ -147,10 +143,9 @@ def review_project(
     cache_dir: Path | None,
     runner: Runner = process.run,
 ) -> ReviewReport | CapabilityStatus:
-    """Report only the findings the working tree added since `against`.
-
-    With no trustworthy baseline for the ref, everything found is reported and a
-    note says to audit the ref first -- never a silent guess, never a checkout.
+    """Report only the findings the working tree added since `against`. With no trustworthy
+    baseline for the ref, everything found is reported and a note says to audit first --
+    never a silent guess, never a checkout.
     """
     scoped = changed_since(project_dir, against, runner=runner)
     if isinstance(scoped, CapabilityStatus):
@@ -216,10 +211,9 @@ def audit_project(
     cache_dir: Path | None,
     runner: Runner = process.run,
 ) -> AuditReport | CapabilityStatus:
-    """Scan everything git tracks, report the whole picture, and record the baseline.
-
-    Recording is the point: review(against=X) can only subtract what an audit at X
-    wrote down. The label defaults to the current branch, or the commit when detached.
+    """Scan everything git tracks, report the whole picture, and record the baseline --
+    recording is the point: review(against=X) can only subtract what an audit at X wrote.
+    The label defaults to the current branch, or the commit when detached.
     """
     scoped = tracked_files(project_dir, runner=runner)
     if isinstance(scoped, CapabilityStatus):
@@ -298,9 +292,8 @@ def _static_tier(
     runner: Runner,
 ) -> tuple[FindingStore, Plan, str | None, tuple[str, ...], Fixes]:
     """Plan and run both compile-time plugins over the scope, findings into one store.
-
-    Also reports which compilation database decided the run, and says so in words when
-    the root held more than one to choose between.
+    Also names the compilation database that decided the run, in words when the root
+    held more than one to choose between.
     """
     named = {
         ClangTidyAnalyzer.name: capabilities[Analysis.CLANG_TIDY],
@@ -374,10 +367,8 @@ def _content_identity(path: Path | None) -> str:
 
 
 def _config_identity(root: Path) -> str:
-    """One digest over every tidy config under the root, however deep.
-
-    clang-tidy answers to the nearest config above each file, so a nested one is as
-    load-bearing as the root's -- any of them changing must retire the baseline.
+    """One digest over every tidy config under the root: clang-tidy answers to the nearest
+    config above each file, so a nested one changing must retire the baseline too.
     """
     found = sorted(
         (
@@ -415,11 +406,9 @@ def _remember(
 
 
 def _relocated(findings: Sequence[Finding], canonical: Callable[[str], str]) -> tuple[Finding, ...]:
-    """Rewrite every location a caller reads to root-relative POSIX, on the way out.
-
-    Tools print whatever they please -- absolute, mixed separators -- and the store
-    keeps that record, because identity hashes the flagged line read through the path
-    the tool named (ADR-0002, frozen). Only what a caller reads is rewritten.
+    """Rewrite every location a caller reads to root-relative POSIX, on the way out only:
+    the store keeps what the tool printed, because identity hashes the flagged line read
+    through the path the tool named (ADR-0002, frozen).
     """
     return tuple(_moved(finding, canonical) for finding in findings)
 
@@ -463,10 +452,9 @@ def _which_database(
 
 
 def _offered(ran: Sequence[Executed], canonical: Callable[[str], str]) -> Fixes:
-    """Key every offered edit by the finding it belongs to: file, check, diagnostic line.
-
-    Root-relative on the way in, because that is how a caller reads a finding's location;
-    the first offer for an identity wins, as the first report does in the store.
+    """Key every offered edit by the finding it belongs to: file, check, diagnostic line --
+    root-relative, the way a caller reads a location. The first offer for an identity wins,
+    as the first report does in the store.
     """
     fixes: dict[tuple[str, str, int], SuggestedFix] = {}
     for finished in ran:
@@ -479,10 +467,9 @@ def _offered(ran: Sequence[Executed], canonical: Callable[[str], str]) -> Fixes:
 def _shaped(
     ranked: Sequence[Finding], fixes: Fixes
 ) -> tuple[tuple[IndexEntry, ...], dict[Tier, int], tuple[Detailed, ...], bool]:
-    """Index everything, count it by tier, and spend the detail slots on danger.
-
-    One pass builds all three, bucketing as it goes: ranked order survives inside each
-    tier, and nothing rescans the findings once per tier to fill the detail.
+    """Index everything, count it by tier, and spend the detail slots on danger. One pass
+    builds all three: ranked order survives inside each tier, and nothing rescans the
+    findings once per tier to fill the detail.
     """
     counts = dict.fromkeys(Tier, 0)
     buckets: dict[Tier, list[Finding]] = {}

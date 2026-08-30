@@ -1,9 +1,6 @@
-"""How dangerous a finding is, and which runtime tool could settle the question.
-
-Witnessed beats suspected. CRITICAL belongs to defects a runtime tool watched happen;
-static analysis matches patterns in source text and tops out at MAJOR, however sure it
-sounds -- which is also why a suspected defect is worth naming the tool that could watch
-it. Every opinion here is a table row read through one matcher, never a branch.
+"""How dangerous a finding is, and which runtime tool could settle the question. Witnessed
+beats suspected: CRITICAL belongs to defects a runtime tool watched happen, and static
+analysis tops out at MAJOR however sure it sounds. Opinions are table rows, never branches.
 """
 
 from __future__ import annotations
@@ -72,10 +69,8 @@ STATIC_TIERS: tuple[tuple[str, Tier], ...] = (
 
 
 def tier_for(finding: Finding) -> Tier:
-    """The tier this finding lands in: what observed it first, then what it is about.
-
-    A category no row claims comes back UNRATED. Guessing a tier for an unknown check
-    would put a number on an opinion nobody formed.
+    """The tier this finding lands in: what observed it first, then what it is about. A
+    category no row claims comes back UNRATED -- no guessed numbers on unformed opinions.
     """
     observed = WITNESSED.get(finding.tool)
     if observed is not None:
@@ -110,10 +105,8 @@ WOULD_WITNESS: tuple[tuple[str, str | None], ...] = (
 
 
 def verify_with(finding: Finding) -> str | None:
-    """The runtime analysis that could witness this class of defect, or None for most.
-
-    Silence is the honest answer for a category no runtime tool watches for: an
-    uninitialized member or a magic number is settled by reading, not by running.
+    """The runtime analysis that could witness this class of defect, or None for most:
+    silence is the honest answer for a category no runtime tool watches for.
     """
     for pattern, analysis in WOULD_WITNESS:
         if _matches(pattern, finding.category):

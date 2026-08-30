@@ -1,9 +1,6 @@
-"""Race whole-program variants and reject any whose answer changed -- one benchmark run.
-
-A variant only keeps its numbers if its output matched the baseline's on every run: a
-rewrite that got faster by answering differently is wrong, not faster, and "wrong but
-quick" must never survive into a ranking an agent will act on. Composes primitives only,
-never another pipeline (rule 1); Platform and Toolchain arrive as arguments (rule 3).
+"""Race whole-program variants and reject any whose output stopped matching the baseline's:
+"wrong but quick" must never survive into a ranking an agent will act on. Composes
+primitives only (rule 1); Platform and Toolchain arrive as arguments (rule 3).
 """
 
 from __future__ import annotations
@@ -77,17 +74,9 @@ def race(
     runner: Runner = process.run,
     clock: Clock = time.perf_counter,
 ) -> BenchmarkReport | BuildFailure:
-    """Build every variant at release optimization, race them, and rank the survivors.
-
-    The first variant is the baseline: its output defines the right answer, so a baseline
-    that does not build is the whole race failing and comes back as that BuildFailure. Any
-    other variant that fails to build, crashes, or answers differently is rejected on its
-    own and the race continues without it.
-
-    `race_timeout_s` bounds the whole call, builds included, not one run. The budget is
-    checked between steps rather than mid-step, so the hard ceiling is the budget plus one
-    step's own timeout; a per-run timeout alone would let five slow variants at twenty
-    repeats hold a synchronous tool call for hours.
+    """Build every variant at release optimization, race them, rank the survivors. The
+    baseline's output defines the right answer; a baseline that does not build fails the
+    race. `race_timeout_s` bounds the whole call: the ceiling is it plus one step's timeout.
     """
     _validate(variants, repeats)
     baseline = variants[0].name
@@ -179,10 +168,8 @@ def _build_all(
     clock: Clock,
 ) -> tuple[dict[str, BuiltBinary] | BuildFailure, dict[str, str]]:
     """Write and compile every variant; a broken baseline fails the race, others just lose.
-
-    Builds count against the race budget too. The baseline always builds; a later variant
-    reached after the deadline is rejected unbuilt rather than allowed to spend a compile
-    timeout the budget no longer covers.
+    Builds count against the race budget: a variant reached past the deadline is rejected
+    unbuilt rather than allowed to spend a compile timeout the budget no longer covers.
     """
     built: dict[str, BuiltBinary] = {}
     rejected: dict[str, str] = {}
@@ -226,18 +213,12 @@ def _timed_rounds(
     clock: Clock,
 ) -> tuple[dict[str, list[float]], str | None, bool]:
     """Interleave the timed runs; a variant that misbehaves mid-race is dropped there.
-
-    The baseline is held to its own answer too: a baseline that changes output between
-    identical runs makes every comparison meaningless, so that case doesn't reject a
-    variant -- it strands the whole report instead.
-
-    The deadline is checked at each run's start, costing no extra clock reads; past it,
-    the race stops for everyone, so whatever was measured stays evenly spread.
+    A baseline that changes output between identical runs strands the whole report --
+    every comparison would be meaningless. Past the deadline the race stops for everyone.
     """
     times: dict[str, list[float]] = {name: [] for name in racing}
-    # one round for every variant, then the next round -- never two variants at once, so a
-    # race for the same caches and clocks never makes the loser look slow for reasons that
-    # are not in its code
+    # one round for every variant, then the next -- never two at once, so contention for
+    # caches and clocks cannot make the loser look slow for reasons that are not in its code
     for _ in range(repeats):
         for name in racing:
             if name in rejected:
@@ -269,10 +250,8 @@ def _report(
     stopped: bool,
 ) -> BenchmarkReport:
     """Rank the survivors by mean, carry every rejection with its reason, name the winner.
-
-    A race the budget stopped can leave a variant with one measurement, and one number has
-    no spread to judge it by, so fewer than two runs is a rejection rather than a row that
-    looks comparable. Survivors with uneven counts stay ranked; `runs` says how uneven.
+    Fewer than two runs is a rejection, not a comparable-looking row -- one number has no
+    spread to judge by. Survivors with uneven counts stay ranked; `runs` says how uneven.
     """
     for name, runs in times.items():
         if name not in rejected and len(runs) < 2:

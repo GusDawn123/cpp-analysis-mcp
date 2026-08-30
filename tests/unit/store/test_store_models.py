@@ -1,8 +1,6 @@
-"""Pin the identity fields Finding gained for the store.
-
-The four fields default to "no claim": an unfingerprinted finding says so through
-scheme 0, not through a plausible-looking hash, and a finding that names no second
-tool claims no confirmation.
+"""Pin the identity fields Finding gained for the store. The four default to "no claim":
+an unfingerprinted finding says so through scheme 0, not a plausible-looking hash, and a
+finding that names no second tool claims no confirmation.
 """
 
 from __future__ import annotations

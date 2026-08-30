@@ -1,8 +1,6 @@
-"""Drive the race with no compiler and no child process anywhere.
-
-Only the subprocess boundary and the clock are faked; validation, build composition, warmup
-ordering, interleave, answer comparison, and ranking math are real code. Pinned: the race must
-never time before the answer's checked, keep timing a liar, or rank on an unstable baseline.
+"""Drive the race with no compiler and no child process anywhere. Only the subprocess
+boundary and the clock are faked; the rest is real code. Pinned: the race must never time
+before the answer's checked, keep timing a liar, or rank on an unstable baseline.
 """
 
 from __future__ import annotations

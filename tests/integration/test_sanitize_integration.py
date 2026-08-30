@@ -1,8 +1,6 @@
-"""Run the whole sanitize chain against the real compiler and the real fixtures.
-
-The unit suite replays captured output through a fake process; this proves the real loop
-end to end -- a dropped runtime environment, the wrong binary, or the wrong parser would
-all look like the same empty report. The clean fixture proves that all-clear is earned.
+"""Run the whole sanitize chain against the real compiler and the real fixtures: a dropped
+runtime environment, the wrong binary, or the wrong parser would all look like the same
+empty report. The clean fixture proves that all-clear is earned.
 """
 
 from __future__ import annotations
@@ -72,12 +70,9 @@ def host() -> Platform:
 
 @pytest.fixture(scope="module")
 def toolchain() -> Toolchain:
-    """clang, because the assertions below pin the line a report blames.
-
-    gcc attributes the same planted race to a different line -- the committed goldens show
-    it naming the for-statement where clang names the increment -- so a suite that took
-    either compiler would have to stop pinning the thing it is here to check. clang is also
-    the one compiler present on all three target platforms.
+    """clang, because the assertions below pin the line a report blames and gcc attributes
+    the same planted race to a different line (the committed goldens show it). clang is
+    also the one compiler present on all three target platforms.
     """
     found = [chain for chain in discover_toolchains() if chain.family == "clang"]
     if not found:
@@ -264,7 +259,6 @@ def test_lsan_either_finds_the_leak_or_says_why_it_cannot(
     toolchain: Toolchain, host: Platform, capabilities: Capabilities, tmp_path: Path
 ) -> None:
     """macOS arm64 has no LeakSanitizer, and saying so is the honest answer, not silence.
-
     Both branches are the same guarantee from opposite sides: a caller never gets an empty
     finding list from a detector that was not running.
     """

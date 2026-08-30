@@ -1,9 +1,6 @@
-"""One canonical spelling per path, so identity cannot depend on who spelled it.
-
-The resolver feeds fingerprinting: paths under the root come back project-relative
-POSIX, paths outside it stay whole, and relative spellings pass through untouched
-because only the tool that printed them knows what they were relative to. The git
-half is driven through a scripted runner; real git answers in the integration suite.
+"""One canonical spelling per path, so identity cannot depend on who spelled it: under the
+root project-relative POSIX, outside it whole, relative spellings untouched. The git half
+is driven through a scripted runner; real git answers in the integration suite.
 """
 
 from __future__ import annotations
@@ -84,11 +81,9 @@ def test_case_differences_in_a_real_files_spelling_agree(tmp_path: Path) -> None
 
 
 def test_ten_thousand_spellings_canonicalize_in_under_a_second(tmp_path: Path) -> None:
-    """The latency gate: findings repeat files, and repeats must be dict hits.
-
-    200 distinct paths cycled 50 times models a large run; only the first sight of
-    each spelling may touch the filesystem. The bound is generous on purpose -- its
-    one job is catching a resolve() slipping into the per-call path.
+    """The latency gate: findings repeat files, and repeats must be dict hits. 200 paths
+    cycled 50 times models a large run; only the first sight of each spelling may touch
+    the filesystem. The generous bound exists to catch resolve() going per-call.
     """
     canonical = relativizer(tmp_path)
     spellings = [str(tmp_path / "src" / f"file_{index}.cpp") for index in range(200)]

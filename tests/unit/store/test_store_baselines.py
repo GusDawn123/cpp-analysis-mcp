@@ -1,8 +1,6 @@
-"""A baseline is trusted only while the world that produced it holds still.
-
-The invalidation facts and the fingerprint scheme travel with the saved set, and
-any drift -- a new compiler, changed flags, edited config, a scheme bump -- reads
-as "no baseline" rather than a wrong subtraction that would hide real findings.
+"""A baseline is trusted only while the world that produced it holds still: any drift --
+a new compiler, changed flags, edited config, a scheme bump -- reads as "no baseline"
+rather than a wrong subtraction that would hide real findings.
 """
 
 from __future__ import annotations

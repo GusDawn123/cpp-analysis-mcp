@@ -111,11 +111,9 @@ class ThreadAccess:
 
 @dataclass(frozen=True, slots=True)
 class Confirmation:
-    """Independent agreement: another tool reported the same defect.
-
-    Only the pointer travels -- which tool, which finding. The evidence (locations,
-    messages, stacks) already lives on the referenced finding; a copy here would let
-    the two drift apart.
+    """Independent agreement: another tool reported the same defect. Only the pointer
+    travels -- which tool, which finding. The evidence already lives on the referenced
+    finding; a copy here would let the two drift apart.
     """
 
     tool: str
@@ -151,10 +149,9 @@ class Finding:
 
 @dataclass(frozen=True, slots=True)
 class SuggestedFix:
-    """An edit a tool offered for one of its own findings, ready to apply.
-
-    Reported beside a finding rather than on it: the Finding schema is frozen (ADR-0002),
-    and a fix is what a tool would do about an observation, not part of the observation.
+    """An edit a tool offered for one of its own findings, ready to apply. Beside the
+    finding rather than on it: the Finding schema is frozen (ADR-0002), and a fix is
+    what a tool would do about an observation, not part of the observation.
     """
 
     # the check whose diagnostic carried the edit; with `file` and `at` -- the diagnostic's
@@ -202,11 +199,9 @@ class BuiltBinary:
 
 @dataclass(frozen=True, slots=True)
 class BuildFailure:
-    """A build that produced no binary, reported as facts.
-
-    User code that does not compile is an expected outcome of asking to build it, not an
-    internal error, so it comes back as a return value rather than an exception: the caller
-    reads which step died and what the tool said instead of catching something.
+    """A build that produced no binary, reported as facts. User code that does not compile
+    is an expected outcome, not an internal error, so it comes back as a return value:
+    the caller reads which step died and what the tool said instead of catching something.
     """
 
     stage: str  # "configure", "compile" or "build" -- which step died
@@ -221,12 +216,9 @@ class BuildFailure:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisReport:
-    """What one analysis observed, and what makes its silence worth trusting.
-
-    An empty `findings` means a detector that was proved to work here saw nothing. The proof
-    is the capability probe, so `verified_by` and `limitations` travel with the result rather
-    than being looked up again later: read without them, an empty report cannot be told from
-    one produced by a detector that was never watching.
+    """What one analysis observed, and what makes its silence worth trusting. An empty
+    `findings` means a detector proved to work here saw nothing -- `verified_by` and
+    `limitations` travel along, or that could not be told from a detector never watching.
     """
 
     analysis: Analysis
@@ -255,14 +247,9 @@ class Hotspot:
 
 @dataclass(frozen=True)
 class FullCheckReport:
-    """Every correctness analysis over one target, merged into one answer.
-
-    `ran` names the analyses whose detector provably worked and reported; `unavailable`
-    and `failed_builds` carry the ones that could not, each with its reason. Without
-    those two, a battery missing half its detectors would read as a clean bill of health.
-
-    The one model without slots=: returned bare from a tool, whose schema builder reads
-    class attributes for defaults and mistakes a slots descriptor for an unserializable one.
+    """Every correctness analysis over one target, merged into one answer. `unavailable` and
+    `failed_builds` name what could not run, each with its reason -- without them a battery
+    missing half its detectors reads clean. No slots=: the schema builder mistakes them.
     """
 
     findings: tuple[Finding, ...]
@@ -276,11 +263,9 @@ class FullCheckReport:
 
 @dataclass(frozen=True, slots=True)
 class Fingerprint:
-    """One recognized pattern in a profile: the fact in plain words, plus the known
-    rewrite families for it. Never a diff and never a verdict.
-
-    Unrelated to finding identity: `Finding.fingerprint` and store/fingerprints.py hash
-    what was flagged and where. The shared word is deliberate -- ADR-0002 has the note.
+    """One recognized pattern in a profile: the fact in plain words plus the known rewrite
+    families. Never a diff, never a verdict. Unrelated to finding identity -- the shared
+    word with `Finding.fingerprint` is deliberate (ADR-0002 has the note).
     """
 
     category: str
@@ -291,12 +276,9 @@ class Fingerprint:
 
 @dataclass(frozen=True, slots=True)
 class ProfileReport:
-    """Where the time went, and what makes the ranking worth believing.
-
-    Separate from AnalysisReport because a profiler answers a different question: a
-    sanitizer reports discrete facts that are true or absent, while a profiler reports a
-    distribution that means nothing without knowing how it was sampled -- so `samples`
-    and `event` travel with every percentage here.
+    """Where the time went, and what makes the ranking worth believing. Separate from
+    AnalysisReport because a profiler reports a distribution, not discrete facts -- it
+    means nothing without how it was sampled, so `samples` and `event` travel with it.
     """
 
     analysis: Analysis
@@ -331,11 +313,9 @@ class Variant:
 
 @dataclass(frozen=True, slots=True)
 class VariantResult:
-    """How one variant fared in a race: its times, and whether its answer held up.
-
-    A rejected variant keeps its name and the reason it is out, but its numbers stay None.
-    Reporting a time for a program that crashed or answered differently would invite the
-    exact comparison the rejection exists to prevent.
+    """How one variant fared in a race: its times, and whether its answer held up. A
+    rejected variant keeps its name and reason but its numbers stay None -- a time for a
+    program that answered differently would invite the comparison the rejection prevents.
     """
 
     name: str
@@ -349,13 +329,9 @@ class VariantResult:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkReport:
-    """Who won the race, and what makes the numbers worth believing.
-
-    Variants are ranked fastest first among those that survived; rejected ones sit at the
-    end with their reasons. The baseline is named because every claim in the report is
-    relative to it: a variant only counts as faster if it produced the same output from
-    the same input. `repeats` is how many timed runs each mean rests on, and a mean with
-    a large stddev next to it is a shrug, not a ranking.
+    """Who won the race, and what makes the numbers worth believing. Survivors rank fastest
+    first, rejections at the end with their reasons; every claim is relative to the named
+    baseline. A mean with a large stddev next to it is a shrug, not a ranking.
     """
 
     baseline: str

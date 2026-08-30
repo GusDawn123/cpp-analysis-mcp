@@ -1,8 +1,6 @@
-"""Normalizing a Claude Code stream-json transcript down to the calls it made.
-
-The samples under transcripts/ are hand-written recordings of agent behaviour; the
-same files feed the fake driver, so a parser change that breaks them breaks the
-harness loudly rather than quietly grading nothing.
+"""Normalizing a Claude Code stream-json transcript down to the calls it made. The samples
+under transcripts/ are hand-written recordings that also feed the fake driver, so a parser
+change that breaks them breaks the harness loudly rather than quietly grading nothing.
 """
 
 from __future__ import annotations

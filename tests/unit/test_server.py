@@ -1,8 +1,6 @@
-"""Drive the six tools over a real MCP session with no compiler and no child process anywhere.
-
-The in-memory SDK client exercises the real protocol surface -- names, descriptions, schemas,
-and JSON -- with only the subprocess boundary and startup faked; pipelines and gates are real
-code. resolve() is never called: it would probe six times on whatever host runs the suite.
+"""Drive the six tools over a real MCP session with no compiler and no child process. The
+in-memory SDK client exercises the real protocol surface with only the subprocess boundary
+and startup faked. resolve() is never called: it would probe whatever host runs the suite.
 """
 
 from __future__ import annotations
@@ -271,11 +269,9 @@ def write_json(path: Path, document: object) -> None:
 
 
 def write_reply(build_dir: Path, executables: tuple[tuple[str, str], ...]) -> None:
-    """Leave the index, codemodel and target files a real configure would have written.
-
-    Reading these is how the build learns which targets exist and where each artifact lands,
-    so the target that gets built and the binary that gets run are only right if the whole
-    chain read them.
+    """Leave the index, codemodel and target files a real configure would have written:
+    reading these is how the build learns which targets exist and where each artifact
+    lands, so the built target and the run binary are only right if the chain read them.
     """
     reply_dir = build_dir / REPLY_DIR
     entries = []
@@ -296,9 +292,8 @@ def write_reply(build_dir: Path, executables: tuple[tuple[str, str], ...]) -> No
 @dataclass
 class ScriptedCmake(ScriptedRunner):
     """A ScriptedRunner that also writes the File API reply when the configure goes by.
-
-    The build directory is read off the configure's own argv, because the handler makes one
-    per call under the workspace and no test can know its name in advance.
+    The build directory is read off the configure's own argv, because the handler makes
+    one per call under the workspace and no test can know its name in advance.
     """
 
     executables: tuple[tuple[str, str], ...] = TWO_EXECUTABLES
@@ -442,10 +437,9 @@ async def test_the_review_gate_tools_teach_how_to_read_a_tiered_report(tmp_path:
 async def test_each_sanitizer_tool_says_what_it_costs_and_which_rung_comes_first(
     tmp_path: Path,
 ) -> None:
-    """Descriptions are the only thing an assistant reads before choosing, so a sanitizer has
-    to place itself: minutes rather than seconds, it executes the code, and the compile-time
-    check is the rung to have tried first. Vague here and the profiler gets called before
-    anyone checked whether the door was locked."""
+    """Descriptions are the only thing an assistant reads before choosing, so a sanitizer
+    has to place itself: minutes rather than seconds, it executes the code, and the
+    compile-time check is the rung to have tried first."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
         client
     ):
@@ -658,10 +652,9 @@ async def test_capabilities_reports_the_statuses_the_startup_probes_produced(
 async def test_a_snippet_is_built_run_and_parsed_without_a_file_anywhere(
     tmp_path: Path,
 ) -> None:
-    """The whole chain over the protocol: text in, a sanitized build, a run under the options
-    that build chose, and a parsed report out as JSON. The reply is a committed golden -- a
-    chain that parsed a hand-written approximation would keep passing on the day it stopped
-    understanding what TSan really prints."""
+    """The whole chain over the protocol: text in, a sanitized build, a run under the
+    options that build chose, a parsed report out as JSON. The reply is a committed
+    golden -- an approximation would keep passing after TSan's real output changed."""
     runner = ScriptedRunner(
         [SUCCESS, RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))]
     )
@@ -690,11 +683,9 @@ async def test_a_snippet_is_built_run_and_parsed_without_a_file_anywhere(
 async def test_a_file_on_disk_is_built_run_and_parsed_through_the_contexts_own_runner(
     tmp_path: Path,
 ) -> None:
-    """The same chain as the snippet, entered by path instead of by text.
-
-    The runner is the assertion that matters here. Dropped on the way down, the pipeline
-    falls back to its own default and the tool really does compile and execute whatever the
-    caller pointed at -- silently, and green, because the fake simply never hears about it."""
+    """The same chain as the snippet, entered by path instead of by text. The runner is the
+    assertion that matters: dropped on the way down, the pipeline falls back to its default
+    and really compiles and executes what the caller pointed at -- silently, and green."""
     source = tmp_path / f"{FILE_STEM}.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner(
@@ -722,9 +713,8 @@ async def test_the_target_the_caller_named_is_the_one_cmake_is_told_to_build(
     tmp_path: Path,
 ) -> None:
     """A project with two executables cannot choose for itself, which is what makes `target`
-    worth passing. Dropped between the tool and the pipeline, the caller gets a build failure
-    listing the very targets they already picked from -- and a project with one executable
-    quietly builds the wrong thing with no sign anything was ignored."""
+    worth passing. Dropped between the tool and the pipeline, the caller gets a build
+    failure listing the very targets they already picked from."""
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     runner = ScriptedCmake([SUCCESS, SUCCESS, RunResult(exit_code=1, output=golden(ASAN_GOLDEN))])
@@ -973,10 +963,9 @@ async def test_the_speed_recipe_orders_profile_race_check(tmp_path: Path) -> Non
 async def test_the_servers_instructions_teach_the_ladder_before_any_tool_is_read(
     tmp_path: Path,
 ) -> None:
-    """Instructions arrive with the initialize response, ahead of every tool description, and
-    some clients surface them as the whole of what this server is. A tool description can only
-    argue for its own rung; the order to try rungs in, and the reason an empty result is worth
-    checking capabilities over, exist nowhere else."""
+    """Instructions arrive with the initialize response, ahead of every tool description.
+    A tool description can only argue for its own rung; the order to try rungs in, and why
+    an empty result is worth checking capabilities over, exist nowhere else."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
         client
     ):
@@ -1123,9 +1112,8 @@ async def test_code_that_does_not_compile_comes_back_as_the_build_failure(
 
 def test_a_server_built_with_no_arguments_resolves_this_host() -> None:
     """The fake lifespan every test above injects must not be what production gets. No test
-    may exercise the live one behaviorally -- it compiles and runs six probes on whatever
-    machine the suite is on -- so the promise is pinned on the signature, where a default
-    quietly left pointing at a stub is still visible."""
+    may exercise the live one behaviorally -- it probes the suite's machine -- so the
+    promise is pinned on the signature, where a default left on a stub is still visible."""
     default = inspect.signature(build_server).parameters["lifespan"].default
 
     assert default is live

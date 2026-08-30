@@ -1,8 +1,6 @@
 """Pure functions: raw tool output in, Finding objects out. No subprocess, no filesystem.
-
-PARSER_FOR is the table that keeps that purity usable: an analysis already implies which
-report format its output is in, so a caller holding a run's text picks the reader by name
-instead of branching on the sanitizer it asked for.
+PARSER_FOR keeps that purity usable: an analysis already implies its report format, so a
+caller picks the reader by name instead of branching on the sanitizer it asked for.
 """
 
 from __future__ import annotations
