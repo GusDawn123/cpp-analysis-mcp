@@ -429,7 +429,9 @@ def test_the_asked_for_checks_reach_tidy_before_the_file_and_the_compiler_flags_
     )
 
     cmd = runner.checked.cmd
-    assert cmd == [
+    # the export file lands in a scratch directory this run owns, so its path is not pinned
+    (exported,) = [arg for arg in cmd if arg.startswith("--export-fixes=")]
+    assert [arg for arg in cmd if arg != exported] == [
         str(tidy),
         f"--checks={EXPLICIT_CHECKS}",
         str(tmp_path / f"{SOURCE_STEM}.cpp"),

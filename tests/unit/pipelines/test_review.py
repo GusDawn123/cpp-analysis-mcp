@@ -11,7 +11,7 @@ import json
 import shutil
 import threading
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import pytest
@@ -22,6 +22,7 @@ from cpp_analysis_mcp.pipelines.review import (
     DETAILED_TIERS,
     N_DETAILED,
     AuditReport,
+    IndexEntry,
     ReviewReport,
     _relocated,
     audit_project,
@@ -40,6 +41,7 @@ from cpp_analysis_mcp.store.models import (
     Frame,
     Location,
     Severity,
+    SuggestedFix,
     ThreadAccess,
 )
 from cpp_analysis_mcp.store.triage import Tier
@@ -54,6 +56,8 @@ DANGLING = "bugprone-dangling-handle"
 MAGIC_NUMBERS = "cppcoreguidelines-avoid-magic-numbers"
 NULLPTR = "modernize-use-nullptr"
 COPIED_PARAM = "performance-unnecessary-value-param"
+MEMBER_INIT = "cppcoreguidelines-pro-type-member-init"
+THREAD_SAFETY = "thread-safety-analysis"
 
 # a dozen distinct lines, so a flagged one contributes real text to its fingerprint
 SOURCE = "".join(f"int line_{number}() {{ return {number}; }}\n" for number in range(1, 13))
@@ -71,12 +75,47 @@ def tidy_line(source: Path | str, line: int, check: str) -> str:
     return f"{source}:{line}:5: warning: something worth hearing [{check}]\n"
 
 
+def thread_safety_line(source: Path | str, line: int) -> str:
+    warning = "writing needs a lock [-Wthread-safety-analysis]"
+    return f"{source}:{line}:5: warning: {warning}\n"
+
+
+def an_export(*, check: str, file: str, offset: int, length: int, text: str) -> str:
+    """One diagnostic's fix-it, spelled the way clang-tidy's --export-fixes spells it."""
+    return f"""\
+---
+MainSourceFile:  '{file}'
+Diagnostics:
+  - DiagnosticName:  '{check}'
+    DiagnosticMessage:
+      Message:         'something worth hearing'
+      FilePath:        '{file}'
+      FileOffset:      {offset}
+      Replacements:
+        - FilePath:        '{file}'
+          Offset:          {offset}
+          Length:          {length}
+          ReplacementText: '{text}'
+    Level:           Warning
+...
+"""
+
+
 def a_checkout(tmp_path: Path) -> Path:
     """A real root on disk holding one real source file, for the paths that must be read."""
     root = tmp_path / "proj"
     (root / "src").mkdir(parents=True)
     (root / "src" / "a.cpp").write_text(SOURCE, encoding="utf-8")
     return root
+
+
+def offset_in(root: Path, text: str) -> int:
+    """Where that text starts in the checked-out file, in bytes.
+
+    Bytes, not characters: a fix-it's offsets index the file as the tool read it, and a
+    checkout written through text mode holds CRLF on Windows.
+    """
+    return (root / "src" / "a.cpp").read_bytes().index(text.encode())
 
 
 def a_database(root: Path, name: str) -> None:
@@ -102,6 +141,8 @@ class AnsweringRunner:
     git: list[RunResult]
     tidy: RunResult = CLEAN
     compiler: RunResult = CLEAN
+    # what tidy writes to --export-fixes, for the runs that pretend a check offered one
+    fixes: str = ""
     spawns: list[list[str]] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -119,7 +160,14 @@ class AnsweringRunner:
                 return self.git.pop(0)
             if "-fsyntax-only" in cmd:
                 return self.compiler
+            self._export(cmd)
             return self.tidy
+
+    def _export(self, cmd: Sequence[str]) -> None:
+        """Write the fix-it file where the command said to, as clang-tidy would have."""
+        for arg in cmd:
+            if self.fixes and arg.startswith("--export-fixes="):
+                Path(arg.removeprefix("--export-fixes=")).write_text(self.fixes, encoding="utf-8")
 
 
 def a_clang() -> Toolchain:
@@ -246,9 +294,10 @@ def test_audit_remembers_and_review_reports_only_the_new_finding(
     assert report.baseline_used is True
     assert report.total_new == 1
     assert [entry.category for entry in report.index] == [DANGLING]
-    assert report.detailed[0].category == DANGLING
+    assert report.detailed[0].finding.category == DANGLING
     # and the remembered run can answer a later get_finding
-    assert runs.find(cache, Path(report.root), report.detailed[0].fingerprint) is not None
+    identity = report.detailed[0].finding.fingerprint
+    assert runs.find(cache, Path(report.root), identity) is not None
 
 
 def test_a_changed_tool_retires_the_baseline_and_the_report_says_so(
@@ -402,7 +451,10 @@ def test_style_is_counted_but_never_takes_a_detail_slot(
 
     assert report.tiers[Tier.STYLE] == 6
     # danger order, not report order: the major finding was printed last
-    assert [detail.category for detail in report.detailed] == [USE_AFTER_MOVE, COPIED_PARAM]
+    assert [detail.finding.category for detail in report.detailed] == [
+        USE_AFTER_MOVE,
+        COPIED_PARAM,
+    ]
     assert NULLPTR in [entry.category for entry in report.index]
     assert report.truncated is True
 
@@ -436,9 +488,10 @@ def test_the_index_speaks_root_relative_posix_whatever_the_tool_spelled(
     )
 
     assert {entry.file for entry in report.index} == {"src/a.cpp"}
-    assert {detail.location.file for detail in report.detailed if detail.location} == {"src/a.cpp"}
+    places = {d.finding.location.file for d in report.detailed if d.finding.location}
+    assert places == {"src/a.cpp"}
     # and the remembered run answers get_finding in the same language
-    remembered = runs.find(cache, root, report.detailed[0].fingerprint)
+    remembered = runs.find(cache, root, report.detailed[0].finding.fingerprint)
     assert isinstance(remembered, Finding)
     assert remembered.location is not None
     assert remembered.location.file == "src/a.cpp"
@@ -591,7 +644,7 @@ def test_an_audit_reports_the_same_contract_as_a_review(
     assert report.tiers[Tier.MAJOR] == 1
     assert report.tiers[Tier.STYLE] == 1
     assert {entry.file for entry in report.index} == {"src/a.cpp"}
-    assert [detail.category for detail in report.detailed] == [USE_AFTER_MOVE]
+    assert [detail.finding.category for detail in report.detailed] == [USE_AFTER_MOVE]
     assert report.notes == ()
 
 
@@ -697,3 +750,190 @@ def test_an_edited_nested_config_retires_the_baseline(
     )
 
     assert report.baseline_used is False
+
+
+def test_detail_carries_the_offered_fix_and_the_check_that_would_witness_the_defect(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Both extras ride beside the finding rather than on it: the Finding schema is frozen,
+    and a fix is what a tool offers about a finding, not part of what it observed."""
+    blind_path(monkeypatch)
+    root = a_checkout(tmp_path)
+    spelled = f"{root}/src/a.cpp"
+    runner = AnsweringRunner(
+        git=review_git(root=root),
+        tidy=RunResult(
+            exit_code=0,
+            output=tidy_line(spelled, 3, USE_AFTER_MOVE) + tidy_line(spelled, 5, MEMBER_INIT),
+        ),
+        compiler=RunResult(exit_code=0, output=thread_safety_line(spelled, 7)),
+        fixes=an_export(
+            check=MEMBER_INIT,
+            file=spelled,
+            offset=offset_in(root, "int line_5"),
+            length=len("int"),
+            text="long",
+        ),
+    )
+
+    report = reviewed(
+        review_project(
+            root,
+            "main",
+            toolchain=a_clang(),
+            platform=a_platform(tmp_path),
+            capabilities=working(),
+            cache_dir=tmp_path / "cache",
+            runner=runner,
+        )
+    )
+
+    detail = {entry.finding.category: entry for entry in report.detailed}
+    assert detail[MEMBER_INIT].suggested_fix == SuggestedFix(
+        check=MEMBER_INIT, file="src/a.cpp", at=5, line=5, replaced="int", replacement="long"
+    )
+    # no runtime tool watches for an uninitialized member, so nothing is named
+    assert detail[MEMBER_INIT].verify_with is None
+    # the check offered no fix for either of these, and their findings still stand
+    assert detail[USE_AFTER_MOVE].suggested_fix is None
+    # a moved-from object is alive and reading it is legal C++: nothing runtime traps it
+    assert detail[USE_AFTER_MOVE].verify_with is None
+    assert detail[THREAD_SAFETY].suggested_fix is None
+    assert detail[THREAD_SAFETY].verify_with == "tsan"
+
+
+def test_two_diagnostics_of_one_check_in_one_file_each_keep_their_own_edit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The trap is misattribution: keyed by file and check alone, the second finding
+    would wear the first finding's edit, which is worse than carrying none."""
+    blind_path(monkeypatch)
+    root = a_checkout(tmp_path)
+    spelled = f"{root}/src/a.cpp"
+    first, second = offset_in(root, "int line_3"), offset_in(root, "int line_9")
+    # one document, two entries: how tidy really writes it, and what safe_load reads
+    both = an_export(
+        check=MEMBER_INIT, file=spelled, offset=first, length=len("int"), text="long"
+    ).replace(
+        "    Level:           Warning",
+        f"""  - DiagnosticName:  '{MEMBER_INIT}'
+    DiagnosticMessage:
+      Message:         'something worth hearing'
+      FilePath:        '{spelled}'
+      FileOffset:      {second}
+      Replacements:
+        - FilePath:        '{spelled}'
+          Offset:          {second}
+          Length:          {len("int")}
+          ReplacementText: 'short'
+    Level:           Warning""",
+    )
+    runner = AnsweringRunner(
+        git=review_git(root=root),
+        tidy=RunResult(
+            exit_code=0,
+            output=tidy_line(spelled, 3, MEMBER_INIT) + tidy_line(spelled, 9, MEMBER_INIT),
+        ),
+        fixes=both,
+    )
+
+    report = reviewed(
+        review_project(
+            root,
+            "main",
+            toolchain=a_clang(),
+            platform=a_platform(tmp_path),
+            capabilities=working(),
+            cache_dir=tmp_path / "cache",
+            runner=runner,
+        )
+    )
+
+    by_line = {
+        entry.finding.location.line: entry.suggested_fix
+        for entry in report.detailed
+        if entry.finding.location is not None and entry.finding.category == MEMBER_INIT
+    }
+    assert by_line[3] is not None and by_line[3].replacement == "long"
+    assert by_line[9] is not None and by_line[9].replacement == "short"
+
+
+def test_an_export_naming_a_check_nobody_reported_attaches_to_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Suggestions are matched, never assumed: a fix with no finding of its own must not
+    be hung on the finding that happens to sit in the detail slot."""
+    blind_path(monkeypatch)
+    root = a_checkout(tmp_path)
+    spelled = f"{root}/src/a.cpp"
+    runner = AnsweringRunner(
+        git=review_git(root=root),
+        tidy=RunResult(exit_code=0, output=tidy_line(spelled, 3, USE_AFTER_MOVE)),
+        fixes=an_export(check=MEMBER_INIT, file=spelled, offset=0, length=len("int"), text="long"),
+    )
+
+    report = reviewed(
+        review_project(
+            root,
+            "main",
+            toolchain=a_clang(),
+            platform=a_platform(tmp_path),
+            capabilities=working(),
+            cache_dir=tmp_path / "cache",
+            runner=runner,
+        )
+    )
+
+    (detail,) = report.detailed
+    assert detail.finding.category == USE_AFTER_MOVE
+    assert detail.suggested_fix is None
+
+
+def test_an_audits_detail_carries_the_same_extras_a_reviews_does(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    blind_path(monkeypatch)
+    root = a_checkout(tmp_path)
+    spelled = f"{root}/src/a.cpp"
+    runner = AnsweringRunner(
+        git=audit_git(root=root),
+        tidy=RunResult(exit_code=0, output=tidy_line(spelled, 5, MEMBER_INIT)),
+        fixes=an_export(
+            check=MEMBER_INIT,
+            file=spelled,
+            offset=offset_in(root, "int line_5"),
+            length=len("int"),
+            text="long",
+        ),
+    )
+
+    report = audited(
+        audit_project(
+            root,
+            record_as="main",
+            toolchain=a_clang(),
+            platform=a_platform(tmp_path),
+            capabilities=working(),
+            cache_dir=tmp_path / "cache",
+            runner=runner,
+        )
+    )
+
+    (detail,) = report.detailed
+    assert detail.finding.category == MEMBER_INIT
+    assert detail.suggested_fix is not None
+    assert detail.suggested_fix.file == "src/a.cpp"
+
+
+def test_the_index_stays_thin_while_the_detail_grows() -> None:
+    """The index lists everything, so an extra field there is paid for once per finding --
+    which is the bloat the index/detail split exists to prevent."""
+    assert {entry.name for entry in fields(IndexEntry)} == {
+        "fingerprint",
+        "tier",
+        "severity",
+        "category",
+        "file",
+        "line",
+        "occurrences",
+    }

@@ -19,7 +19,7 @@ from cpp_analysis_mcp.analyzers.base import Registry, Scope
 from cpp_analysis_mcp.analyzers.clang_tidy import CHECK_TIMEOUT_S, ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import find_clang_tidy
-from cpp_analysis_mcp.planner.dispatch import execute
+from cpp_analysis_mcp.planner.dispatch import Executed, execute
 from cpp_analysis_mcp.planner.plan import Plan, Skip, Step, plan
 from cpp_analysis_mcp.planner.scope import (
     analyzer_context,
@@ -35,14 +35,25 @@ from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.store import baselines, runs
 from cpp_analysis_mcp.store.baselines import Baseline
 from cpp_analysis_mcp.store.fingerprints import SCHEME_VERSION
-from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus, Finding, Location, Severity
+from cpp_analysis_mcp.store.models import (
+    Analysis,
+    CapabilityStatus,
+    Finding,
+    Location,
+    Severity,
+    SuggestedFix,
+)
 from cpp_analysis_mcp.store.store import FindingStore
-from cpp_analysis_mcp.store.triage import Tier, tier_for
+from cpp_analysis_mcp.store.triage import Tier, tier_for, verify_with
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # index everything, full detail for the top few: the diversity ranking means five
 # variations of one bug cannot crowd out the first report from four other files
 N_DETAILED = 5
+
+# offered edits, keyed the only way an analyzer can name a finding before the store
+# gives it a fingerprint: the diagnostic's file, its check, and its own line
+Fixes = Mapping[tuple[str, str, int], SuggestedFix]
 
 # which tiers the detail slots are for. Style and unrated are counted and indexed, never
 # expanded: a hundred magic numbers must not push the one use-after-move out of view.
@@ -63,6 +74,20 @@ class IndexEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class Detailed:
+    """One expanded finding with what the tools can add around it.
+
+    The extras ride beside the finding because the Finding schema is frozen (ADR-0002):
+    `suggested_fix` is the check's own edit where it offered one, and `verify_with` names
+    the runtime analysis that could watch this class of defect happen.
+    """
+
+    finding: Finding
+    suggested_fix: SuggestedFix | None
+    verify_with: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ReviewReport:
     """What one review decided and found, plan trace included."""
 
@@ -80,7 +105,7 @@ class ReviewReport:
     # every tier, zero counts included: an absent row would read as an unasked question
     tiers: dict[Tier, int]
     index: tuple[IndexEntry, ...]
-    detailed: tuple[Finding, ...]
+    detailed: tuple[Detailed, ...]
     truncated: bool
     run_path: str
 
@@ -99,7 +124,7 @@ class AuditReport:
     total: int
     tiers: dict[Tier, int]
     index: tuple[IndexEntry, ...]
-    detailed: tuple[Finding, ...]
+    detailed: tuple[Detailed, ...]
     truncated: bool
     baseline_path: str
     run_path: str
@@ -131,7 +156,7 @@ def review_project(
     if isinstance(scoped, CapabilityStatus):
         return scoped
     canonical = relativizer(scoped.root)
-    store, decided, database, build_notes = _static_tier(
+    store, decided, database, build_notes, fixes = _static_tier(
         scoped.root,
         scoped.files,
         canonical=canonical,
@@ -161,7 +186,7 @@ def review_project(
         [finding for finding in store.ranked() if finding.fingerprint in fresh_identities],
         canonical,
     )
-    index, tiers, detailed, truncated = _shaped(ranked)
+    index, tiers, detailed, truncated = _shaped(ranked, fixes)
     return ReviewReport(
         root=str(scoped.root),
         against=against,
@@ -203,7 +228,7 @@ def audit_project(
     if isinstance(label, CapabilityStatus):
         return label
     canonical = relativizer(scoped.root)
-    store, decided, database, build_notes = _static_tier(
+    store, decided, database, build_notes, fixes = _static_tier(
         scoped.root,
         scoped.files,
         canonical=canonical,
@@ -221,7 +246,7 @@ def audit_project(
         baseline_path = str(baselines.save(cache_dir, scoped.root, recorded))
 
     ranked = _relocated(store.ranked(), canonical)
-    index, tiers, detailed, truncated = _shaped(ranked)
+    index, tiers, detailed, truncated = _shaped(ranked, fixes)
     return AuditReport(
         root=str(scoped.root),
         recorded_as=label,
@@ -271,7 +296,7 @@ def _static_tier(
     platform: Platform,
     capabilities: Mapping[Analysis, CapabilityStatus],
     runner: Runner,
-) -> tuple[FindingStore, Plan, str | None, tuple[str, ...]]:
+) -> tuple[FindingStore, Plan, str | None, tuple[str, ...], Fixes]:
     """Plan and run both compile-time plugins over the scope, findings into one store.
 
     Also reports which compilation database decided the run, and says so in words when
@@ -318,7 +343,7 @@ def _static_tier(
         store.ingest(finished.findings, reader, canonical=canonical)
 
     database, build_notes = _which_database(root, canonical)
-    return store, decided, database, build_notes
+    return store, decided, database, build_notes, _offered(ran, canonical)
 
 
 def _invalidation_key(root: Path, *, toolchain: Toolchain, platform: Platform) -> dict[str, str]:
@@ -430,9 +455,23 @@ def _which_database(
     )
 
 
+def _offered(ran: Sequence[Executed], canonical: Callable[[str], str]) -> Fixes:
+    """Key every offered edit by the finding it belongs to: file, check, diagnostic line.
+
+    Root-relative on the way in, because that is how a caller reads a finding's location;
+    the first offer for an identity wins, as the first report does in the store.
+    """
+    fixes: dict[tuple[str, str, int], SuggestedFix] = {}
+    for finished in ran:
+        for fix in finished.suggestions:
+            moved = replace(fix, file=canonical(fix.file))
+            fixes.setdefault((moved.file, moved.check, moved.at), moved)
+    return fixes
+
+
 def _shaped(
-    ranked: Sequence[Finding],
-) -> tuple[tuple[IndexEntry, ...], dict[Tier, int], tuple[Finding, ...], bool]:
+    ranked: Sequence[Finding], fixes: Fixes
+) -> tuple[tuple[IndexEntry, ...], dict[Tier, int], tuple[Detailed, ...], bool]:
     """Index everything, count it by tier, and spend the detail slots on danger.
 
     One pass builds all three, bucketing as it goes: ranked order survives inside each
@@ -458,5 +497,15 @@ def _shaped(
         )
 
     actionable = [finding for tier in DETAILED_TIERS for finding in buckets.get(tier, [])]
-    detailed = tuple(actionable[:N_DETAILED])
+    detailed = tuple(_expanded(finding, fixes) for finding in actionable[:N_DETAILED])
     return tuple(index), counts, detailed, len(detailed) < len(ranked)
+
+
+def _expanded(finding: Finding, fixes: Fixes) -> Detailed:
+    """Spend one detail slot: the finding, plus whatever the tools can add to it."""
+    offered = (
+        None
+        if finding.location is None
+        else fixes.get((finding.location.file, finding.category, finding.location.line))
+    )
+    return Detailed(finding=finding, suggested_fix=offered, verify_with=verify_with(finding))

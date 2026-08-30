@@ -573,6 +573,10 @@ async def test_the_review_gates_outcomes_are_in_their_published_schemas(tmp_path
     }
     assert published["review"] >= {"ReviewReport", "CapabilityStatus", "IndexEntry", "Skip"}
     assert published["audit"] >= {"AuditReport", "CapabilityStatus", "IndexEntry"}
+    # detail is a wrapper, not a Finding: a client that cannot validate the fix and the
+    # verify-with hint reads the whole detail section as a shape it did not expect
+    for gate in ("review", "audit"):
+        assert published[gate] >= {"Detailed", "SuggestedFix", "Finding"}
     assert published["get_finding"] >= {"Finding", "NoSuchFinding"}
 
 
