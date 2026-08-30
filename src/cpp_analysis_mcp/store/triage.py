@@ -16,6 +16,11 @@ from cpp_analysis_mcp.store.models import Finding
 __all__ = ["STATIC_TIERS", "WITNESSED", "WOULD_WITNESS", "Tier", "tier_for", "verify_with"]
 
 
+# the category as_findings files a run's explanations under; reports hoist these into
+# their notes rather than tiering them as defects
+NOTE_CATEGORY = "analysis-note"
+
+
 class Tier(StrEnum):
     """Danger, most first. Declaration order is the order a report counts them in."""
 
@@ -57,6 +62,8 @@ STATIC_TIERS: tuple[tuple[str, Tier], ...] = (
     ("performance-*", Tier.MINOR),
     ("clang-analyzer-*", Tier.MINOR),
     ("clang-diagnostic-*", Tier.MINOR),
+    # an opinion about signatures, not a defect; met in the field on a real project
+    ("bugprone-easily-swappable-parameters", Tier.STYLE),
     ("cppcoreguidelines-avoid-magic-numbers", Tier.STYLE),
     ("modernize-*", Tier.STYLE),
     ("readability-*", Tier.STYLE),

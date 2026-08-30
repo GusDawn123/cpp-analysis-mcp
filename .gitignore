@@ -20,3 +20,4 @@ a.out
 /core
 /core.*
 .vscode/
+.claude/

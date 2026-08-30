@@ -148,9 +148,15 @@ def windows_shaped_mounts() -> tuple[container.Mount, ...]:
     """A hand-built table in Windows spellings, so these tests run identically on any OS."""
     return (
         container.Mount(
-            host="C:/Users/dev/ws", key="C:/Users/dev/ws/", inside="/mnt/ws/", writable=True
+            host="C:/Users/dev/ws",
+            key="C:/Users/dev/ws/",
+            native="C:\\Users\\dev\\ws\\",
+            inside="/mnt/ws/",
+            writable=True,
         ),
-        container.Mount(host="C:/", key="C:/", inside="/mnt/host/c/", writable=False),
+        container.Mount(
+            host="C:/", key="C:/", native="C:\\", inside="/mnt/host/c/", writable=False
+        ),
     )
 
 
@@ -167,7 +173,9 @@ def test_relative_arguments_and_flags_pass_through() -> None:
 
 
 def test_kernel_views_are_never_translated() -> None:
-    posix_root = (container.Mount(host="/", key="/", inside="/mnt/host/", writable=False),)
+    posix_root = (
+        container.Mount(host="/", key="/", native="/", inside="/mnt/host/", writable=False),
+    )
     assert container.to_container("/proc/sys/vm/mmap_rnd_bits", posix_root) == (
         "/proc/sys/vm/mmap_rnd_bits"
     )
@@ -182,10 +190,18 @@ def test_output_comes_back_in_host_spelling() -> None:
         "build dir was /mnt/ws"
     )
     translated = container.host_spelling(reported, mounts)
-    assert "C:/Users/dev/ws/scratch/a.cpp:3:5" in translated
-    assert "C:/proj/pool.cpp:41" in translated
-    assert translated.endswith("build dir was C:/Users/dev/ws")
+    # native spelling on purpose: parsers expect what a local tool would have printed,
+    # and on Windows that is backslashes with the drive letter intact
+    assert "C:\\Users\\dev\\ws\\scratch/a.cpp:3:5" in translated
+    assert "C:\\proj/pool.cpp:41" in translated
+    assert translated.endswith("build dir was C:\\Users\\dev\\ws")
     assert "/mnt/" not in translated
+
+
+def test_a_lookalike_prefix_is_left_alone() -> None:
+    """/mnt/ws-cache is not the workspace: bare rewrites stop at a name boundary."""
+    text = container.host_spelling("saw /mnt/ws-cache and /mnt/ws today", windows_shaped_mounts())
+    assert text == "saw /mnt/ws-cache and C:\\Users\\dev\\ws today"
 
 
 def test_the_workspace_mount_is_the_only_writable_project_path(tmp_path: Path) -> None:
@@ -262,7 +278,7 @@ def test_the_runner_translates_its_own_output() -> None:
     run = container.contained(
         FakeRunner(reply=reports_inside_paths), DOCKER_PATH, windows_shaped_mounts()
     )
-    assert run(["true"], timeout_s=5).output == "warning at C:/proj/a.cpp:7"
+    assert run(["true"], timeout_s=5).output == "warning at C:\\proj/a.cpp:7"
 
 
 # ------------------------------------------------------------------- the capability seam

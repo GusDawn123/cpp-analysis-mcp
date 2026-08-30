@@ -22,6 +22,7 @@ from cpp_analysis_mcp.store.models import (
     Severity,
     SuggestedFix,
 )
+from cpp_analysis_mcp.store.triage import NOTE_CATEGORY
 
 # headers aren't checked directly -- a header is checked through the units that include it
 CPP_SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
@@ -79,7 +80,7 @@ def as_findings(
                 id=f"{tool}-note-{index}",
                 tool=tool,
                 severity=Severity.NOTE,
-                category="analysis-note",
+                category=NOTE_CATEGORY,
                 message=note,
                 location=Location(file=file, line=1),
             )

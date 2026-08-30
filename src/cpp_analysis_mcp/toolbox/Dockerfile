@@ -13,6 +13,7 @@ RUN apt-get update \
         clang-18 \
         clang-tidy-18 \
         libclang-rt-18-dev \
+        llvm-18 \
         cmake \
         ninja-build \
         git \
@@ -20,4 +21,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/bin/clang-18 /usr/local/bin/clang \
     && ln -s /usr/bin/clang++-18 /usr/local/bin/clang++ \
-    && ln -s /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy
+    && ln -s /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy \
+    # without the symbolizer, sanitizers still catch bugs but report frames with no
+    # file or line -- the WSL setup hit the same trap, getting-started documents it
+    && ln -s /usr/lib/llvm-18/bin/llvm-symbolizer /usr/local/bin/llvm-symbolizer
