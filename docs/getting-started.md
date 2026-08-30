@@ -57,7 +57,7 @@ cd cpp-analysis-mcp
 uv sync
 ```
 
-That is the whole install — `uv sync` creates the environment and pulls the two
+That is the whole install — `uv sync` creates the environment and pulls the four
 runtime dependencies.
 
 ## Check it works on your machine
@@ -167,11 +167,13 @@ uv run ruff check .; uv run mypy; uv run pytest -m "not integration"
 uv run pytest -m integration
 ```
 
-The layout is four layers, each only allowed to talk downward — `server.py`
-(protocol) → `context.py` (startup) → `pipelines/` (workflow) → primitives
-(tools, parsers, platforms). The reasons live in
-[architecture.md](architecture.md); the layering rules are enforced by tests,
-so a change that breaks one fails loudly rather than eroding quietly.
+The layout is a stack of layers, each only allowed to talk downward — `server.py`
+(protocol) → `context.py` (startup) → `pipelines/` (workflow) → `planner/`
+(what runs and why) → `analyzers/` (one contract, N plugins) → `store/`
+(where findings become one thing) → primitives (build, parsers, platforms,
+toolchains). The reasons live in [architecture.md](architecture.md) and
+[architecture-v2.md](architecture-v2.md); the layering rules are enforced by
+tests, so a change that breaks one fails loudly rather than eroding quietly.
 
 Branches: `feat/...` off `develop`, PR into `develop`, green CI required.
 `main` only receives merges from `develop`.
