@@ -91,7 +91,7 @@ def file_check(
         checked = _invoke(
             source, toolchain=toolchain, platform=platform, timeout_s=timeout_s, runner=runner
         )
-        return outcome(checked, Analysis.THREAD_SAFETY, status)
+        return outcome(checked, Analysis.THREAD_SAFETY, status, engine=platform.engine)
 
     return check
 

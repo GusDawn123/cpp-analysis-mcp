@@ -44,7 +44,7 @@ from cpp_analysis_mcp.store.models import (
     SuggestedFix,
 )
 from cpp_analysis_mcp.store.store import FindingStore
-from cpp_analysis_mcp.store.triage import Tier, tier_for, verify_with
+from cpp_analysis_mcp.store.triage import NOTE_CATEGORY, Tier, tier_for, verify_with
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # index everything, full detail for the top few: the diversity ranking means five
@@ -338,12 +338,19 @@ def _static_tier(
 
     store = FindingStore()
     reader = line_reader()
+    explained: dict[str, None] = {}
     for finished in ran:
+        # a run's explanations are notes to the reader, not defects: stored as findings
+        # they would merge at their shared synthetic location and lose messages
+        real = [f for f in finished.findings if f.category != NOTE_CATEGORY]
+        for finding in finished.findings:
+            if finding.category == NOTE_CATEGORY:
+                explained.setdefault(finding.message)
         # each tool's report is one run: occurrence ranks resolve per analyzer
-        store.ingest(finished.findings, reader, canonical=canonical)
+        store.ingest(real, reader, canonical=canonical)
 
     database, build_notes = _which_database(root, canonical)
-    return store, decided, database, build_notes, _offered(ran, canonical)
+    return store, decided, database, (*build_notes, *explained), _offered(ran, canonical)
 
 
 def _invalidation_key(root: Path, *, toolchain: Toolchain, platform: Platform) -> dict[str, str]:

@@ -321,6 +321,33 @@ means the tool only does half of what it claims.
 
 ---
 
+## 8. How far the container engine should reach
+
+**Context.** The container engine shipped as a fallback: whatever the host cannot
+run goes inside the toolbox image, and a fully tooled machine never talks to
+Docker. ADR-0004 sketches one step further -- deterministic mode, where the
+review gate runs everything in the container *by default* so identical inputs
+give identical findings on every machine.
+
+**The trade.** Reproducibility against three costs measured in the field run:
+container execution is slower than native, the image's tool versions drift from
+the host's (different finding sets, so existing native baselines would retire),
+and a warm-container optimization (one long-lived container, `docker exec` per
+check) would be needed to keep audit latency acceptable.
+
+**Also parked here:** Podman as a second runtime (its docker-compatible CLI may
+already work, unverified); relaying clang-tidy fix-its out of the container (the
+export's paths do not resolve on the host, so container runs report findings
+without their machine-applicable edits); and the machine whose only clang lives
+in WSL, which still refuses to start -- the container floor covers it when
+Docker is present, the WSL-only variant stays unbuilt.
+
+**Needs deciding.** Whether determinism is worth making the container the review
+gate's default where Docker exists, or stays an opt-in. Field latency numbers
+should decide, not taste.
+
+---
+
 ## Resolved
 
 **How much should a report return, and shaped how?**

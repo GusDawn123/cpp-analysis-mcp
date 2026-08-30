@@ -898,3 +898,16 @@ def test_the_same_snippet_shares_identity_across_scratch_directories(tmp_path: P
     location = first.findings[0].location
     assert location is not None
     assert location.file == str(tmp_path / "one" / "snippet.cpp")
+
+
+def test_findings_say_which_engine_observed_them(tmp_path: Path) -> None:
+    """ADR-0004: every finding records where it was observed. A bridged platform's label
+    lands on each finding; the local default stays exactly as it was."""
+    golden_run = RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))
+    bridged = Platform(name="container", engine="container", compile_extras=LINUX_COMPILE_EXTRAS)
+
+    report = reported(check(tmp_path, ScriptedRunner([golden_run]), platform=bridged))
+    local = reported(check(tmp_path, ScriptedRunner([golden_run])))
+
+    assert report.findings and all(f.engine == "container" for f in report.findings)
+    assert local.findings and all(f.engine == "local" for f in local.findings)

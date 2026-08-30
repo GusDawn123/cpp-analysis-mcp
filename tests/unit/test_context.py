@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp import platforms, profiler
+from cpp_analysis_mcp import container, platforms, profiler
 from cpp_analysis_mcp.capabilities import PROBE_STEM
 from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
 from cpp_analysis_mcp.platforms import linux, windows
@@ -164,6 +164,9 @@ def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
 
 def a_host_where_every_detector_works(cmd: list[str]) -> RunResult:
     """Answer by command shape: a version query, a build that succeeds, a detector that reports."""
+    if Path(cmd[0]).name == "docker":
+        # no container engine on this host; tests that want one script docker themselves
+        return RunResult(exit_code=1, output="docker daemon is not running")
     if cmd[-1] == "--version":
         return RunResult(exit_code=0, output=VERSIONS[Path(cmd[0]).name])
     analysis = probe_analysis(cmd)
@@ -683,3 +686,142 @@ def test_the_capability_table_cannot_be_edited_through_the_context(
         context.capabilities[Analysis.TSAN] = denied  # type: ignore[index]
 
     shutil.rmtree(context.workspace)
+
+
+# ------------------------------------------------------------------------- the container floor
+
+DOCKER_EXE = str(BIN_DIR / "docker")
+
+CONTAINER_CLANG = "Ubuntu clang version 18.1.3 (1ubuntu1)\nTarget: x86_64-pc-linux-gnu\n"
+
+
+def a_docker_with_the_toolbox(cmd: list[str]) -> RunResult:
+    """Answer as a machine with a running daemon and the toolbox image would."""
+    if cmd[1] == "version":
+        return RunResult(exit_code=0, output="29.3.1\n")
+    if cmd[1:3] == ["image", "inspect"]:
+        return RunResult(exit_code=0, output="sha256:toolbox\n")
+    if cmd[1] == "run":
+        inner = cmd[cmd.index(container.IMAGE) + 1 :]
+        if inner[-1] == "--version":
+            return RunResult(exit_code=0, output=CONTAINER_CLANG)
+        if inner[0] == "cat":
+            return RunResult(exit_code=0, output="28\n" if "mmap" in inner[1] else "2\n")
+        analysis = probe_analysis(inner)
+        if analysis is not None and is_detection(inner, analysis):
+            exit_code, report = CAUGHT[analysis]
+            return RunResult(exit_code=exit_code, output=report)
+    return RunResult(exit_code=0, output="")
+
+
+def a_linux_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin detect() to Linux so these tests hold identically on every CI host."""
+    monkeypatch.setattr(platforms, "detect", linux.detect)
+
+
+def test_a_machine_that_runs_everything_asks_docker_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The container is a fallback, never a toll: a fully tooled host must start exactly
+    as it did before the engine existed, with no docker spawn on its startup path."""
+    a_linux_machine(monkeypatch)
+    both_compilers_on_path(monkeypatch)
+    runner = FakeRunner(a_host_where_every_detector_works)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    assert all(Path(cmd[0]).name != "docker" for cmd in runner.calls)
+    assert all(engine.platform.name == "linux" for engine in context.engines.values())
+    shutil.rmtree(context.workspace)
+
+
+def test_a_missing_tool_is_carried_by_the_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The point of the floor: clang-tidy is not installed, Docker is, so the tidy probe
+    runs inside the toolbox and only tidy moves -- everything native stays native."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(
+        shutil, "which", lambda name: None if name == "clang-tidy" else str(BIN_DIR / name)
+    )
+
+    def reply(cmd: list[str]) -> RunResult:
+        if Path(cmd[0]).name == "docker":
+            return a_docker_with_the_toolbox(cmd)
+        return a_host_where_every_detector_works(cmd)
+
+    runner = FakeRunner(reply)
+    context = resolve(cache_dir=None, runner=runner)
+
+    status = context.capabilities[Analysis.CLANG_TIDY]
+    assert status.available
+    assert any("container" in note for note in status.limitations)
+    engine = context.engines[Analysis.CLANG_TIDY]
+    assert engine.platform.name == container.NAME
+    assert engine.runner is not runner
+    assert context.engines[Analysis.TSAN].platform.name == "linux"
+    assert context.toolchain.compiler == Path(CLANG_PATH)
+    shutil.rmtree(context.workspace)
+
+
+def test_without_docker_the_refusal_names_the_container_way_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A status that stays unavailable now also says Docker could carry it -- the only
+    place a zero-tools reader learns the one install that unlocks everything."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: None if name in ("clang-tidy", "docker") else str(BIN_DIR / name),
+    )
+    runner = FakeRunner(a_host_where_every_detector_works)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    status = context.capabilities[Analysis.CLANG_TIDY]
+    assert not status.available
+    assert status.suggestion is not None
+    assert "container engine" in status.suggestion
+    assert "install Docker" in status.suggestion
+    assert context.engines[Analysis.CLANG_TIDY].platform.name == "linux"
+    shutil.rmtree(context.workspace)
+
+
+def test_a_machine_with_no_compiler_serves_through_the_toolbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The zero-tools machine: startup used to refuse outright; with Docker present it now
+    binds the container's own clang and routes every carried analysis inside."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda name: DOCKER_EXE if name == "docker" else None)
+    runner = FakeRunner(a_docker_with_the_toolbox)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    assert context.toolchain.family == "clang"
+    assert "18" in context.toolchain.version
+    assert context.platform.name == "linux"
+    for analysis in (Analysis.TSAN, Analysis.ASAN, Analysis.CLANG_TIDY):
+        assert context.capabilities[analysis].available
+        assert context.engines[analysis].platform.name == container.NAME
+    profile = context.capabilities[Analysis.PROFILE]
+    assert not profile.available
+    assert profile.reason is not None and "profile" in profile.reason
+    shutil.rmtree(context.workspace)
+
+
+def test_no_compiler_and_no_docker_refuses_naming_both_ways_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal keeps teaching: compilers to install, or the one Docker install that
+    makes them unnecessary. Nothing is spawned; there is nothing to run."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    with pytest.raises(RuntimeError) as raised:
+        resolve(cache_dir=None, runner=RefusingRunner())
+
+    message = str(raised.value)
+    assert "clang++ and g++" in message
+    assert "Docker" in message

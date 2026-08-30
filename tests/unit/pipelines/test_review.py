@@ -645,7 +645,9 @@ def test_an_audit_reports_the_same_contract_as_a_review(
     assert report.tiers[Tier.STYLE] == 1
     assert {entry.file for entry in report.index} == {"src/a.cpp"}
     assert [detail.finding.category for detail in report.detailed] == [USE_AFTER_MOVE]
-    assert report.notes == ()
+    # the one explanation this run earned: no committed .clang-tidy, so defaults applied
+    (note,) = report.notes
+    assert "default check set" in note
 
 
 def test_every_index_entry_carries_the_tier_that_ranked_it(
@@ -937,3 +939,35 @@ def test_the_index_stays_thin_while_the_detail_grows() -> None:
         "line",
         "occurrences",
     }
+
+
+def test_run_explanations_ride_the_notes_not_the_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A run's explanations -- no database, default check set -- reach the reader as
+    report notes, once each; never as unrated index rows pretending to be findings."""
+    blind_path(monkeypatch)
+    root = a_checkout(tmp_path)
+    runner = AnsweringRunner(
+        git=audit_git(root=root),
+        tidy=RunResult(exit_code=0, output=tidy_line(root / "src/a.cpp", 3, USE_AFTER_MOVE)),
+    )
+
+    report = audited(
+        audit_project(
+            root,
+            record_as="main",
+            toolchain=a_clang(),
+            platform=a_platform(tmp_path),
+            capabilities=working(),
+            cache_dir=tmp_path / "cache",
+            runner=runner,
+        )
+    )
+
+    assert all(entry.category != "analysis-note" for entry in report.index)
+    assert report.total == 1
+    assert report.tiers[Tier.UNRATED] == 0
+    assert any("compile_commands" in note for note in report.notes)
+    assert any("default check set" in note for note in report.notes)
+    assert len(report.notes) == len(set(report.notes))

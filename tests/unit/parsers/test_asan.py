@@ -217,3 +217,17 @@ def test_pid_banner_prefix_still_parses() -> None:
     findings = asan.parse(real)
     assert len(findings) == 1
     assert findings[0].category == "heap-buffer-overflow"
+
+
+def test_a_windows_drive_survives_the_frame_parse() -> None:
+    """A drive-lettered path carries its own colon; the file capture must keep it."""
+    report = (
+        "==11==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010\n"
+        "    #0 0x55f in main C:\\Users\\dev\\ws\\snip\\snippet.cpp:1:44\n"
+        "==11==ABORTING\n"
+    )
+    location = asan.parse(report)[0].location
+
+    assert location is not None
+    assert location.file == "C:\\Users\\dev\\ws\\snip\\snippet.cpp"
+    assert location.line == 1

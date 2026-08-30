@@ -133,9 +133,18 @@ Linux-only tools through it. You keep passing normal C:\ paths.
 When something cannot run, the server says so plainly and names the
 command that would fix it.
 
+And a machine with none of the tools installed still gets all of it:
+with Docker running, the server runs every check inside a pinned
+toolbox container instead -- same reports, host mounted read-only,
+and each finding says which engine observed it. The profiler is the
+one thing that stays out, because a container cannot see the host
+kernel's performance counters, and the report says exactly that.
+
 ## Setup
 
-You need Python 3.11+, uv, and a C++ compiler (clang or gcc).
+You need Python 3.11+ and uv. For the C++ side: a compiler (clang or
+gcc) -- or no tools at all and just Docker, which the server uses to
+run the whole toolchain in a container when the host is missing it.
 
 ```bash
 git clone https://github.com/GusDawn123/cpp-analysis-mcp
@@ -160,7 +169,16 @@ For any other MCP client, add the same command to its config file:
 
 The first start takes a minute. The server compiles and runs a tiny
 buggy program for each analysis to prove the tool really works on
-your machine, then caches the results.
+your machine, then caches the results. The container engine passes
+the same audition: probes run inside the image before anything is
+routed there. On a machine relying on Docker, pull the toolbox once:
+
+```bash
+docker pull ghcr.io/gusdawn123/cpp-analysis-toolbox:0.1
+```
+
+You never have to remember this -- any unavailable analysis names
+this exact command in its status.
 
 ## Why you can trust an empty result
 
@@ -204,6 +222,8 @@ your AI agent (Claude Code, Cursor, anything that speaks MCP)
    +-- platforms/    what Linux, macOS, and Windows each need
    +-- toolchains/   what clang and gcc each need
    +-- wsl.py        Windows borrowing Linux for what it lacks
+   +-- container.py  renting Linux from Docker for whatever
+                     the host cannot run at all
 ```
 
 Imports point one way, down. The planner is ordinary deterministic

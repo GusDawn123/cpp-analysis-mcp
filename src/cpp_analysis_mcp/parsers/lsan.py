@@ -18,12 +18,13 @@ FRAME = re.compile(r"^\s*#\d+\s+0x[0-9a-f]+\s+(?P<rest>.*)$")
 # a frame carries source only when the symbolizer resolved it, and then it trails
 # the line: `#1 0x... in main /w/leak.cpp:6:28`. Paths containing spaces truncate
 # here: the format is unquoted and function names carry spaces too, so the
-# boundary between them cannot be recovered.
-FRAME_SOURCE = re.compile(r"(?P<file>[^\s():]+):(?P<line>\d+)(?::(?P<column>\d+))?$")
+# boundary between them cannot be recovered. A drive letter's own colon is the one
+# colon a file may keep.
+FRAME_SOURCE = re.compile(r"(?P<file>(?:[A-Za-z]:)?[^\s():]+):(?P<line>\d+)(?::(?P<column>\d+))?$")
 
 # gcc resolves its own new/delete interceptors, so a leak stack can open on
 # libsanitizer's source. Skip those frames -- the caller's frame is the useful one.
-RUNTIME_SOURCE = re.compile(r"(?:^|/)(?:libsanitizer|compiler-rt|sanitizer_common)/")
+RUNTIME_SOURCE = re.compile(r"(?:^|[/\\])(?:libsanitizer|compiler-rt|sanitizer_common)[/\\]")
 
 
 def parse(text: str) -> list[Finding]:

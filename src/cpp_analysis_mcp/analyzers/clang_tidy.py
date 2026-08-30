@@ -125,7 +125,7 @@ def file_check(
         )
         if isinstance(checked, CapabilityStatus):
             return checked
-        return outcome(checked, Analysis.CLANG_TIDY, status)
+        return outcome(checked, Analysis.CLANG_TIDY, status, engine=platform.engine)
 
     return check
 

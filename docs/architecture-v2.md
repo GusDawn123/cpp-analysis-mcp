@@ -156,9 +156,9 @@ system can *witness* it.
 | ----- | ------------------------------------------------------------ |
 | 1     | Store core + analyzer contract; clang-tidy and warnings as the first plugins |
 | 2     | Planner + `review()`/`audit()` surface; scope resolver; baseline cache — **the review gate** |
-| 3     | Container engine + toolbox image; cppcheck proves the registry |
-| 4     | Sanitizers and perf as plugins; suppressions; Infer          |
-| 5     | Eval harness, PyPI, registry listings                        |
+| 3     | Container engine + toolbox image -- **shipped 2026-08**; cppcheck (the registry proof) rides the phase-4 plugin wave |
+| 4     | Sanitizers, perf, and cppcheck as plugins; suppressions; Infer |
+| 5     | Eval harness (**shipped early, 2026-08**), PyPI, registry listings |
 
 Every phase is releasable. Nothing built in one phase is rebuilt in a later
 one — the end state is this document, and each phase pours into it.
