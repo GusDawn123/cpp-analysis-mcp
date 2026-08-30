@@ -1,0 +1,13 @@
+id: intermittent-crash-runs-the-project
+title: A crash that only appears under the whole build escalates to the project sanitizer
+prompt: >-
+  Our nightly run of orderbook_bench in {project} aborts maybe one night in five, and never
+  when I run the file on its own. Track it down.
+needs_project: true
+expected:
+  first_tool: static_check_file
+  calls: [static_check_file, sanitize_project]
+  after_clean_escalates_to:
+    after: static_check_file
+    escalates_to: sanitize_project
+  max_calls: 8

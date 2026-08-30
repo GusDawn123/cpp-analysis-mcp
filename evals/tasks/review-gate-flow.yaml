@@ -1,0 +1,11 @@
+id: review-gate-flow
+title: The review gate records the base ref, then reports only the delta
+prompt: >-
+  I am about to open a PR from {project}. Which problems did MY change introduce, as opposed
+  to what was already there on origin/develop?
+needs_project: true
+expected:
+  first_tool: audit
+  calls: [audit, review]
+  never: [full_check_file]
+  max_calls: 6

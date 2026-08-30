@@ -1,0 +1,10 @@
+id: why-slow-file-profiles-first
+title: Why is this slow goes to the profiler, not up the correctness ladder
+prompt: >-
+  {project}/engine/src/OrderBook.cpp got noticeably slower this quarter. Why?
+needs_project: true
+expected:
+  first_tool: profile_file
+  calls: [profile_file]
+  never: [sanitize_file, sanitize_project, sanitize_snippet]
+  max_calls: 6
