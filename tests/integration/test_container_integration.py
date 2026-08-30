@@ -50,5 +50,5 @@ def test_tidy_reports_inside_the_toolbox_in_host_spelling(
     )
 
     assert "use nullptr" in checked.output
-    # the runner's own back-translation: diagnostics name the host's path, not /mnt/ws
-    assert source.as_posix() in checked.output
+    # the runner's own back-translation: diagnostics name the host's native path, not /mnt/ws
+    assert str(source) in checked.output
