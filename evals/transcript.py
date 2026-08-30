@@ -1,9 +1,8 @@
 """One Claude Code session, reduced to the tool calls it made, in order.
 
-`claude -p --output-format stream-json` emits one JSON object per line; only the
-assistant events carry tool_use blocks, and only those become calls. Our own tools
-arrive MCP-prefixed and lose the prefix here, so tasks name tools the way the server
-does.
+`claude -p --output-format stream-json` emits one JSON object per line; only the assistant events
+carry tool_use blocks, and only those become calls. Our own tools arrive MCP-prefixed and lose the
+prefix here, so tasks name tools the way the server does.
 """
 
 from __future__ import annotations

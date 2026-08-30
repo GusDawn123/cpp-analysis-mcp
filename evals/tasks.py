@@ -1,9 +1,8 @@
 """Task files: what the agent is asked, and what its calls have to look like.
 
-Five check kinds and no more -- a vocabulary small enough that every task says
-something an agent could plausibly get wrong. Loading is strict: an unknown key or a
-tool name the server does not have is refused, because a check nobody implements
-grades green forever.
+Five check kinds and no more -- a vocabulary small enough that every task says something
+an agent could plausibly get wrong. Loading is strict: an unknown key or a tool name the
+server does not have is refused, because a check nobody implements grades green forever.
 """
 
 from __future__ import annotations

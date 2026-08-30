@@ -123,8 +123,7 @@ def _candidates(source: Path) -> Iterator[Path]:
         beside = directory / DATABASE
         if beside.is_file():
             yield beside
-        # sorted so a checkout with several build trees is read in one order rather than
-        # whichever the filesystem happens to hand back
+        # sorted so multiple build trees are read in one order, not whichever the filesystem returns
         yield from sorted(path for path in directory.glob(f"{BUILD_GLOB}/{DATABASE}"))
 
 
@@ -199,15 +198,10 @@ def _flags(entry: dict[str, object]) -> tuple[str, ...]:
 def _tokens(entry: dict[str, object], base: Path) -> list[str]:
     """Read an entry's command line, in either shape a database writes it.
 
-    `arguments` is already a list. `command` is one string, split without POSIX rules
-    because on Windows those eat the backslashes that make up paths; surviving quotes
-    are stripped by hand.
-
-    Either shape can hand off include directories indirectly as `@some/file.rsp` -- the
-    common case on Windows, where a capped ~32k command line pushes cmake into a response
-    file as soon as a project has a few includes. Read without expanding it, such an entry
-    looks like a compilation with no include paths at all: the same bug this module exists
-    to fix, wearing a different hat.
+    `command` is one string, split without POSIX rules -- those eat the backslashes in a
+    Windows path. `@some/file.rsp` response files are expanded here too: left alone, an
+    entry compiled through one looks like it has no include paths, the same bug this
+    module exists to fix.
     """
     return _expanded(_raw(entry), base)
 
