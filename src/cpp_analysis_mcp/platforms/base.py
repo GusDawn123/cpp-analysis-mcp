@@ -8,11 +8,11 @@ developed and tested from a macOS laptop.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, Finding, SanitizerKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +33,13 @@ class FailureSignature:
 
 
 LOCAL_ENGINE = "local"
+
+
+def stamped(findings: tuple[Finding, ...], engine: str) -> tuple[Finding, ...]:
+    """Mark where these findings were observed; the local default costs no copies."""
+    if engine == LOCAL_ENGINE:
+        return findings
+    return tuple(replace(finding, engine=engine) for finding in findings)
 
 
 @dataclass(frozen=True, slots=True)

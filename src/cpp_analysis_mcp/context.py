@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp import capabilities, platforms, process, wsl
+from cpp_analysis_mcp import capabilities, container, platforms, process, wsl
 from cpp_analysis_mcp.platforms import windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
@@ -127,10 +127,10 @@ def resolve(
     platform = platforms.detect()
     workspace = _workspace(workspace)
     toolchains = capabilities.discover_toolchains(runner=runner)
-    # every analysis in the set needs something to compile with, so there is no reduced
-    # service to start up with here
+    # a machine with no compiler at all can still serve: the toolbox image carries one,
+    # and only when Docker cannot stand in either does startup refuse (ADR-0004's floor)
     if not toolchains:
-        raise RuntimeError(NO_COMPILER)
+        return _floor(platform, workspace, cache_dir, runner)
 
     toolchain = prefer(toolchains)
     statuses = capabilities.probe_all(toolchain, platform, cache_dir=cache_dir, runner=runner)
@@ -153,6 +153,31 @@ def resolve(
                     toolchain=bridge.toolchain, platform=bridge.platform, runner=bridge.runner
                 )
 
+    # the container floor (ADR-0004): whatever is still unavailable gets one more chance
+    # inside the toolbox image. A machine already running everything asks Docker nothing.
+    needy = [
+        analysis
+        for analysis in Analysis
+        if not statuses[analysis].available and analysis in container.CARRIED
+    ]
+    if needy:
+        settled = container.discover(workspace=workspace, runner=runner)
+        if isinstance(settled, container.Bridge):
+            contained = capabilities.probe_all(
+                settled.toolchain, settled.platform, cache_dir=cache_dir, runner=settled.runner
+            )
+            for analysis in needy:
+                if contained[analysis].available:
+                    statuses[analysis] = contained[analysis]
+                    engines[analysis] = Engine(
+                        toolchain=settled.toolchain,
+                        platform=settled.platform,
+                        runner=settled.runner,
+                    )
+        else:
+            for analysis in needy:
+                statuses[analysis] = _offered_docker(statuses[analysis], settled)
+
     return Context(
         platform=platform,
         toolchain=toolchain,
@@ -161,6 +186,35 @@ def resolve(
         runner=runner,
         engines=engines,
     )
+
+
+def _floor(platform: Platform, workspace: Path, cache_dir: Path | None, runner: Runner) -> Context:
+    """Serve a machine with no compiler through the container engine, or refuse plainly."""
+    settled = container.discover(workspace=workspace, runner=runner)
+    if isinstance(settled, container.Absence):
+        raise RuntimeError(
+            f"{NO_COMPILER} Or skip installing compilers: with Docker, every analysis "
+            f"can run inside the toolbox image -- {settled.reason}; {settled.suggestion}."
+        )
+    statuses = capabilities.probe_all(
+        settled.toolchain, settled.platform, cache_dir=cache_dir, runner=settled.runner
+    )
+    engine = Engine(toolchain=settled.toolchain, platform=settled.platform, runner=settled.runner)
+    return Context(
+        platform=platform,
+        toolchain=settled.toolchain,
+        capabilities=statuses,
+        workspace=workspace,
+        runner=runner,
+        engines={analysis: engine for analysis in settled.analyses if statuses[analysis].available},
+    )
+
+
+def _offered_docker(status: CapabilityStatus, absence: container.Absence) -> CapabilityStatus:
+    """Add the container way out to an unavailable status, keeping its own advice first."""
+    hint = f"or run it in the container engine: {absence.reason} -- {absence.suggestion}"
+    combined = f"{status.suggestion}; {hint}" if status.suggestion else hint
+    return replace(status, suggestion=combined)
 
 
 def scratch(workspace: Path) -> Path:
