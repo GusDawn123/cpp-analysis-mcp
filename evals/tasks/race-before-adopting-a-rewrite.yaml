@@ -1,0 +1,10 @@
+id: race-before-adopting-a-rewrite
+title: A rewrite is adopted only after a measured win
+prompt: >-
+  Profile {project}/engine/src/OrderBook.cpp, then write a faster version of whatever comes
+  out on top and tell me whether to adopt it.
+needs_project: true
+expected:
+  first_tool: profile_file
+  calls: [profile_file, benchmark_variants]
+  max_calls: 8

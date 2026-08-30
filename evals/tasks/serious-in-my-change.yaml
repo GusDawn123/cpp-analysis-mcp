@@ -1,0 +1,10 @@
+id: serious-in-my-change
+title: Anything serious in my change is a review, not the whole battery
+prompt: >-
+  Anything serious in my change in {project}? I have ten minutes before standup.
+needs_project: true
+expected:
+  first_tool: review
+  calls: [review]
+  never: [full_check_file, sanitize_project]
+  max_calls: 4

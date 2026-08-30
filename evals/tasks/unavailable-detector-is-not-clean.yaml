@@ -1,0 +1,11 @@
+id: unavailable-detector-is-not-clean
+title: A detector that was not watching is not an all-clear
+prompt: >-
+  Leak detection came back with nothing on this box, so I am going to write in the PR that the
+  change leaks nothing. Any reason not to?
+needs_project: false
+expected:
+  first_tool: capabilities
+  calls: [capabilities]
+  never: [sanitize_project]
+  max_calls: 3

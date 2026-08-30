@@ -1,0 +1,11 @@
+id: serious-first-not-style
+title: The dangerous finding is opened first, not the style one
+prompt: >-
+  Review {project} against origin/develop. I only have time to fix one thing today, so tell me
+  which one and give me its detail.
+needs_project: true
+expected:
+  first_tool: review
+  calls: [review, get_finding]
+  never: [static_check_snippet, sanitize_snippet]
+  max_calls: 5

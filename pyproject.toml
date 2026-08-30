@@ -44,7 +44,7 @@ exclude = ["*.md"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "evals"]
 python_version = "3.11"
 mypy_path = "src"
 
@@ -58,4 +58,5 @@ markers = ["integration: requires a real C++ toolchain"]
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}", "*.dSYM"]
 # don't depend on the editable-install .pth: sandboxed shells on macOS can
 # write it with the hidden flag set, which site.py (3.11.15+) silently skips
-pythonpath = ["src"]
+# "." puts evals/ on the path for tests/unit/evals; the wheel still ships src/ alone
+pythonpath = ["src", "."]
