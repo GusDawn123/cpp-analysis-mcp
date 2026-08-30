@@ -67,7 +67,9 @@ and one parser, zero planner changes.
 fingerprinting (ADR-0002), cross-tool correlation (two independent engines
 flagging the same defect is one finding with two confirmations), baseline
 subtraction (`new_since(ref)` — the operation that makes the review gate), the
-suppression store, and ranking. Scope and baseline are store queries, not
+suppression store, and the tiering and ranking a report leads with — witnessed
+beats suspected, so critical belongs to what a runtime tool watched happen and a
+static match tops out at major. Scope and baseline are store queries, not
 modes: full-scan-with-baseline and diff-only both fall out of the same two
 knobs.
 
