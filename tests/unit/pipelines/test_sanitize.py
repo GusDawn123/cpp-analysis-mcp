@@ -657,3 +657,25 @@ def test_a_project_whose_capability_is_denied_spawns_no_cmake(tmp_path: Path) ->
     )
 
     assert result is status
+
+
+def test_findings_say_which_engine_observed_them(tmp_path: Path) -> None:
+    """ADR-0004: a race witnessed inside a container must say so on the finding itself."""
+    runner = ScriptedRunner(
+        [SUCCESS, RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))]
+    )
+    bridged = Platform(name="container", engine="container", compile_extras=LINUX_COMPILE_EXTRAS)
+
+    report = reported(
+        analyze_file(
+            a_source(tmp_path),
+            Analysis.TSAN,
+            toolchain=a_clang(),
+            platform=bridged,
+            capabilities=statuses(a_working_status()),
+            build_dir=build_dir(tmp_path),
+            runner=runner,
+        )
+    )
+
+    assert report.findings and all(f.engine == "container" for f in report.findings)

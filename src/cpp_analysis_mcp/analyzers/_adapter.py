@@ -11,6 +11,7 @@ from pathlib import Path
 
 from cpp_analysis_mcp import compile_db, process
 from cpp_analysis_mcp.analyzers.base import AnalyzerContext, Applicability, Scope
+from cpp_analysis_mcp.platforms.base import LOCAL_ENGINE, stamped
 from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
@@ -178,7 +179,7 @@ def project_flags(source: Path) -> tuple[Path | None, tuple[str, ...]]:
 
 
 def outcome(
-    checked: Checked, analysis: Analysis, status: CapabilityStatus
+    checked: Checked, analysis: Analysis, status: CapabilityStatus, *, engine: str = LOCAL_ENGINE
 ) -> AnalysisReport | BuildFailure:
     """Decide whether what came back is a report or the failure that replaced one."""
     if checked.result.timed_out:
@@ -201,7 +202,7 @@ def outcome(
 
     return AnalysisReport(
         analysis=analysis,
-        findings=checked.findings,
+        findings=stamped(checked.findings, engine),
         build_warnings=(),
         suggested_fixes=checked.suggestions,
         exit_code=checked.result.exit_code,

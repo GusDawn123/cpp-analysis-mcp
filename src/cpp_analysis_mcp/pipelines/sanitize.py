@@ -14,7 +14,7 @@ from pathlib import Path
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.build import cmake, single_file
 from cpp_analysis_mcp.parsers import PARSER_FOR
-from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.platforms.base import Platform, stamped
 from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
@@ -66,7 +66,9 @@ def analyze_file(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, analysis, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(
+        built, analysis, status, engine=platform.engine, run_timeout_s=run_timeout_s, runner=runner
+    )
 
 
 def analyze_project(
@@ -104,7 +106,9 @@ def analyze_project(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, analysis, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(
+        built, analysis, status, engine=platform.engine, run_timeout_s=run_timeout_s, runner=runner
+    )
 
 
 def analyze_snippet(
@@ -146,6 +150,7 @@ def _observe(
     analysis: Analysis,
     status: CapabilityStatus,
     *,
+    engine: str,
     run_timeout_s: int,
     runner: Runner,
 ) -> AnalysisReport:
@@ -163,8 +168,8 @@ def _observe(
     # exit 66, and a run killed at its timeout still leaves the output it had produced
     return AnalysisReport(
         analysis=analysis,
-        findings=tuple(PARSER_FOR[analysis](result.output)),
-        build_warnings=built.warnings,
+        findings=stamped(tuple(PARSER_FOR[analysis](result.output)), engine),
+        build_warnings=stamped(built.warnings, engine),
         exit_code=result.exit_code,
         timed_out=result.timed_out,
         limitations=status.limitations,
