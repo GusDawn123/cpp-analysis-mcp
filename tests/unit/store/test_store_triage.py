@@ -186,3 +186,15 @@ def test_every_named_verifier_is_something_this_server_can_actually_run() -> Non
     # a hint naming a tool with no tool behind it costs the reader a wasted call
     named = {analysis for _, analysis in WOULD_WITNESS if analysis is not None}
     assert named <= {"asan", "tsan", "lsan", "ubsan", "profile"}
+
+
+def test_swappable_parameters_is_an_opinion_not_a_defect() -> None:
+    """Met in the field: a real project's first audit surfaced it unrated."""
+    finding = Finding(
+        id="t",
+        tool="clang-tidy",
+        severity=Severity.WARNING,
+        category="bugprone-easily-swappable-parameters",
+        message="adjacent parameters of similar type are easily swapped",
+    )
+    assert tier_for(finding) is Tier.STYLE

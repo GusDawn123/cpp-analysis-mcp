@@ -81,8 +81,11 @@ START_DOCKER = (
 class Mount:
     """One host directory the container sees: how to say it to docker, match it, respell it."""
 
-    host: str  # the -v spelling, the host's own
+    host: str  # the --mount spelling, forward slashes
     key: str  # the same path normalized for prefix matching (posix slashes, / terminated)
+    # the host OS's own spelling, / terminated -- what output translation writes back,
+    # because parsers expect exactly what a native tool would have printed
+    native: str
     inside: str  # the container path, / terminated
     writable: bool
 
@@ -284,9 +287,12 @@ def host_spelling(text: str, mounts: Sequence[Mount]) -> str:
     """
     ordered = sorted(mounts, key=lambda mount: len(mount.inside), reverse=True)
     for mount in ordered:
-        text = text.replace(mount.inside, mount.key)
+        text = text.replace(mount.inside, mount.native)
     for mount in ordered:
-        text = text.replace(mount.inside.rstrip("/"), mount.key.rstrip("/"))
+        # bare directory mentions only at a name boundary: /mnt/ws-cache is not /mnt/ws.
+        # The replacement goes through re.escape too: backslashes are literal, never groups.
+        bare, native = mount.inside.rstrip("/"), mount.native.rstrip("/\\")
+        text = re.sub(re.escape(bare) + r"(?![A-Za-z0-9_.\-])", native.replace("\\", "\\\\"), text)
     return text
 
 
@@ -297,8 +303,17 @@ def _mount(host: Path, inside: str, *, writable: bool) -> Mount:
     key = host.as_posix()
     if not key.endswith("/"):
         key += "/"
+    native = str(host)
+    if not native.endswith(("/", "\\")):
+        native += "\\" if "\\" in native else "/"
     # forward slashes even on Windows: docker accepts them, and --mount csv needs no escaping
-    return Mount(host=host.as_posix(), key=key, inside=inside.rstrip("/") + "/", writable=writable)
+    return Mount(
+        host=host.as_posix(),
+        key=key,
+        native=native,
+        inside=inside.rstrip("/") + "/",
+        writable=writable,
+    )
 
 
 def _inside_root(root: Path) -> str:
