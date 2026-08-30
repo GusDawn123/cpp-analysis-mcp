@@ -7,8 +7,8 @@ caller's back; a missing one reports everything and says so.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -35,13 +35,18 @@ from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.store import baselines, runs
 from cpp_analysis_mcp.store.baselines import Baseline
 from cpp_analysis_mcp.store.fingerprints import SCHEME_VERSION
-from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus, Finding, Severity
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus, Finding, Location, Severity
 from cpp_analysis_mcp.store.store import FindingStore
+from cpp_analysis_mcp.store.triage import Tier, tier_for
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # index everything, full detail for the top few: the diversity ranking means five
 # variations of one bug cannot crowd out the first report from four other files
 N_DETAILED = 5
+
+# which tiers the detail slots are for. Style and unrated are counted and indexed, never
+# expanded: a hundred magic numbers must not push the one use-after-move out of view.
+DETAILED_TIERS = (Tier.CRITICAL, Tier.MAJOR, Tier.MINOR)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,7 @@ class IndexEntry:
     """One line of the everything-index: enough to decide whether to ask for detail."""
 
     fingerprint: str
+    tier: Tier
     severity: Severity
     category: str
     file: str | None
@@ -62,12 +68,17 @@ class ReviewReport:
 
     root: str
     against: str
+    # the compilation database this run read, root-relative; None when there is none.
+    # It decided which files were checked and how they parsed, so the report names it
+    database: str | None
     files: tuple[str, ...]
     steps: tuple[Step, ...]
     skips: tuple[Skip, ...]
     baseline_used: bool
     notes: tuple[str, ...]
     total_new: int
+    # every tier, zero counts included: an absent row would read as an unasked question
+    tiers: dict[Tier, int]
     index: tuple[IndexEntry, ...]
     detailed: tuple[Finding, ...]
     truncated: bool
@@ -80,10 +91,13 @@ class AuditReport:
 
     root: str
     recorded_as: str
+    database: str | None
     files: tuple[str, ...]
     steps: tuple[Step, ...]
     skips: tuple[Skip, ...]
+    notes: tuple[str, ...]
     total: int
+    tiers: dict[Tier, int]
     index: tuple[IndexEntry, ...]
     detailed: tuple[Finding, ...]
     truncated: bool
@@ -116,9 +130,11 @@ def review_project(
     scoped = changed_since(project_dir, against, runner=runner)
     if isinstance(scoped, CapabilityStatus):
         return scoped
-    store, decided = _static_tier(
+    canonical = relativizer(scoped.root)
+    store, decided, database, build_notes = _static_tier(
         scoped.root,
         scoped.files,
+        canonical=canonical,
         toolchain=toolchain,
         platform=platform,
         capabilities=capabilities,
@@ -141,21 +157,27 @@ def review_project(
         fresh = store.new_against(remembered.fingerprints)
 
     fresh_identities = {finding.fingerprint for finding in fresh}
-    ranked = tuple(finding for finding in store.ranked() if finding.fingerprint in fresh_identities)
-    index, detailed, truncated = _shaped(ranked)
+    ranked = _relocated(
+        [finding for finding in store.ranked() if finding.fingerprint in fresh_identities],
+        canonical,
+    )
+    index, tiers, detailed, truncated = _shaped(ranked)
     return ReviewReport(
         root=str(scoped.root),
         against=against,
+        database=database,
         files=scoped.files,
         steps=decided.steps,
         skips=decided.skips,
         baseline_used=remembered is not None,
-        notes=baseline_notes,
+        # the baseline note first: it decides what the counts below even mean
+        notes=(*baseline_notes, *build_notes),
         total_new=len(ranked),
+        tiers=tiers,
         index=index,
         detailed=detailed,
         truncated=truncated,
-        run_path=_remember(cache_dir, scoped.root, store),
+        run_path=_remember(cache_dir, scoped.root, store, canonical),
     )
 
 
@@ -180,9 +202,11 @@ def audit_project(
     label = record_as if record_as is not None else current_ref(project_dir, runner=runner)
     if isinstance(label, CapabilityStatus):
         return label
-    store, decided = _static_tier(
+    canonical = relativizer(scoped.root)
+    store, decided, database, build_notes = _static_tier(
         scoped.root,
         scoped.files,
+        canonical=canonical,
         toolchain=toolchain,
         platform=platform,
         capabilities=capabilities,
@@ -196,20 +220,23 @@ def audit_project(
         )
         baseline_path = str(baselines.save(cache_dir, scoped.root, recorded))
 
-    ranked = store.ranked()
-    index, detailed, truncated = _shaped(ranked)
+    ranked = _relocated(store.ranked(), canonical)
+    index, tiers, detailed, truncated = _shaped(ranked)
     return AuditReport(
         root=str(scoped.root),
         recorded_as=label,
+        database=database,
         files=scoped.files,
         steps=decided.steps,
         skips=decided.skips,
+        notes=build_notes,
         total=len(ranked),
+        tiers=tiers,
         index=index,
         detailed=detailed,
         truncated=truncated,
         baseline_path=baseline_path,
-        run_path=_remember(cache_dir, scoped.root, store),
+        run_path=_remember(cache_dir, scoped.root, store, canonical),
     )
 
 
@@ -239,12 +266,17 @@ def _static_tier(
     root: Path,
     files: tuple[str, ...],
     *,
+    canonical: Callable[[str], str],
     toolchain: Toolchain,
     platform: Platform,
     capabilities: Mapping[Analysis, CapabilityStatus],
     runner: Runner,
-) -> tuple[FindingStore, Plan]:
-    """Plan and run both compile-time plugins over the scope, findings into one store."""
+) -> tuple[FindingStore, Plan, str | None, tuple[str, ...]]:
+    """Plan and run both compile-time plugins over the scope, findings into one store.
+
+    Also reports which compilation database decided the run, and says so in words when
+    the root held more than one to choose between.
+    """
     named = {
         ClangTidyAnalyzer.name: capabilities[Analysis.CLANG_TIDY],
         WarningsAnalyzer.name: capabilities[Analysis.THREAD_SAFETY],
@@ -281,11 +313,12 @@ def _static_tier(
 
     store = FindingStore()
     reader = line_reader()
-    canonical = relativizer(root)
     for finished in ran:
         # each tool's report is one run: occurrence ranks resolve per analyzer
         store.ingest(finished.findings, reader, canonical=canonical)
-    return store, decided
+
+    database, build_notes = _which_database(root, canonical)
+    return store, decided, database, build_notes
 
 
 def _invalidation_key(root: Path, *, toolchain: Toolchain, platform: Platform) -> dict[str, str]:
@@ -309,9 +342,27 @@ def _content_identity(path: Path | None) -> str:
 
 
 def _config_identity(root: Path) -> str:
-    # per-file discovery walks parents; a whole-project run answers to the root's file
-    committed = [root / name for name in tidy_plugin.TIDY_CONFIG_NAMES if (root / name).is_file()]
-    return _content_identity(committed[0]) if committed else "none"
+    """One digest over every tidy config under the root, however deep.
+
+    clang-tidy answers to the nearest config above each file, so a nested one is as
+    load-bearing as the root's -- any of them changing must retire the baseline.
+    """
+    found = sorted(
+        (
+            path
+            for name in tidy_plugin.TIDY_CONFIG_NAMES
+            for path in root.rglob(name)
+            if ".git" not in path.parts
+        ),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+    if not found:
+        return "none"
+    digest = sha256()
+    for path in found:
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(_content_identity(path).encode())
+    return digest.hexdigest()[:16]
 
 
 def _tool_identity(tool: Path | None) -> str:
@@ -323,24 +374,89 @@ def _tool_identity(tool: Path | None) -> str:
         return str(tool)
 
 
-def _remember(cache_dir: Path | None, root: Path, store: FindingStore) -> str:
+def _remember(
+    cache_dir: Path | None, root: Path, store: FindingStore, canonical: Callable[[str], str]
+) -> str:
     if cache_dir is None:
         return ""
-    return str(runs.save(cache_dir, root, store.findings()))
+    return str(runs.save(cache_dir, root, _relocated(store.findings(), canonical)))
+
+
+def _relocated(findings: Sequence[Finding], canonical: Callable[[str], str]) -> tuple[Finding, ...]:
+    """Rewrite every location a caller reads to root-relative POSIX, on the way out.
+
+    Tools print whatever they please -- absolute, mixed separators -- and the store
+    keeps that record, because identity hashes the flagged line read through the path
+    the tool named (ADR-0002, frozen). Only what a caller reads is rewritten.
+    """
+    return tuple(_moved(finding, canonical) for finding in findings)
+
+
+def _moved(finding: Finding, canonical: Callable[[str], str]) -> Finding:
+    return replace(
+        finding,
+        location=_at(finding.location, canonical),
+        allocated_at=_at(finding.allocated_at, canonical),
+        threads=tuple(
+            replace(
+                thread,
+                frames=tuple(
+                    replace(frame, location=_at(frame.location, canonical))
+                    for frame in thread.frames
+                ),
+            )
+            for thread in finding.threads
+        ),
+    )
+
+
+def _at(location: Location | None, canonical: Callable[[str], str]) -> Location | None:
+    return None if location is None else replace(location, file=canonical(location.file))
+
+
+def _which_database(
+    root: Path, canonical: Callable[[str], str]
+) -> tuple[str | None, tuple[str, ...]]:
+    """Name the database this run read, and say when it was one of several."""
+    candidates = compile_db.databases_under(root)
+    if not candidates:
+        return None, ()
+    chosen = canonical(str(candidates[0]))
+    if len(candidates) == 1:
+        return chosen, ()
+    return chosen, (
+        f"{len(candidates)} compilation databases sit under the root and they do not "
+        f"describe the same build; {chosen} is the one that decided this run",
+    )
 
 
 def _shaped(
     ranked: Sequence[Finding],
-) -> tuple[tuple[IndexEntry, ...], tuple[Finding, ...], bool]:
-    index = tuple(
-        IndexEntry(
-            fingerprint=finding.fingerprint,
-            severity=finding.severity,
-            category=finding.category,
-            file=finding.location.file if finding.location is not None else None,
-            line=finding.location.line if finding.location is not None else None,
-            occurrences=finding.occurrences,
+) -> tuple[tuple[IndexEntry, ...], dict[Tier, int], tuple[Finding, ...], bool]:
+    """Index everything, count it by tier, and spend the detail slots on danger.
+
+    One pass builds all three, bucketing as it goes: ranked order survives inside each
+    tier, and nothing rescans the findings once per tier to fill the detail.
+    """
+    counts = dict.fromkeys(Tier, 0)
+    buckets: dict[Tier, list[Finding]] = {}
+    index: list[IndexEntry] = []
+    for finding in ranked:
+        tier = tier_for(finding)
+        counts[tier] += 1
+        buckets.setdefault(tier, []).append(finding)
+        index.append(
+            IndexEntry(
+                fingerprint=finding.fingerprint,
+                tier=tier,
+                severity=finding.severity,
+                category=finding.category,
+                file=finding.location.file if finding.location is not None else None,
+                line=finding.location.line if finding.location is not None else None,
+                occurrences=finding.occurrences,
+            )
         )
-        for finding in ranked
-    )
-    return index, tuple(ranked[:N_DETAILED]), len(ranked) > N_DETAILED
+
+    actionable = [finding for tier in DETAILED_TIERS for finding in buckets.get(tier, [])]
+    detailed = tuple(actionable[:N_DETAILED])
+    return tuple(index), counts, detailed, len(detailed) < len(ranked)
