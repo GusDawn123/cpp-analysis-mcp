@@ -1,0 +1,13 @@
+id: escalate-after-clean-static-uaf
+title: A clean compile-time result does not settle a suspected use-after-free
+prompt: >-
+  {project}/engine/src/JsonEngine.cpp crashes about one run in twenty, always somewhere
+  different. I suspect we are touching a freed order. Prove it or clear it.
+needs_project: true
+expected:
+  first_tool: static_check_file
+  calls: [static_check_file, sanitize_file]
+  after_clean_escalates_to:
+    after: static_check_file
+    escalates_to: sanitize_file
+  max_calls: 8

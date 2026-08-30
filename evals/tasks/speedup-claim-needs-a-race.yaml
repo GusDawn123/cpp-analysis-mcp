@@ -1,0 +1,10 @@
+id: speedup-claim-needs-a-race
+title: A speedup claim without a race behind it is a guess
+prompt: >-
+  I replaced the std::map in {project}/engine/include/orderbook/OrderBook.hpp with a sorted
+  vector. It must be faster, right? Give me a number.
+needs_project: true
+expected:
+  first_tool: benchmark_variants
+  calls: [benchmark_variants]
+  max_calls: 5

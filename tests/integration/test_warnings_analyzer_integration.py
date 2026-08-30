@@ -50,7 +50,7 @@ def test_the_plugin_names_the_planted_lock_bug_on_its_marked_line() -> None:
 
     findings = analyzer.run(
         Scope(project_root=source.parent, files=(source.name,)), AnalyzerContext()
-    )
+    ).findings
 
     named = [finding for finding in findings if finding.category == THREAD_SAFETY_CATEGORY]
     assert named, f"expected a {THREAD_SAFETY_CATEGORY} finding, got {findings!r}"

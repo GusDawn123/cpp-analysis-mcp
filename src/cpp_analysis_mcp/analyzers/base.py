@@ -13,11 +13,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
-from cpp_analysis_mcp.store.models import CapabilityStatus, Finding
+from cpp_analysis_mcp.store.models import CapabilityStatus, Finding, SuggestedFix
 
 __all__ = [
     "Analyzer",
     "AnalyzerContext",
+    "AnalyzerRun",
     "Applicability",
     "CostTier",
     "Registry",
@@ -42,8 +43,8 @@ class UnitOfWork(StrEnum):
     """The granularity an analyzer naturally works in, declared rather than assumed.
 
     clang-tidy wants translation units, sanitizers want build targets, and forcing
-    either into per-file calls would be wrong twice. Escalation depends on this too:
-    a TARGET-grained analyzer can be pointed at the one target a finding implicates.
+    either into per-file calls would be wrong twice. Dynamic verification depends on
+    this too: a TARGET-grained analyzer is pointed at the target a finding implicates.
     """
 
     FILE = "file"
@@ -110,6 +111,18 @@ class Applicability:
             raise ValueError("eligible verdicts carry no reason; refusals require one")
 
 
+@dataclass(frozen=True, slots=True)
+class AnalyzerRun:
+    """What one analyzer produced: what it observed, and what its tool offered to fix.
+
+    Suggestions travel beside the findings rather than inside them -- the Finding schema
+    is frozen (ADR-0002) -- and are paired back up a layer, where a report is shaped.
+    """
+
+    findings: tuple[Finding, ...]
+    suggestions: tuple[SuggestedFix, ...] = ()
+
+
 class Analyzer(Protocol):
     """What every tool implements -- structurally, no base class to inherit.
 
@@ -123,7 +136,7 @@ class Analyzer(Protocol):
 
     def applicable(self, scope: Scope, context: AnalyzerContext) -> Applicability: ...
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]: ...
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun: ...
 
 
 @dataclass(frozen=True, slots=True)

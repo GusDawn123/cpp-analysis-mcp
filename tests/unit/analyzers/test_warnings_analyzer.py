@@ -63,17 +63,21 @@ def test_parsed_diagnostics_pass_through_with_their_own_tool_intact() -> None:
     )
     analyzer = WarningsAnalyzer(check=ScriptedCheck(report))
 
-    findings = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    produced = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
 
-    assert findings == (parsed,)
-    assert findings[0].tool == "clang"  # the parser's attribution survives the adapter
+    assert produced.findings == (parsed,)
+    # the compiler offers no machine-readable fixes, so this plugin never carries any
+    assert produced.suggestions == ()
+    assert produced.findings[0].tool == "clang"  # the parser's attribution survives the adapter
 
 
 def test_a_failed_compile_names_the_thread_safety_stage() -> None:
     failure = BuildFailure(stage="thread-safety", output="a.cpp:2:14: error: expected ';'")
     analyzer = WarningsAnalyzer(check=ScriptedCheck(failure))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.tool == "compiler-warnings"
     assert finding.id == "compiler-warnings-thread-safety-failed"
@@ -84,7 +88,9 @@ def test_a_stale_capability_confesses_under_this_plugins_name() -> None:
     gone = CapabilityStatus(available=False, reason="gcc offers no -Wthread-safety")
     analyzer = WarningsAnalyzer(check=ScriptedCheck(gone))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.id == "compiler-warnings-unavailable"
     assert finding.message == "gcc offers no -Wthread-safety"

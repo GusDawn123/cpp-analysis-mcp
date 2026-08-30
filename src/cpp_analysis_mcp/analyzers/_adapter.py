@@ -19,11 +19,10 @@ from cpp_analysis_mcp.store.models import (
     Finding,
     Location,
     Severity,
+    SuggestedFix,
 )
 
-# what a compile-time check can be pointed at: translation units, not headers -- a header
-# is checked through the units that include it, and a bare .hpp was never meant to stand
-# alone in front of a compiler
+# headers aren't checked directly -- a header is checked through the units that include it
 CPP_SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
 
 # one file in, one of the pipeline's three ordinary outcomes out; the toolchain, platform,
@@ -115,6 +114,11 @@ def as_findings(
     )
 
 
+def offered(outcome: AnalysisReport | BuildFailure | CapabilityStatus) -> tuple[SuggestedFix, ...]:
+    """The fixes that came back with a report; a failure and a missing tool offer none."""
+    return outcome.suggested_fixes if isinstance(outcome, AnalysisReport) else ()
+
+
 def first_line(text: str) -> str:
     for line in text.splitlines():
         if line.strip():
@@ -150,6 +154,8 @@ class Checked:
     stage: str
     result: process.RunResult
     findings: tuple[Finding, ...]
+    # the tool's own machine-readable edits, where it writes any
+    suggestions: tuple[SuggestedFix, ...] = ()
     # what the caller has to know to read this result: the check set nobody chose,
     # the include paths that were never found
     notes: tuple[str, ...] = ()
@@ -197,6 +203,7 @@ def outcome(
         analysis=analysis,
         findings=checked.findings,
         build_warnings=(),
+        suggested_fixes=checked.suggestions,
         exit_code=checked.result.exit_code,
         timed_out=False,
         # the platform's caveats and this run's own, which are about what was decided for

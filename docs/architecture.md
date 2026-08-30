@@ -285,7 +285,7 @@ platform at a time.
 
 ## A principle: facts, not advice
 
-The server reports what it observed. It does not suggest code fixes.
+The server reports what it observed. It invents no advice.
 
 It is tempting to have a race report end with "consider making this atomic." But
 the server sees one finding — it does not know whether the variable is in a hot
@@ -309,7 +309,14 @@ actually good at.
 
 **One exception:** the server may advise about *itself*. "Static analysis was
 inconclusive; ThreadSanitizer would settle this" is fine — it knows its own
-tools. It just does not know your codebase.
+tools. It just does not know your codebase. The review gate ships that as a
+field beside each detailed finding, naming the runtime tool that could witness
+this class of defect, and staying silent where none watches for it.
+
+**One relay:** where a check attaches a machine-readable fix to its own
+diagnostic, the review gate forwards that edit verbatim beside the finding. The
+opinion is clang-tidy's, carried intact — the server neither wrote it nor
+decided it was right.
 
 ---
 

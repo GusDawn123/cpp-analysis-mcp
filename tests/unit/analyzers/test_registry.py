@@ -13,13 +13,14 @@ import pytest
 
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
+    AnalyzerRun,
     Applicability,
     CostTier,
     Registry,
     Scope,
     UnitOfWork,
 )
-from cpp_analysis_mcp.store.models import CapabilityStatus, Finding
+from cpp_analysis_mcp.store.models import CapabilityStatus
 
 A_SCOPE = Scope(project_root=Path("/repo"), files=("src/a.cpp", "src/b.cpp"))
 
@@ -40,7 +41,7 @@ class FakeTidy:
             return Applicability(eligible=True)
         return Applicability(eligible=False, reason="no C++ sources in scope")
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         raise AssertionError("resolution must never execute a tool")
 
 
@@ -54,7 +55,7 @@ class FakeSanitizer:
     def applicable(self, scope: Scope, context: AnalyzerContext) -> Applicability:
         return Applicability(eligible=True)
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         raise AssertionError("resolution must never execute a tool")
 
 

@@ -14,6 +14,7 @@ import pytest
 
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
+    AnalyzerRun,
     Applicability,
     CostTier,
     Registry,
@@ -22,7 +23,13 @@ from cpp_analysis_mcp.analyzers.base import (
 )
 from cpp_analysis_mcp.planner.dispatch import execute
 from cpp_analysis_mcp.planner.plan import Plan, Step, plan
-from cpp_analysis_mcp.store.models import CapabilityStatus, Finding, Location, Severity
+from cpp_analysis_mcp.store.models import (
+    CapabilityStatus,
+    Finding,
+    Location,
+    Severity,
+    SuggestedFix,
+)
 
 ROOT = Path("/repo")
 
@@ -47,6 +54,7 @@ class FakeAnalyzer:
     unit_of_work: UnitOfWork = UnitOfWork.FILE
     verdict: Applicability = field(default_factory=lambda: Applicability(eligible=True))
     found: tuple[Finding, ...] = ()
+    offers: tuple[SuggestedFix, ...] = ()
     waits_for: threading.Event | None = None
     signals: threading.Event | None = None
     ran: list[Scope] = field(default_factory=list)
@@ -54,7 +62,7 @@ class FakeAnalyzer:
     def applicable(self, scope: Scope, context: AnalyzerContext) -> Applicability:
         return self.verdict
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         self.ran.append(scope)
         if self.signals is not None:
             self.signals.set()
@@ -62,7 +70,7 @@ class FakeAnalyzer:
             assert self.waits_for.wait(timeout=5), (
                 "the tier ran serially; a parallel peer never signaled"
             )
-        return self.found
+        return AnalyzerRun(findings=self.found, suggestions=self.offers)
 
 
 def registered(*analyzers: FakeAnalyzer) -> Registry:
@@ -103,11 +111,11 @@ def test_a_dynamic_step_waits_for_the_static_tier() -> None:
 
     @dataclass
     class StaticProbe(FakeAnalyzer):
-        def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+        def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
             self.ran.append(scope)
             # the window in which a missing tier barrier would start the dynamic step
             assert not dynamic_started.wait(timeout=0.2), "dynamic work began mid-static-tier"
-            return ()
+            return AnalyzerRun(findings=())
 
     static = StaticProbe("lint")
     deep = FakeAnalyzer("deep", cost_tier=CostTier.DYNAMIC_MINUTES, signals=dynamic_started)
@@ -160,3 +168,24 @@ def test_a_plan_naming_an_unknown_analyzer_is_a_caller_bug() -> None:
 
     with pytest.raises(KeyError, match="ghost"):
         execute(decided, a_scope(), AnalyzerContext(), Registry())
+
+
+def test_what_an_analyzer_offered_to_fix_arrives_with_what_it_found() -> None:
+    """Dispatch is a courier: a plugin's fixes must reach the caller unopened, or the
+    report has a finding whose committable fix was dropped between layers."""
+    offered = SuggestedFix(
+        check="bugprone-use-after-move",
+        file="src/a.cpp",
+        at=12,
+        line=12,
+        replaced="order",
+        replacement="std::move(order)",
+    )
+    lint = FakeAnalyzer("lint", found=(a_finding("lint"),), offers=(offered,))
+    registry = registered(lint)
+    scope, context = a_scope(), allowing("lint")
+
+    (executed,) = execute(plan(scope, context, registry), scope, context, registry)
+
+    assert executed.findings == (a_finding("lint"),)
+    assert executed.suggestions == (offered,)

@@ -58,7 +58,7 @@ def scope_of(fixture: str) -> Scope:
 def test_the_plugin_names_the_planted_bug_on_its_marked_line() -> None:
     analyzer = a_real_analyzer(checks=NULLPTR_CHECKS)
 
-    findings = analyzer.run(scope_of(NULLPTR_ZERO), AnalyzerContext())
+    findings = analyzer.run(scope_of(NULLPTR_ZERO), AnalyzerContext()).findings
 
     named = [finding for finding in findings if finding.category == TIDY_CATEGORY]
     assert named, f"expected a {TIDY_CATEGORY} finding, got {findings!r}"
@@ -66,10 +66,23 @@ def test_the_plugin_names_the_planted_bug_on_its_marked_line() -> None:
     assert named[0].location.line == bug_line(NULLPTR_ZERO)
 
 
+def test_the_real_tool_hands_over_its_own_fix_for_the_planted_bug() -> None:
+    """modernize-use-nullptr ships a fix-it, so the export path is exercised end to end:
+    tidy writes the YAML, the plugin reads it back, and the edit names real source text."""
+    analyzer = a_real_analyzer(checks=NULLPTR_CHECKS)
+
+    produced = analyzer.run(scope_of(NULLPTR_ZERO), AnalyzerContext())
+
+    offered = [fix for fix in produced.suggestions if fix.check == TIDY_CATEGORY]
+    assert offered, f"expected a fix-it from {TIDY_CATEGORY}, got {produced.suggestions!r}"
+    assert offered[0].line == bug_line(NULLPTR_ZERO)
+    assert offered[0].replacement == "nullptr"
+
+
 def test_the_clean_fixture_earns_its_all_clear() -> None:
     analyzer = a_real_analyzer(checks=NULLPTR_CHECKS)
 
-    findings = analyzer.run(scope_of(CLEAN), AnalyzerContext())
+    findings = analyzer.run(scope_of(CLEAN), AnalyzerContext()).findings
 
     # notes about check-set choices are fine; errors and warnings are not
     assert all(finding.severity == Severity.NOTE for finding in findings)

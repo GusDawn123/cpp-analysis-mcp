@@ -1,0 +1,11 @@
+id: why-slow-project-profiles-first
+title: A whole-build slowness question profiles the project
+prompt: >-
+  The orderbook_bench target in {project} takes twice as long as it did before the rewrite.
+  Where is the time going?
+needs_project: true
+expected:
+  first_tool: profile_project
+  calls: [profile_project]
+  never: [sanitize_file, sanitize_project, sanitize_snippet]
+  max_calls: 6

@@ -90,18 +90,28 @@ review(project_dir, against="main")
 analyzers over exactly those, and subtracts the baseline. What
 comes back is what your change added, and nothing else.
 
-The report has four parts:
+The report leads with counts by danger tier: critical, major,
+minor, style, unrated. Witnessed beats suspected — critical is
+reserved for what a runtime tool watched happen, so a compile-time
+review never reports one, and a linter matching patterns in source
+text tops out at major. Style is counted and indexed but never
+spends a detail slot, so a hundred opinions about naming cannot
+bury the one use-after-move.
 
-- **An index** of every new finding, one line each, with a
-  fingerprint. `get_finding` fetches any one of them whole by that
-  fingerprint, so a long report never crowds out the code you are
-  reasoning about.
-- **Full detail** for the top few, picked for severity and spread
-  rather than the first few in file order.
+Under the counts, four parts:
+
+- **An index** of every new finding, one line each, with its tier
+  and a fingerprint. `get_finding` fetches any one of them whole by
+  that fingerprint, so a long report never crowds out the code you
+  are reasoning about.
+- **Full detail** for the top few, picked for danger and spread
+  rather than the first few in file order. Each carries
+  clang-tidy's own committable edit where the check offered one,
+  and names the runtime tool that could watch this defect happen —
+  silent where nothing runtime watches for it.
 - **A plan trace**: what ran, what was skipped, and why, in words.
-- **Escalation proposals**: static evidence that a runtime check
-  would be worth its minutes. It proposes. It never spends your
-  minutes behind your back.
+- **The compilation database** that decided how your files parsed,
+  and a note when the root held more than one to choose between.
 
 It also knows when to stop trusting itself. A baseline retires the
 moment the world moves under it: a different compiler, changed
@@ -176,13 +186,13 @@ your AI agent (Claude Code, Cursor, anything that speaks MCP)
     pipelines/       the recipes: review, check, sanitize, profile
         |
     planner/         what runs and why: git scope, gates, cost
-        |            tiers, parallel dispatch, escalation rules
+        |            tiers, parallel dispatch, the plan trace
         |
     analyzers/       one contract, N plugins, each owning its own
         |            invocation and its own gate
         |
     store/           where findings become one thing: fingerprints,
-        |            baselines, the subtraction, ranking
+        |            baselines, the subtraction, tiers, ranking
         |
    +----------+-------------+
    |          |             |
@@ -215,7 +225,7 @@ The reasoning behind the load-bearing choices lives in
 
 ## Tests
 
-730 unit tests run anywhere, no compiler needed. Integration tests
+845 unit tests run anywhere, no compiler needed. Integration tests
 compile and run fixtures with planted bugs, and golden outputs
 captured on Linux, macOS, and Windows keep every parser honest.
 
@@ -227,6 +237,22 @@ Review has to come back with exactly the planted one.
 ```bash
 make test
 ```
+
+## Grading the agent
+
+Tests prove the tools work. Nothing there proves an agent *uses*
+them well, and that is its own failure mode: reaching for a
+sanitizer before a linter, calling a clean compile-time result an
+all-clear, claiming a rewrite is faster without racing it.
+
+`evals/` grades that. Twenty-three tasks pair a prompt a user might
+really send with the calls that should follow, and a grader reads
+the session transcript to say which habits held.
+
+The fake driver replays checked-in recordings, costs nothing, and
+rides the unit suite. The real driver composes the headless session
+and refuses to start one without being told to spend, so the
+scorecard for a live agent is deliberately still blank.
 
 ## License
 

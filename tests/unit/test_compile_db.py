@@ -98,6 +98,27 @@ def test_find_under_prefers_beside_the_root_over_a_build_tree(tmp_path: Path) ->
     assert compile_db.find_under(tmp_path) == beside
 
 
+def test_every_database_under_the_root_is_listed_with_the_chosen_one_first(
+    tmp_path: Path,
+) -> None:
+    """A report that names the database it read has to know what it chose between."""
+    source, _ = a_project(tmp_path)
+    build = write_db(tmp_path / "build", [{"directory": str(tmp_path), "file": str(source)}])
+    debug = write_db(tmp_path / "build-debug", [{"directory": str(tmp_path), "file": str(source)}])
+    beside = write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+
+    found = compile_db.databases_under(tmp_path)
+
+    assert found[0] == beside == compile_db.find_under(tmp_path)
+    assert set(found) == {beside, build, debug}
+
+
+def test_a_root_with_no_database_lists_nothing(tmp_path: Path) -> None:
+    a_project(tmp_path)
+
+    assert compile_db.databases_under(tmp_path) == ()
+
+
 def test_find_under_stays_inside_the_root(tmp_path: Path) -> None:
     """find() walks upward on purpose; a project-scoped lookup must not, or a parent
     checkout's database would describe someone else's build."""

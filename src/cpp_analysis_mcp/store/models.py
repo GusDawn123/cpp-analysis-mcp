@@ -27,6 +27,7 @@ __all__ = [
     "ProfileReport",
     "SanitizerKind",
     "Severity",
+    "SuggestedFix",
     "ThreadAccess",
     "Variant",
     "VariantResult",
@@ -149,6 +150,26 @@ class Finding:
 
 
 @dataclass(frozen=True, slots=True)
+class SuggestedFix:
+    """An edit a tool offered for one of its own findings, ready to apply.
+
+    Reported beside a finding rather than on it: the Finding schema is frozen (ADR-0002),
+    and a fix is what a tool would do about an observation, not part of the observation.
+    """
+
+    # the check whose diagnostic carried the edit; with `file` and `at` -- the diagnostic's
+    # own line -- what pairs it to exactly one finding, not every sibling in the file
+    check: str
+    file: str
+    at: int
+    line: int
+    # the source this would overwrite, so a reader can see the edit rather than trust it.
+    # Empty for an insertion, which is what most fix-its are
+    replaced: str
+    replacement: str
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityStatus:
     """Whether one analysis works on this machine, and why not when it doesn't."""
 
@@ -212,6 +233,8 @@ class AnalysisReport:
     findings: tuple[Finding, ...]
     # compile-time findings from the build step, distinct from what the run observed
     build_warnings: tuple[Finding, ...] = ()
+    # machine-readable edits the tool handed over with its diagnostics, where it offers any
+    suggested_fixes: tuple[SuggestedFix, ...] = ()
     # the program's own exit status: a crash with no sanitizer report is still a fact
     exit_code: int | None = None
     timed_out: bool = False
@@ -238,9 +261,8 @@ class FullCheckReport:
     and `failed_builds` carry the ones that could not, each with its reason. Without
     those two, a battery missing half its detectors would read as a clean bill of health.
 
-    The one model here without slots=. It is the only dataclass returned bare from a
-    tool, and the SDK's schema builder reads class attributes for defaults on that path,
-    where a slots descriptor gets mistaken for an unserializable default.
+    The one model without slots=: returned bare from a tool, whose schema builder reads
+    class attributes for defaults and mistakes a slots descriptor for an unserializable one.
     """
 
     findings: tuple[Finding, ...]

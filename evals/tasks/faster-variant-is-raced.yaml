@@ -1,0 +1,12 @@
+id: faster-variant-is-raced
+title: Which version is faster is settled by a race, not by reading
+prompt: >-
+  Here are two versions of the matching loop -- the original from
+  {project}/engine/src/OrderBook.cpp and one that reserves the vector up front. Which is
+  faster on this machine?
+needs_project: true
+expected:
+  first_tool: benchmark_variants
+  calls: [benchmark_variants]
+  never: [static_check_file, sanitize_file]
+  max_calls: 4

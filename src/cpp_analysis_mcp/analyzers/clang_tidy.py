@@ -5,6 +5,7 @@ triggers toolchain discovery; file_check() builds the real one, binding a toolch
 platform, and runner it is handed -- never ones it goes looking for.
 """
 
+import tempfile
 from pathlib import Path
 
 from cpp_analysis_mcp.analyzers._adapter import (
@@ -16,11 +17,13 @@ from cpp_analysis_mcp.analyzers._adapter import (
     as_findings,
     checkable_sources,
     membership_gate,
+    offered,
     outcome,
     project_flags,
 )
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
+    AnalyzerRun,
     Applicability,
     CostTier,
     Scope,
@@ -28,6 +31,7 @@ from cpp_analysis_mcp.analyzers.base import (
 )
 from cpp_analysis_mcp.capabilities import CLANG_TIDY, find_clang_tidy
 from cpp_analysis_mcp.parsers.clang_tidy import parse as parse_tidy
+from cpp_analysis_mcp.parsers.tidy_fixes import parse as parse_fixes
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner, hygienic_env
 from cpp_analysis_mcp.store.models import (
@@ -36,6 +40,7 @@ from cpp_analysis_mcp.store.models import (
     BuildFailure,
     CapabilityStatus,
     Finding,
+    SuggestedFix,
 )
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -49,18 +54,16 @@ __all__ = [
 
 STAGE = "clang-tidy"
 
+EXPORT_PREFIX = "cpp-analysis-tidy-"
+
 # the files clang-tidy itself looks for above a source file, in its own order
 TIDY_CONFIG_NAMES = (".clang-tidy", "_clang-tidy")
 
-# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy above the
-# file, clang-tidy 22 exits 1 printing "Error: no checks enabled." and its whole usage text,
-# which parses to no findings and reads as a broken tool. Measured. So a project that has
-# committed no configuration gets one, and is told that it did.
-#
-# Correctness and cost, not style: these are the families whose findings are worth acting on
-# without knowing anything about a project's conventions. readability-* and modernize-* are
-# deliberately absent -- they are opinions about how code should look, and handing someone a
-# hundred of them unasked buries the four that matter.
+# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy, it exits 1
+# printing "Error: no checks enabled." and its usage text, parsing to no findings and reading
+# as a broken tool -- measured behavior. So an unconfigured project gets a default: correctness
+# and cost families only, since readability-* and modernize-* are opinions about style that
+# would bury the few findings that matter under a hundred unasked ones.
 DEFAULT_CHECKS = "bugprone-*,clang-analyzer-*,performance-*,portability-*"
 
 DEFAULT_CHECKS_NOTE = (
@@ -86,12 +89,14 @@ class ClangTidyAnalyzer:
             no_sources_reason="no translation units in scope: clang-tidy analyzes what compiles",
         )
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         findings: list[Finding] = []
+        suggestions: list[SuggestedFix] = []
         for file in checkable_sources(scope, context):
             checked = self._check(scope.project_root / file)
             findings.extend(as_findings(checked, file, self.name))
-        return tuple(findings)
+            suggestions.extend(offered(checked))
+        return AnalyzerRun(findings=tuple(findings), suggestions=tuple(suggestions))
 
 
 def file_check(
@@ -147,30 +152,55 @@ def _invoke(
 
     database, project = project_flags(source)
     effective, chosen_note = _tidy_checks(source, checks)
-    result = runner(
-        [
-            str(tidy),
-            # omitted only when the project committed a .clang-tidy: that file is then what
-            # decides, which is what a project asking for its own checks means
-            *((f"--checks={effective}",) if effective is not None else ()),
-            str(source),
-            # everything past -- is the compilation this file would have had
-            "--",
-            STANDARD,
-            *platform.compile_extras,
-            # and what it really did have, when a build wrote that down
-            *project,
-        ],
-        timeout_s=timeout_s,
-        env=hygienic_env({}),
-    )
+    # a scratch directory of this check's own: parallel checks would otherwise export over
+    # each other, and the file is read back before the block removes it
+    with tempfile.TemporaryDirectory(prefix=EXPORT_PREFIX, ignore_cleanup_errors=True) as scratch:
+        exported = Path(scratch) / "fixes.yaml"
+        result = runner(
+            [
+                str(tidy),
+                # omitted only when the project committed a .clang-tidy: that file is then
+                # what decides, which is what a project asking for its own checks means
+                *((f"--checks={effective}",) if effective is not None else ()),
+                # the same diagnostics again as YAML, with the edits behind them attached
+                f"--export-fixes={exported}",
+                str(source),
+                # everything past -- is the compilation this file would have had
+                "--",
+                STANDARD,
+                *platform.compile_extras,
+                # and what it really did have, when a build wrote that down
+                *project,
+            ],
+            timeout_s=timeout_s,
+            env=hygienic_env({}),
+        )
+        suggestions = _exported(exported)
     return Checked(
         stage=STAGE,
         result=result,
         findings=parse_tidy(result.output),
+        suggestions=suggestions,
         notes=(*chosen_note, *(() if database is not None else (NO_DATABASE_NOTE,))),
         database=database,
     )
+
+
+def _exported(path: Path) -> tuple[SuggestedFix, ...]:
+    """Read back the fix-its clang-tidy wrote, if it wrote a readable file at all."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ()
+    return parse_fixes(text, _file_bytes)
+
+
+def _file_bytes(file: str) -> bytes | None:
+    """The bytes an export's offsets index into; None for a file gone since the check."""
+    try:
+        return Path(file).read_bytes()
+    except OSError:
+        return None
 
 
 def _tidy_checks(source: Path, checks: str | None) -> tuple[str | None, tuple[str, ...]]:

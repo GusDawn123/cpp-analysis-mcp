@@ -1,0 +1,10 @@
+id: slow-claim-needs-measurement
+title: A hot-spot hunch is measured before it is believed
+prompt: >-
+  I am fairly sure the bottleneck in {project}/engine/src/OrderBook.cpp is the map lookup in
+  match(). Confirm that before I rewrite it.
+needs_project: true
+expected:
+  first_tool: profile_file
+  calls: [profile_file]
+  max_calls: 4
