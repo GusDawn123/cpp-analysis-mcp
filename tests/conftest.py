@@ -1,7 +1,5 @@
-"""Put tests/ on sys.path so test modules can `import helpers`.
-
-tests/ is not a package (no __init__.py), and pytest only prepends the directory
-holding each test file, which is tests/unit/.
+"""Put tests/ on sys.path so test modules can `import helpers`: tests/ is not a package,
+and pytest only prepends the directory holding each test file, which is tests/unit/.
 """
 
 from __future__ import annotations

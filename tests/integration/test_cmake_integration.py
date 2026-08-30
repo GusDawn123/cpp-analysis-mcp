@@ -1,8 +1,6 @@
-"""Build the real fixture project with the real cmake on this machine, then run it.
-
-The unit suite fakes the File API reply; this proves the codemodel, binary path, and
-linked sanitizer flags are all real (a dropped flag yields a clean, silent binary). The
-fixture ships one library plus one executable so target selection has something to filter.
+"""Build the real fixture project with the real cmake on this machine, then run it. The
+unit suite fakes the File API reply; this proves codemodel, binary path, and linked flags
+are real (a dropped flag yields a clean, silent binary). One library plus one executable.
 """
 
 from __future__ import annotations

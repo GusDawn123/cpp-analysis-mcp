@@ -1,8 +1,6 @@
-"""Baselines: the identities a past run already knew, remembered with their alibi.
-
-A baseline is trusted only while the world that produced it holds still: the
-invalidation facts and the fingerprint scheme travel with the saved set, and any
-drift reads as "no baseline" -- a wrong subtraction would hide real findings.
+"""Baselines: the identities a past run already knew, remembered with their alibi. Trusted
+only while the world that produced them holds still -- the invalidation facts and scheme
+travel with the saved set, and any drift reads as "no baseline".
 """
 
 from __future__ import annotations
@@ -58,11 +56,9 @@ def load(
     scheme: int,
     key: Mapping[str, str],
 ) -> Baseline | None:
-    """Return the remembered baseline, or None when there is none worth trusting.
-
-    Missing, unreadable, wrong ref, wrong scheme, and any drifted or newly tracked
-    fact all read the same way on purpose: no baseline. The caller reports every
-    finding instead of subtracting against a world that no longer exists.
+    """The remembered baseline, or None when there is none worth trusting. Missing,
+    unreadable, wrong ref or scheme, and any drifted fact all read the same on purpose:
+    no baseline -- report everything rather than subtract against a vanished world.
     """
     path = _path(cache_dir, project_root, ref)
     try:

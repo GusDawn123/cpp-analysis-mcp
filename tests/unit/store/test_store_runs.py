@@ -1,7 +1,6 @@
-"""The remembered last run: findings written whole, read back by fingerprint.
-
-get_finding's memory. A run that cannot be read answers None like a run that never
-happened -- the miss explains itself upstream instead of crashing here.
+"""The remembered last run: findings written whole, read back through find() -- the memory
+behind the get_finding tool. A run that cannot be read answers None like a run that never
+happened; the miss explains itself upstream instead of crashing here.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
-"""Prove the gate chain refuses in order, explains itself, and never executes a tool.
-
-The fakes are plain classes with no shared base -- one static tier, one dynamic -- both
-fitting the registry without a branch. A consultation counter proves short-circuiting: a
-disabled analyzer's own (possibly costly) gates must never run, since cheap refusals come first.
+"""Prove the gate chain refuses in order, explains itself, and never executes a tool. The
+fakes are plain classes with no shared base; a consultation counter proves short-circuiting,
+since a disabled analyzer's own (possibly costly) gates must never run.
 """
 
 from __future__ import annotations

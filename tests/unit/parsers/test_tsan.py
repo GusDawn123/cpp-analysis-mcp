@@ -1,9 +1,6 @@
-"""Pin the ThreadSanitizer parser against the committed goldens.
-
-Every expected value here was read out of the golden file it names. clang and gcc
-attribute the same planted bug to different lines and report different ops, so each
-platform gets its own hardcoded numbers rather than a shared assumption. The parser
-only ever sees text: the tests read the goldens, the parser does not.
+"""Pin the ThreadSanitizer parser against the committed goldens. clang and gcc attribute
+the same planted bug to different lines and ops, so each platform gets its own hardcoded
+numbers. The parser only ever sees text: the tests read the goldens, the parser does not.
 """
 
 from __future__ import annotations

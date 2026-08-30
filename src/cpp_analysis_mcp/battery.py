@@ -1,9 +1,6 @@
-"""Run every correctness analysis over one file and merge what they saw.
-
-Sits above the pipelines, below the server: the layer rule bars a pipeline from
-importing another, but this needs all of them, so the composition lives here instead.
-Merging deduplicates, since all four sanitizer builds share warning flags and would
-otherwise report one compile-time warning four times.
+"""Run every correctness analysis over one file and merge what they saw. Sits above the
+pipelines, below the server: this needs all of them, so the composition lives here.
+Merging deduplicates -- four sanitizer builds would report one compile warning four times.
 """
 
 from __future__ import annotations
@@ -57,10 +54,9 @@ def check_file(
     build_dir: Path,
     checks: str | None = None,
 ) -> FullCheckReport:
-    """Run the whole battery and fold six outcomes into one report.
-
-    An unavailable analysis or a failed build never stops the rest: each lands in its
-    own section of the report with its reason, and the analyses that could run still do.
+    """Run the whole battery and fold six outcomes into one report. An unavailable analysis
+    or a failed build never stops the rest: each lands in its own section with its reason,
+    and the analyses that could run still do.
     """
     with ThreadPoolExecutor(max_workers=len(CORRECTNESS)) as pool:
         futures = {

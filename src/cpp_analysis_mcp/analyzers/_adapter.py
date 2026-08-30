@@ -1,8 +1,6 @@
 """The shared spine of the compile-time plugins: gates, screening, invocation, outcomes.
-
-Private on purpose -- plugins share this spine, but it isn't contract surface, and
-nothing outside analyzers/ may import it. Extracted once a second plugin (compiler
-warnings, alongside clang-tidy) needed the same TU-grained, seconds-cheap shape.
+Private on purpose -- nothing outside analyzers/ may import it, and it is not contract
+surface. Extracted when a second plugin needed the same TU-grained, seconds-cheap shape.
 """
 
 from collections.abc import Callable
@@ -27,19 +25,13 @@ from cpp_analysis_mcp.store.triage import NOTE_CATEGORY
 # headers aren't checked directly -- a header is checked through the units that include it
 CPP_SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
 
-# one file in, one of the pipeline's three ordinary outcomes out; the toolchain, platform,
-# probes, and per-tool choices are already inside the callable
 CheckFile = Callable[[Path], AnalysisReport | BuildFailure | CapabilityStatus]
 
 
 def checkable_sources(scope: Scope, context: AnalyzerContext) -> tuple[str, ...]:
-    """The files a compile-time plugin may actually check, gate and run agreeing.
-
-    A caller-named scope is checked verbatim: the user pointed at those exact files, and
-    a header parses standalone today. For a scan, suffix first; then, when a compilation
-    database is known, only its members -- checking a file the build never compiles
-    manufactures exactly the missing-include noise the membership gate exists to prevent.
-    An empty database means none is known, and the suffixes decide alone.
+    """The files a compile-time plugin may actually check, gate and run agreeing. A
+    caller-named scope is checked verbatim; scans filter by suffix, then by database
+    membership when one is known, since unbuilt files parse into missing-include noise.
     """
     if scope.caller_named:
         return scope.files
@@ -52,10 +44,9 @@ def checkable_sources(scope: Scope, context: AnalyzerContext) -> tuple[str, ...]
 def membership_gate(
     scope: Scope, context: AnalyzerContext, *, no_sources_reason: str
 ) -> Applicability:
-    """The two gates every compile-time plugin shares, refusing in the same order.
-
-    Both are selection gates, so a caller-named scope passes them outright (Scope says
-    why); the capability gate is the registry's and binds regardless.
+    """The two gates every compile-time plugin shares, refusing in the same order. Both
+    are selection gates, so a caller-named scope passes them outright (Scope says why);
+    the capability gate is the registry's and binds regardless.
     """
     if scope.caller_named:
         return Applicability(eligible=True)
@@ -167,11 +158,9 @@ class Checked:
 
 
 def project_flags(source: Path) -> tuple[Path | None, tuple[str, ...]]:
-    """Find this file's compilation database and take the flags it needs to parse.
-
-    Both checks want the same thing and neither can do its job without it: a file that
-    includes a project header is unparseable until something says where that header lives,
-    and the build already wrote it down.
+    """Find this file's compilation database and take the flags it needs to parse: a file
+    that includes a project header is unparseable until something says where that header
+    lives, and the build already wrote it down.
     """
     database = compile_db.find(source)
     if database is None:
@@ -185,10 +174,9 @@ def outcome(
     """Decide whether what came back is a report or the failure that replaced one."""
     if checked.result.timed_out:
         return BuildFailure(stage=checked.stage, output=checked.result.output, timed_out=True)
-    # a nonzero exit with findings behind it is code that does not compile, and clang-tidy
-    # files those under clang-diagnostic-error like any other check -- structured beats a
-    # text blob. A nonzero exit with nothing parsed is the tool itself failing, and that
-    # output is the only thing that explains it.
+    # a nonzero exit with findings is code that does not compile, filed structured under
+    # clang-diagnostic-error; a nonzero exit with nothing parsed is the tool itself
+    # failing, and its output is the only thing that explains it
     if checked.result.exit_code != 0 and not checked.findings:
         # an unresolved include with no database behind the check is the one failure this
         # layer can explain and fix; every other one belongs to the code and the tool's

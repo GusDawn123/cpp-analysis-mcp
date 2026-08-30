@@ -1,8 +1,6 @@
-"""Run the whole static_check chain against the real compiler and the real clang-tidy.
-
-The unit suite replays captured output through a fake process; this proves the real loop
-end to end -- a wrong command, dropped checks, or the wrong parser would all look like the
-same empty report. The clean fixture proves that all-clear is earned, not assumed.
+"""Run the whole static_check chain against the real compiler and the real clang-tidy: a
+wrong command, dropped checks, or the wrong parser would all look like the same empty
+report. The clean fixture proves that all-clear is earned, not assumed.
 """
 
 from __future__ import annotations
@@ -39,10 +37,9 @@ TIDY_CATEGORY = "modernize-use-nullptr"
 # the nullptr fixture is silent under tidy's defaults, so the check has to be asked for
 NULLPTR_CHECKS = f"-*,{TIDY_CATEGORY}"
 
-# A guarded variable written with no lock held, with no fixture file behind it, so the snippet
-# path has to materialize it. Modelled on capabilities.THREAD_SAFETY_SOURCE: the capability
-# attributes are spelled out rather than written through the usual macros, so it needs no
-# header, and there is no main() -- which is exactly what -fsyntax-only makes checkable.
+# A guarded variable written with no lock held, materialized by the snippet path. Modelled
+# on capabilities.THREAD_SAFETY_SOURCE: attributes spelled out so it needs no header, and
+# no main() -- exactly what -fsyntax-only makes checkable.
 GUARDED_SNIPPET = """\
 struct __attribute__((capability("mutex"))) SnippetMutex {
     void lock() __attribute__((acquire_capability())) {}
@@ -78,10 +75,8 @@ def host() -> Platform:
 
 @pytest.fixture(scope="module")
 def toolchain() -> Toolchain:
-    """clang, because -Wthread-safety is clang's and no other compiler has an equivalent.
-
-    A suite that took either compiler would have to stop asserting the thing it is here to
-    check: gcc compiles the guarded-write fixture in silence. clang is also the one compiler
+    """clang, because -Wthread-safety is clang's and no other compiler has an equivalent --
+    gcc compiles the guarded-write fixture in silence. clang is also the one compiler
     present on all three target platforms.
     """
     found = [chain for chain in discover_toolchains() if chain.family == "clang"]
@@ -208,9 +203,8 @@ def test_a_snippet_that_does_not_compile_comes_back_as_error_findings(
 def test_clang_tidy_either_finds_the_null_pointer_or_says_why_it_cannot(
     toolchain: Toolchain, host: Platform, capabilities: Capabilities
 ) -> None:
-    """brew keeps llvm off PATH and plenty of machines have no clang-tidy at all.
-
-    Both branches are the same guarantee from opposite sides: a caller never gets an empty
+    """brew keeps llvm off PATH and plenty of machines have no clang-tidy at all. Both
+    branches are the same guarantee from opposite sides: a caller never gets an empty
     finding list from a check that was not running.
     """
     status = capabilities[Analysis.CLANG_TIDY]

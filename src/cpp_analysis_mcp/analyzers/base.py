@@ -1,9 +1,6 @@
 """The analyzer contract: one shape every tool fits, static or dynamic (layer 3).
-
 Nothing here executes a tool -- resolving is layer 3's job, running is layer 4's, and
-keeping that line is what keeps an analyzer a plugin instead of a pipeline. clang-tidy
-reads code in seconds; ThreadSanitizer builds and runs it for minutes, and the layers
-above must not care.
+that line is what keeps an analyzer a plugin instead of a pipeline.
 """
 
 from collections.abc import Mapping
@@ -30,9 +27,7 @@ __all__ = [
 
 class CostTier(StrEnum):
     """What running this analyzer costs, coarsely -- the planner orders cheap-first.
-
-    Two tiers because the planner currently makes exactly one ordering decision with
-    them; more tiers than decisions would be taxonomy for its own sake.
+    Two tiers because the planner makes exactly one ordering decision with them.
     """
 
     STATIC_SECONDS = "static-seconds"
@@ -40,11 +35,9 @@ class CostTier(StrEnum):
 
 
 class UnitOfWork(StrEnum):
-    """The granularity an analyzer naturally works in, declared rather than assumed.
-
-    clang-tidy wants translation units, sanitizers want build targets, and forcing
-    either into per-file calls would be wrong twice. Dynamic verification depends on
-    this too: a TARGET-grained analyzer is pointed at the target a finding implicates.
+    """The granularity an analyzer naturally works in, declared rather than assumed:
+    clang-tidy wants translation units, sanitizers want build targets, and dynamic
+    verification points a TARGET-grained analyzer at the target a finding implicates.
     """
 
     FILE = "file"
@@ -55,18 +48,15 @@ class UnitOfWork(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Scope:
-    """The files a run is about, already resolved to concrete paths.
-
-    Resolution -- diff against a ref, an explicit list, the whole project -- happens
-    above this layer; analyzers receive the outcome and never touch git.
+    """The files a run is about, already resolved to concrete paths. Resolution -- diff,
+    explicit list, whole project -- happens above this layer; analyzers never touch git.
     """
 
     project_root: Path
     files: tuple[str, ...]
-    # whether a caller pointed at these exact files, rather than a scan resolving them.
-    # Selection gates (suffix, build membership) exist to pick files out of a scan and
-    # have nothing to pick when the user already pointed; capability gates bind either
-    # way. Explicit naming wins over selection; nothing wins over a tool that cannot run.
+    # whether a caller pointed at these exact files rather than a scan resolving them:
+    # selection gates pick files out of a scan and have nothing to pick when the user
+    # already pointed; capability gates bind either way
     caller_named: bool = False
 
 
@@ -75,12 +65,9 @@ _NO_CAPABILITIES: Mapping[str, CapabilityStatus] = MappingProxyType({})
 
 @dataclass(frozen=True, slots=True)
 class AnalyzerContext:
-    """What gates are allowed to know: configuration, the build, and the probes.
-
-    Deliberately not the server's Context -- layer 3 sees only what its gates consult,
-    which is also exactly what a test must fake. `enabled=None` means no configuration
-    spoke, and everything is enabled; an empty frozenset means configuration spoke and
-    said nothing is.
+    """What gates are allowed to know: configuration, the build, and the probes --
+    deliberately not the server's Context, and exactly what a test must fake.
+    `enabled=None` means no configuration spoke; an empty frozenset means it said no to all.
     """
 
     enabled: frozenset[str] | None = None
@@ -88,19 +75,16 @@ class AnalyzerContext:
     # membership gate for compilation-dependent tools, precomputed to a set so each
     # lookup is O(1) rather than a scan
     translation_units: frozenset[str] = frozenset()
-    # probe results keyed by analyzer name; a missing entry is an unconsulted probe,
-    # which the capability gate treats as "not available" rather than "probably fine".
-    # the factory hands every instance the same immutable empty proxy -- dataclasses
-    # refuses an unhashable default outright, and a fresh dict would be pointless churn
+    # probe results keyed by analyzer name; a missing entry is an unconsulted probe, which
+    # the capability gate reads as "not available" rather than "probably fine". The shared
+    # empty proxy exists because dataclasses refuses an unhashable default outright
     capabilities: Mapping[str, CapabilityStatus] = field(default_factory=lambda: _NO_CAPABILITIES)
 
 
 @dataclass(frozen=True, slots=True)
 class Applicability:
-    """A gate verdict with its why. Eligible verdicts carry no reason; refusals must.
-
-    The contract is enforced, not just documented: a reasonless refusal would put a
-    silent skip in the plan trace, and a reasoned approval would invite gates to chat.
+    """A gate verdict with its why. Eligible verdicts carry no reason; refusals must --
+    enforced, because a reasonless refusal would put a silent skip in the plan trace.
     """
 
     eligible: bool
@@ -114,9 +98,7 @@ class Applicability:
 @dataclass(frozen=True, slots=True)
 class AnalyzerRun:
     """What one analyzer produced: what it observed, and what its tool offered to fix.
-
-    Suggestions travel beside the findings rather than inside them -- the Finding schema
-    is frozen (ADR-0002) -- and are paired back up a layer, where a report is shaped.
+    Suggestions travel beside the findings -- the Finding schema is frozen (ADR-0002).
     """
 
     findings: tuple[Finding, ...]
@@ -124,10 +106,8 @@ class AnalyzerRun:
 
 
 class Analyzer(Protocol):
-    """What every tool implements -- structurally, no base class to inherit.
-
-    `applicable` holds the tool-specific gates (do these files concern me, are they in the
-    build); the registry wraps it with the generic gates so it doesn't have to repeat them.
+    """What every tool implements -- structurally, no base class to inherit. `applicable`
+    holds the tool's own gates; the registry wraps them with the generic ones.
     """
 
     name: str
@@ -148,13 +128,9 @@ class Resolution:
 
 
 class Registry:
-    """Registered analyzers, and the gate chain that turns scope into verdicts.
-
-    The chain runs in a fixed order and stops at the first refusal, so the reported
-    reason is always the earliest gate that said no: disabled in configuration, then
-    the analyzer's own gates, then the capability probes. Resolution never executes
-    a tool and touches nothing outside its arguments -- same scope and context, same
-    verdicts, every time.
+    """Registered analyzers, and the gate chain that turns scope into verdicts. The chain
+    stops at the first refusal -- configuration, then the analyzer's own gates, then the
+    capability probes -- and resolution never executes a tool: same inputs, same verdicts.
     """
 
     def __init__(self) -> None:

@@ -1,9 +1,6 @@
-"""Keep scripts/fixtures.py, the C++ fixtures, and the captured goldens in agreement.
-
-The support matrix in scripts/fixtures.py is the ground truth for which fixture proves
-which tool still works. These tests fail when the three drift apart -- a case naming a
-source that no longer exists, a source nothing exercises, a golden that no case explains.
-No compiler is involved; everything here is reading files.
+"""Keep scripts/fixtures.py, the C++ fixtures, and the captured goldens in agreement: the
+support matrix is ground truth for which fixture proves which tool, and these fail when
+the three drift apart. No compiler is involved; everything here is reading files.
 """
 
 from __future__ import annotations

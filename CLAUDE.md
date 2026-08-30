@@ -44,18 +44,18 @@ newer the maintainer says, the maintainer wins — then update this file.
 Chunk completion: full suite + goldens green → PR to `develop` linking the chunk's
 spec → the maintainer merges.
 
-## Comments & docs (policy of 2026-08-27, replacing the earlier literary style)
+## Comments & docs (policy of 2026-08-30, replacing the 3-5 line rule)
 
-- Module docstrings: 3–5 lines. Long "why" stories live in ADRs or `docs/`, so files
+- Module docstrings: 1–3 lines. Long "why" stories live in ADRs or `docs/`, so files
   scan fast.
-- Every paragraph comment or docstring body: 3–5 lines max, and write at the floor,
+- Every paragraph comment or docstring body: 1–3 lines max, and write at the floor,
   not the cap. A one-thought comment stays a single line.
 - Comment only non-obvious logic: regex/parser edge cases, security and timeouts,
   platform quirks, measured tool behavior. Never restate what the code says.
 - Not every function gets a docstring — public contracts and weird corners only;
   private helpers with clear names stay quiet.
 - Product copy lives in `server.py` alone (tool descriptions, instructions). No other
-  module re-teaches the escalation ladder.
+  module re-teaches the tool ladder.
 
 ## Clean habits
 

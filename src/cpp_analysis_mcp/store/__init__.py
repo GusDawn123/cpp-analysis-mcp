@@ -1,9 +1,6 @@
-"""The store: the shared vocabulary, finding identity, and the operations over both.
-
-Layer 2 of architecture v2. Models are the nouns every layer speaks; fingerprints give
-findings an identity that survives edits; triage says how dangerous one is; FindingStore
-answers what a review gate asks -- what is new, what agrees, what is hidden, what to
-show first.
+"""The store: shared vocabulary, finding identity, and the operations over both (layer 2).
+Models are the nouns every layer speaks; fingerprints give findings an identity that
+survives edits; triage rates danger; FindingStore answers what the review gate asks.
 """
 
 from cpp_analysis_mcp.store.fingerprints import (

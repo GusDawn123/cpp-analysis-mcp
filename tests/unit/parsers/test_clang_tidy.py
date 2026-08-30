@@ -1,8 +1,6 @@
 """Pin the clang-tidy parser against a captured run of the modernize-use-nullptr check.
-
-Every number and string here was read off the golden by eye, not computed from the parser
-it checks, so drift in line, category, or message fails instead of moving with it. Synthetic
-cases cover what one clean capture can't show: compile errors, multi-check lines, and noise.
+Every number here was read off the golden by eye, not computed from the parser it checks.
+Synthetic cases cover what one clean capture can't: compile errors, multi-check lines, noise.
 """
 
 from __future__ import annotations

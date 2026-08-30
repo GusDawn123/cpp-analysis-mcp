@@ -1,8 +1,6 @@
-"""Check the LSan parser against the committed leak goldens.
-
-LSan only runs on Linux, so there are two goldens. Every constant was read out of
-the golden it is keyed by; the multi-record cases below are hand-written in the same
-format, since no captured run leaks twice.
+"""Check the LSan parser against the committed leak goldens (LSan only runs on Linux, so
+there are two). Every constant was read out of the golden it is keyed by; the multi-record
+cases are hand-written in the same format, since no captured run leaks twice.
 """
 
 from __future__ import annotations

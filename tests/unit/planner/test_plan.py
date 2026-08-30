@@ -1,7 +1,6 @@
-"""The plan is the trace: what will run in what order, what will not and why.
-
-Built from the registry's verdicts and nothing else -- planning never executes a
-tool, and the same scope, context, and registry produce the same plan every time.
+"""The plan is the trace: what will run in what order, what will not and why. Built from
+the registry's verdicts and nothing else -- planning never executes a tool, and the same
+scope, context, and registry produce the same plan every time.
 """
 
 from __future__ import annotations

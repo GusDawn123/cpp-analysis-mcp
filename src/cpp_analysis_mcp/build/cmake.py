@@ -1,9 +1,6 @@
-"""Build a real CMake project into a BuiltBinary, or say which cmake step died.
-
-Finds the binary by asking, not guessing: a File API query written before configuring
-makes cmake record every target and artifact path as part of the configure that follows,
-with no layout-guessing that breaks with the generator or OUTPUT_NAME. Toolchain and
-Platform always arrive as arguments (rule 3) -- nothing here looks up the host.
+"""Build a real CMake project into a BuiltBinary, or say which cmake step died. The binary
+is found by asking, not guessing: a File API query written before configuring makes cmake
+record every target and artifact path. Toolchain and Platform arrive as arguments (rule 3).
 """
 
 from __future__ import annotations
@@ -51,11 +48,8 @@ class _Executable:
 @dataclass(frozen=True, slots=True)
 class _Configuration:
     """The codemodel configuration this build will use: its name and its runnable targets.
-
-    Single-config generators produce one entry named "" (we pin CMAKE_BUILD_TYPE empty).
-    Multi-config generators (Xcode, Ninja Multi-Config) ignore CMAKE_BUILD_TYPE and list
-    several entries, each with its own artifact paths -- so the name is part of the answer:
-    the build must be told to produce the configuration whose paths we are reporting.
+    Multi-config generators ignore CMAKE_BUILD_TYPE and list several entries with their own
+    artifact paths, so the build must be told to produce the configuration reported here.
     """
 
     name: str
@@ -74,18 +68,9 @@ def build_project(
     timeout_s: int = CMAKE_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> BuiltBinary | BuildFailure:
-    """Configure and build a CMake project, under a sanitizer or under none.
-
-    `timeout_s` bounds each cmake invocation on its own rather than the pair, so a project
-    that configures slowly and then builds slowly gets the full allowance twice.
-
-    With no `target`, a project holding exactly one executable builds it; anything else comes
-    back as a failure naming the targets there are, since picking one for the caller is a
-    guess and the wrong guess wastes minutes.
-
-    `base_flags` is what an unsanitized build compiles with, and a sanitized one ignores it:
-    every sanitizer flag set is built on BASE_FLAGS already. It exists so the profiler can
-    ask for its own optimization level without a second build module.
+    """Configure and build a CMake project, under a sanitizer or under none. `timeout_s`
+    bounds each cmake invocation alone; with no `target`, only a one-executable project
+    builds rather than a failure naming the targets. Sanitized builds ignore `base_flags`.
     """
     _write_query(build_dir)
 
@@ -217,10 +202,9 @@ def _build_command(build_dir: Path, target: str, configuration: str) -> list[str
 
 
 def _configuration(reply_dir: Path) -> _Configuration | None:
-    """Return the configuration the File API reported first, or None when it cannot be read.
-
-    None and a configuration with no executables are different answers: one is "cmake did
-    not tell us", the other is "cmake told us, and this project has nothing to run".
+    """The configuration the File API reported first, or None when it cannot be read.
+    None and a configuration with no executables are different answers: "cmake did not
+    tell us" versus "cmake told us, and this project has nothing to run".
     """
     index = _current_index(reply_dir)
     if index is None:
@@ -256,11 +240,8 @@ def _configuration(reply_dir: Path) -> _Configuration | None:
 
 
 def _current_index(reply_dir: Path) -> Path | None:
-    """Return the reply's current index file.
-
-    A reconfigure leaves the old indexes in place beside the new one, and cmake documents
-    the current reply as the lexicographically greatest name -- the timestamp in it sorts
-    the same way it runs.
+    """The reply's current index file: a reconfigure leaves old indexes beside the new
+    one, and cmake documents the current reply as the lexicographically greatest name.
     """
     if not reply_dir.is_dir():
         return None

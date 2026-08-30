@@ -1,8 +1,5 @@
-"""Gate on the capability, build optimized, record, report -- one profiling run.
-
-Built optimized, not instrumented: a sanitizer accepts -O1's slowdown for the code it
-was given, but a profiler wants the code that will actually run -- -O2 inlines
-differently, and profiling the -O1 build ranks call sites the release binary lacks.
+"""Gate on the capability, build optimized, record, report -- one profiling run. Optimized
+because -O2 inlines differently: an -O1 profile ranks call sites the release binary lacks.
 Composes primitives only (rule 1); Platform and Toolchain arrive as arguments (rule 3).
 """
 
@@ -28,9 +25,8 @@ from cpp_analysis_mcp.store.models import (
 )
 from cpp_analysis_mcp.toolchains.base import PROFILE_FLAGS, Toolchain
 
-# a profiled binary runs at very close to its normal speed -- sampling costs a timer
-# interrupt, not the 10x a sanitizer's instrumentation does -- so this is five minutes of
-# real work rather than five minutes of overhead, and a benchmark worth profiling uses it
+# sampling costs a timer interrupt, not a sanitizer's 10x, so a profiled binary runs at
+# near-normal speed and this budget is five minutes of real work rather than of overhead
 RUN_TIMEOUT_S = 300
 
 # reading the trace back means resolving every sampled address against the binary and every
@@ -57,10 +53,9 @@ def profile_file(
     run_timeout_s: int = RUN_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> ProfileReport | BuildFailure | CapabilityStatus:
-    """Build one source file optimized and report where running it spent its time.
-
-    Three outcomes, all of them ordinary: a report, the build failure that stopped one being
-    produced, or the capability status saying this machine cannot profile at all.
+    """Build one source file optimized and report where running it spent its time. Three
+    ordinary outcomes: a report, the build failure that stopped one, or the capability
+    status saying this machine cannot profile at all.
     """
     # a hard stop, not a degrade: a profiler that was never watching produces an empty
     # hotspot list, and an empty hotspot list reads exactly like a program with no hot code
@@ -96,11 +91,8 @@ def profile_project(
     runner: Runner = process.run,
 ) -> ProfileReport | BuildFailure | CapabilityStatus:
     """Build a CMake project optimized and report where running its binary spent its time.
-
-    With no `target`, a project holding one executable builds it; anything else comes back
-    as the build's failure naming the targets there are. On a project that has a benchmark
-    target, that target is almost always the one worth naming here: profiling whatever the
-    default happens to be measures its startup.
+    With no `target`, a one-executable project builds it; anything else is the build's
+    failure naming the targets. Prefer a benchmark target: the default measures its startup.
     """
     status = capabilities[Analysis.PROFILE]
     if not status.available:
@@ -130,13 +122,9 @@ def _observe(
     run_timeout_s: int,
     runner: Runner,
 ) -> ProfileReport:
-    """Sample the binary, then read the trace back into a ranking.
-
-    The report step runs whatever the recording exited with. A workload that crashed halfway
-    still profiled the half it reached, and a recording killed at its timeout still holds
-    every sample taken before the kill -- refusing to read either would throw away the only
-    measurement there is. What the run did is carried on the report instead, where a reader
-    weighing the ranking can see it: `exit_code`, `timed_out`, and above all `samples`.
+    """Sample the binary, then read the trace back into a ranking. The report step runs
+    whatever the recording exited with -- a crashed or killed workload still holds every
+    sample it took, and `exit_code`, `timed_out`, and `samples` tell the reader what happened.
     """
     data = built.build_dir / profiler.DATA_NAME
     recorded = runner(
@@ -177,12 +165,9 @@ def _attributed(spots: Sequence[Hotspot], root: Path) -> tuple[Hotspot, ...]:
 
 
 def _roots(root: Path) -> tuple[PurePosixPath, ...]:
-    """Every absolute spelling the profiled project can appear under in a perf report.
-
-    The bridge hands the toolchain a /mnt/<drive> path, so that is the form a Windows tree
-    comes back in; the host's own spelling covers a run that never crossed into WSL. The
-    resolved spellings join the given ones, so a caller's relative path still draws the
-    boundary without disturbing a root that was already absolute.
+    """Every absolute spelling the profiled project can appear under in a perf report: the
+    bridge's /mnt/<drive> form for a run that crossed into WSL, the host's own for one that
+    did not, and resolved spellings so a caller's relative root still draws the boundary.
     """
     resolved = root.resolve()
     spellings = (
@@ -195,11 +180,9 @@ def _roots(root: Path) -> tuple[PurePosixPath, ...]:
 
 
 def _inside(location: Location | None, roots: tuple[PurePosixPath, ...]) -> bool:
-    """Report whether a location is the project's own, by path alone.
-
-    Nothing is stat'd: a bridged run reports Linux paths this host cannot see. A relative
-    line, a location perf never placed, and a root absolute in no spelling all read as
-    inside -- the note is added on a match, never on a guess.
+    """Report whether a location is the project's own, by path alone -- nothing is stat'd,
+    because a bridged run reports Linux paths this host cannot see. Relative lines and
+    unplaced locations read as inside: the note is added on a match, never on a guess.
     """
     if location is None or not roots:
         return True

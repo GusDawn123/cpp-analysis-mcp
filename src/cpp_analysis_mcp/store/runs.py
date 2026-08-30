@@ -1,5 +1,4 @@
-"""The remembered last run: findings written whole, read back by fingerprint.
-
+"""The remembered last run: findings written whole, read back by fingerprint --
 get_finding's memory, written on every review and audit. A run that cannot be read
 answers None like a run that never happened; the miss explains itself upstream.
 """
