@@ -7,14 +7,22 @@ build at -O1, drop a recording because its run failed, or rank with no sample co
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cpp_analysis_mcp.pipelines.profile import profile_file, profile_project
+from cpp_analysis_mcp.pipelines.profile import OUTSIDE_NOTE, profile_file, profile_project
 from cpp_analysis_mcp.platforms.base import Denial, Platform
 from cpp_analysis_mcp.process import RunResult
-from cpp_analysis_mcp.store.models import Analysis, BuildFailure, CapabilityStatus, ProfileReport
+from cpp_analysis_mcp.store.models import (
+    Analysis,
+    BuildFailure,
+    CapabilityStatus,
+    Hotspot,
+    Location,
+    ProfileReport,
+)
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # spelled through Path so the string compares equal to str(Path(...)) on Windows too
@@ -350,3 +358,171 @@ def test_library_machinery_is_named_with_its_breadcrumb(tmp_path: Path) -> None:
     assert result.fingerprints[0].candidates
     assert result.next_step is not None
     assert "benchmark_variants" in result.next_step
+
+
+# --------------------------------------------------------------- where a hotspot's line is
+
+# real evidence, reassembled from a field run: perf placed a 3.75% sample from the user's
+# own AddOrder inside the libstdc++ header the optimizer inlined there, .. segments and all
+FIELD_FUNCTION = "OrderBook::AddOrder(std::shared_ptr<Order> const&)"
+LIBRARY_HEADER = "/usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/stl_function.h"
+FIELD_REPORT = (
+    "# Samples: 4108  of event 'cpu/cycles/P'\n"
+    "#\n"
+    "# Children;    Self;Symbol           ;Source:Line          ;IPC   [IPC Coverage]\n"
+    f" 100.00%; 3.75%  ;[.] {FIELD_FUNCTION} ;{LIBRARY_HEADER}:398 ;-      -\n"
+)
+
+# the source REPORT's own rows were compiled from, so a row placed beside it reads as inside
+NATIVE_SOURCE = Path("/work/bench.cpp")
+
+# a Windows-spelled project, so the bridge's respelling is exercised on every host rather
+# than only when these tests happen to run on Windows
+BRIDGED_PROJECT = Path("C:/work/orderbook")
+BRIDGED_ROOT = "/mnt/c/work/orderbook"
+
+BENCH_TARGET = "orderbook_bench"
+
+# how the parser opens its note for a frame the optimizer folded away; this pipeline's note
+# has to arrive after one like it without disturbing it
+INLINED_PREFIX = "inlined into its caller"
+
+
+def a_report(source_line: str) -> str:
+    """The field row placed at one source line, under a cumulative share the parser leaves
+    unremarked -- so any note on the result came from this pipeline."""
+    return (
+        "# Samples: 4108  of event 'cpu/cycles/P'\n"
+        "#\n"
+        "# Children;    Self;Symbol           ;Source:Line          ;IPC   [IPC Coverage]\n"
+        f" 90.00% ; 85.00% ;[.] {FIELD_FUNCTION} ;{source_line} ;-      -\n"
+    )
+
+
+def hotspots_of(report: str, source: Path, tmp_path: Path) -> tuple[Hotspot, ...]:
+    """Profile `source` against a scripted perf report and hand back the ranking."""
+    runner = FakeRunner({"report": RunResult(exit_code=0, output=report)})
+    answer = profile_file(
+        source,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=available(),
+        build_dir=tmp_path / "build",
+        runner=runner,
+    )
+    assert isinstance(answer, ProfileReport)
+    return answer.hotspots
+
+
+def a_cmake_reply(build_dir: Path, target: str) -> None:
+    """Leave behind the File API reply a real configure would have written.
+
+    build_project reads the reply off disk after its configure returns, so planting it up
+    front is all a faked configure needs. The layout is cmake's own contract.
+    """
+    reply = build_dir / ".cmake" / "api" / "v1" / "reply"
+    reply.mkdir(parents=True, exist_ok=True)
+    written = {
+        "target.json": {"name": target, "type": "EXECUTABLE", "artifacts": [{"path": target}]},
+        "codemodel-v2-stamp.json": {
+            "configurations": [
+                {"name": "", "targets": [{"name": target, "jsonFile": "target.json"}]}
+            ]
+        },
+        "index-stamp.json": {"reply": {"codemodel-v2": {"jsonFile": "codemodel-v2-stamp.json"}}},
+    }
+    for name, document in written.items():
+        (reply / name).write_text(json.dumps(document), encoding="utf-8")
+
+
+def test_a_line_inside_the_project_is_reported_as_it_stands(tmp_path: Path) -> None:
+    """The ordinary case, and the one the note must never reach: there is nothing to say
+    about a hotspot whose line is in the code that was profiled."""
+    spots = hotspots_of(a_report("/work/bench.cpp:6"), NATIVE_SOURCE, tmp_path)
+
+    assert spots[0].note is None
+
+
+def test_a_line_in_library_code_says_the_function_is_what_to_act_on(tmp_path: Path) -> None:
+    """The field bug. The header is where perf put the sample; it is not where the user's
+    hotspot lives, and nobody can act on a line in stl_function.h."""
+    spots = hotspots_of(FIELD_REPORT, NATIVE_SOURCE, tmp_path)
+
+    assert spots[0].function == FIELD_FUNCTION
+    assert spots[0].note == OUTSIDE_NOTE
+    # labelled, never dropped: the location is evidence, just not an address to go open
+    assert spots[0].location == Location(file=LIBRARY_HEADER, line=398)
+
+
+def test_the_bridges_spelling_of_the_project_is_the_projects_own_code(tmp_path: Path) -> None:
+    """The profiler runs through WSL, so a Windows project's own files come back spelled
+    /mnt/c/... . Matched against the Windows root as it stands, every one reads as foreign."""
+    placed = a_report(f"{BRIDGED_ROOT}/src/book.cpp:88")
+
+    spots = hotspots_of(placed, BRIDGED_PROJECT / "bench.cpp", tmp_path)
+
+    assert spots[0].note is None
+
+
+def test_a_note_the_parser_already_wrote_survives_the_one_added_here(tmp_path: Path) -> None:
+    """Two true things about one row. The pipeline appends to what the parser observed
+    rather than replacing it, joined the way the parser joins its own."""
+    inlined = FIELD_REPORT.replace("const&) ;", "const&) (inlined) ;")
+
+    spots = hotspots_of(inlined, NATIVE_SOURCE, tmp_path)
+
+    assert spots[0].note is not None
+    assert spots[0].note.startswith(INLINED_PREFIX)
+    assert spots[0].note.endswith(f"; {OUTSIDE_NOTE}")
+
+
+def test_a_relative_line_is_the_projects_own_code(tmp_path: Path) -> None:
+    """Debug info recorded relative to the build directory places a line without naming any
+    root. There is no outside to claim, so nothing is claimed."""
+    spots = hotspots_of(a_report("src/book.cpp:88"), NATIVE_SOURCE, tmp_path)
+
+    assert spots[0].note is None
+
+
+def test_a_relative_project_path_still_places_the_boundary(tmp_path: Path) -> None:
+    """An MCP caller may hand the project over as a relative path; the boundary must
+    resolve with it rather than silently vanishing along with every note."""
+    spots = hotspots_of(FIELD_REPORT, Path("work/bench.cpp"), tmp_path)
+
+    assert spots[0].note == OUTSIDE_NOTE
+
+
+def test_a_hotspot_perf_could_not_place_is_left_unannotated(tmp_path: Path) -> None:
+    """No location is not a location outside the project. A row perf could not place says
+    nothing about where its code lives, and the note would be inventing an answer."""
+    unplaced = REPORT + " 5.00%  ; 5.00%  ;[.] operator new(unsigned long) ;??:0 ;-      -\n"
+
+    spots = hotspots_of(unplaced, NATIVE_SOURCE, tmp_path)
+
+    unnamed = next(spot for spot in spots if spot.function == "operator new(unsigned long)")
+    assert unnamed.location is None
+    assert unnamed.note is None
+
+
+def test_a_project_profile_places_its_hotspots_against_the_project_root(tmp_path: Path) -> None:
+    """Both entry points shape through one path, and the root a project profile uses is the
+    project it was pointed at -- not the scratch directory it happened to build into."""
+    build_dir = tmp_path / "build"
+    a_cmake_reply(build_dir, BENCH_TARGET)
+    own_row = f" 40.00%; 20.00% ;[.] OrderBook::Match() ;{BRIDGED_ROOT}/src/book.cpp:88 ;-  -\n"
+    runner = FakeRunner({"report": RunResult(exit_code=0, output=FIELD_REPORT + own_row)})
+
+    answer = profile_project(
+        BRIDGED_PROJECT,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=available(),
+        build_dir=build_dir,
+        target=BENCH_TARGET,
+        runner=runner,
+    )
+
+    assert isinstance(answer, ProfileReport)
+    noted = {spot.function: spot.note for spot in answer.hotspots}
+    assert noted["OrderBook::Match()"] is None
+    assert noted[FIELD_FUNCTION] == OUTSIDE_NOTE
