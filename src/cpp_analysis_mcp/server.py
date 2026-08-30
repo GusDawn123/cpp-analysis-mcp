@@ -65,8 +65,7 @@ locked. Escalating is the point, though: a clean compile-time result is not an a
 because a data race, a leak and a use-after-free exist only while the program is running.
 
 For "did MY change break anything?", the review gate: audit records a ref's whole picture
-once, then review reports only the findings your change introduced, with proposals naming
-which runtime check would be worth its minutes:
+once, then review reports only the findings your change introduced:
 
   audit, review, get_finding                seconds   the compile-time tier over git scope
 
@@ -160,9 +159,16 @@ Reports only the findings your current change introduced, compared against a git
 The review gate: run this before declaring work done. It asks git what changed since
 `against`, runs every applicable compile-time analyzer over exactly those files, and
 subtracts the ref's recorded baseline so pre-existing findings stay out of the way. What
-comes back is an index of every new finding with its fingerprint, full detail for the top
-few, the plan trace saying what ran and what was skipped and why, and any escalation
-proposals -- static evidence that a runtime check would be worth its minutes.
+comes back is counts by danger tier, an index of every new finding with its fingerprint,
+full detail for the top few, the plan trace saying what ran and what was skipped and why,
+and the name of the compilation database that decided how your files parsed. Each detailed
+finding carries clang-tidy's own committable fix where the check offered one, and names the
+runtime tool that could watch the defect happen rather than suspect it.
+
+Read the tiers first. Critical means a runtime tool watched the defect happen, so a
+compile-time review never reports one -- a linter suspects, and tops out at major. Style
+is counted but never takes a detail slot, so the one use-after-move is not buried under a
+hundred opinions about naming.
 
 Subtraction needs a memory: run audit on the ref once to record its baseline. With no
 trustworthy baseline, everything found is reported and a note says so -- never a silent
@@ -179,7 +185,10 @@ name, or the commit when detached -- and retires itself the moment the world cha
 new compiler, changed flags, an edited clang-tidy config.
 
 Costs seconds per file and executes nothing. The report is the same shape review returns:
-an index of everything, detail for the top few, and the plan trace.
+counts by danger tier, an index of everything, detail for the top few -- each with the fix
+its check offered and the runtime tool that could witness it -- the plan trace, and the
+compilation database it read. Critical is reserved for defects a runtime tool watched
+happen, so an audit of the compile-time tier counts none of them.
 """
 
 GET_FINDING_DOC = """\
@@ -580,7 +589,7 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the ten tools against one server; `lifespan` is the seam a test starts through.
+    """Register every tool against one server; `lifespan` is the seam a test starts through.
 
     The default is what ships. A test injects a context it wrote down instead, because the
     live one probes the machine the suite happens to be running on.

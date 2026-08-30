@@ -1,0 +1,12 @@
+id: static-first-on-snippet
+title: A pasted snippet gets the compile-time rung first
+prompt: >-
+  Is anything wrong with this? I have not compiled it yet.
+
+  void trim(std::vector<Level>& book) { for (auto it = book.begin(); it != book.end(); ++it)
+  if (it->qty == 0) book.erase(it); }
+needs_project: false
+expected:
+  first_tool: static_check_snippet
+  never: [sanitize_project, profile_project]
+  max_calls: 4

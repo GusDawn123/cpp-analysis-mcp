@@ -1,6 +1,6 @@
 # Open questions
 
-Decisions not yet made. Input wanted on all of these — especially #1.
+Decisions not yet made. Input wanted on all of these.
 
 Each section gives the context, the options considered, current thinking, and the
 specific thing that needs deciding.
@@ -8,6 +8,13 @@ specific thing that needs deciding.
 ---
 
 ## 1. Output volume vs. usefulness
+
+**Settled 2026-08-30.** The review gate shipped the answer: an index of
+everything with fingerprints, full detail for the top five, `get_finding` as a
+separate tool rather than a `detail_level` parameter, and ranking by diversity
+after severity. Danger tier now decides who may spend a detail slot — style is
+counted and indexed, never expanded. `pipelines/review.py` shapes the report;
+`store/triage.py` holds the tier table.
 
 **The tension.** Every finding returned costs tokens in the AI's limited context
 window. Return too much and the findings crowd out the source code the AI needs
@@ -92,7 +99,8 @@ finding plus full detail for the top N:
     {"id": "tsan-2", "category": "data-race", "file": "src/cache.cpp",
      "line": 61, "occurrences": 3}
   ],
-  "detailed": [ /* full findings for top 5 */ ],
+  "detailed": [ /* top 5, each a finding plus the fix its check offered
+                   and the runtime tool that could witness it */ ],
   "truncated": true,
   "total_unique": 47
 }
@@ -314,6 +322,11 @@ means the tool only does half of what it claims.
 ---
 
 ## Resolved
+
+**How much should a report return, and shaped how?**
+Settled 2026-08-30 — see [section 1](#1-output-volume-vs-usefulness). A thin
+index of everything, full detail for the top five, `get_finding` for the rest,
+and a danger tier deciding which findings may spend a detail slot at all.
 
 **What is the safety model for executing user code?**
 Resolved 2026-08-05 — see [section 3](#3-safety-model) for the full reasoning.

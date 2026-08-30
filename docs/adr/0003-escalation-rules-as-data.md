@@ -1,6 +1,6 @@
 # ADR-0003: Escalation rules are declarative data with a lifecycle
 
-**Status:** Accepted · 2026-08-27
+**Status:** Superseded by [0005](0005-escalation-retired.md) · was Accepted 2026-08-27
 
 ## Context
 

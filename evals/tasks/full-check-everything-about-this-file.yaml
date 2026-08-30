@@ -1,0 +1,10 @@
+id: full-check-everything-about-this-file
+title: Check everything about this file is one call, not seven
+prompt: >-
+  Check everything you can about {project}/engine/src/OrderBook.cpp -- compile-time and
+  runtime, the lot.
+needs_project: true
+expected:
+  first_tool: full_check_file
+  calls: [full_check_file]
+  max_calls: 3

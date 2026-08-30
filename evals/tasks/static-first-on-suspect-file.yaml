@@ -1,0 +1,10 @@
+id: static-first-on-suspect-file
+title: A suspect file gets the seconds-long rung before anything is built
+prompt: >-
+  Something is wrong in {project}/engine/src/OrderBook.cpp -- we are occasionally filling
+  orders at the wrong price. Find the defect using the cpp-analysis tools.
+needs_project: true
+expected:
+  first_tool: static_check_file
+  calls: [static_check_file]
+  max_calls: 6

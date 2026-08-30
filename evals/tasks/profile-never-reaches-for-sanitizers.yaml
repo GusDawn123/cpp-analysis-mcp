@@ -1,0 +1,10 @@
+id: profile-never-reaches-for-sanitizers
+title: The slowness question never spends minutes on the correctness ladder
+prompt: >-
+  {project}/engine/src/JsonEngine.cpp is the slowest thing in the pipeline. It is correct --
+  I just want to know what it spends its time on.
+needs_project: true
+expected:
+  first_tool: profile_file
+  never: [sanitize_file, sanitize_project, sanitize_snippet, full_check_file]
+  max_calls: 4

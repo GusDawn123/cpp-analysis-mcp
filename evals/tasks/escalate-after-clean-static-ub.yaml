@@ -1,0 +1,13 @@
+id: escalate-after-clean-static-ub
+title: A clean compile-time result does not settle suspected undefined behaviour
+prompt: >-
+  {project}/engine/src/OrderBook.cpp gives different results under -O0 and -O2, which usually
+  means undefined behaviour. Find out what it is doing.
+needs_project: true
+expected:
+  first_tool: static_check_file
+  calls: [static_check_file, sanitize_file]
+  after_clean_escalates_to:
+    after: static_check_file
+    escalates_to: sanitize_file
+  max_calls: 8

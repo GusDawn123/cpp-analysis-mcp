@@ -1,0 +1,13 @@
+id: escalate-after-clean-static-leak
+title: A clean compile-time result does not settle a suspected leak
+prompt: >-
+  Resident memory climbs all session in the cancel path of
+  {project}/engine/src/OrderBook.cpp, and never comes back down. Is something leaking?
+needs_project: true
+expected:
+  first_tool: static_check_file
+  calls: [static_check_file, sanitize_file]
+  after_clean_escalates_to:
+    after: static_check_file
+    escalates_to: sanitize_file
+  max_calls: 8

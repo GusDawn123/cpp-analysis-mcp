@@ -19,6 +19,7 @@ from cpp_analysis_mcp.store.models import (
     Finding,
     Location,
     Severity,
+    SuggestedFix,
 )
 
 ROOT = Path("/repo")
@@ -35,11 +36,16 @@ def a_parsed_finding(file: str = "src/a.cpp", line: int = 12) -> Finding:
     )
 
 
-def a_report(*findings: Finding, limitations: tuple[str, ...] = ()) -> AnalysisReport:
+def a_report(
+    *findings: Finding,
+    limitations: tuple[str, ...] = (),
+    fixes: tuple[SuggestedFix, ...] = (),
+) -> AnalysisReport:
     return AnalysisReport(
         analysis=Analysis.CLANG_TIDY,
         findings=findings,
         limitations=limitations,
+        suggested_fixes=fixes,
         verified_by="test probe",
     )
 
@@ -121,9 +127,9 @@ def test_reports_pass_their_findings_through_untouched() -> None:
     parsed = a_parsed_finding()
     analyzer = ClangTidyAnalyzer(check=RecordingCheck(a_report(parsed)))
 
-    findings = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    produced = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
 
-    assert findings == (parsed,)
+    assert produced.findings == (parsed,)
 
 
 def test_only_translation_units_are_checked_and_each_exactly_once() -> None:
@@ -156,7 +162,9 @@ def test_pipeline_notes_become_note_findings_ranked_to_speak_last() -> None:
     note = "this project committed no .clang-tidy, so a default check set was used"
     analyzer = ClangTidyAnalyzer(check=RecordingCheck(a_report(limitations=(note,))))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.severity == Severity.NOTE
     assert finding.category == "analysis-note"
@@ -170,7 +178,9 @@ def test_a_build_failure_speaks_as_an_error_finding_naming_its_stage() -> None:
     )
     analyzer = ClangTidyAnalyzer(check=RecordingCheck(failure))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.severity == Severity.ERROR
     assert finding.category == "clang-tidy-failed"
@@ -186,7 +196,9 @@ def test_a_failures_diagnosed_reason_outranks_its_raw_output() -> None:
     )
     analyzer = ClangTidyAnalyzer(check=RecordingCheck(failure))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.message == "no compile_commands.json was found near this file"
 
@@ -195,7 +207,9 @@ def test_a_detector_that_stopped_watching_says_so_instead_of_sounding_clean() ->
     gone = CapabilityStatus(available=False, reason="clang-tidy is not on PATH")
     analyzer = ClangTidyAnalyzer(check=RecordingCheck(gone))
 
-    (finding,) = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+    (finding,) = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext()
+    ).findings
 
     assert finding.severity == Severity.ERROR
     assert finding.category == "tool-unavailable"
@@ -269,3 +283,54 @@ def test_the_plugin_registers_and_resolves_like_any_analyzer() -> None:
 
     assert resolution.analyzer.name == "clang-tidy"
     assert resolution.verdict.eligible
+
+
+# ---------------------------------------------------------------- offered fixes
+
+
+def a_fix(file: str = "src/a.cpp") -> SuggestedFix:
+    return SuggestedFix(
+        check="bugprone-use-after-move",
+        file=file,
+        at=12,
+        line=12,
+        replaced="order",
+        replacement="std::move(order)",
+    )
+
+
+def test_the_fixes_a_report_offered_travel_out_beside_its_findings() -> None:
+    offered = a_fix()
+    analyzer = ClangTidyAnalyzer(
+        check=RecordingCheck(a_report(a_parsed_finding(), fixes=(offered,)))
+    )
+
+    produced = analyzer.run(Scope(project_root=ROOT, files=("src/a.cpp",)), AnalyzerContext())
+
+    assert produced.suggestions == (offered,)
+
+
+def test_every_checked_file_contributes_the_fixes_it_was_offered() -> None:
+    first, second = a_fix("src/a.cpp"), a_fix("src/b.cc")
+    check = RecordingCheck(a_report(fixes=(first,)), a_report(fixes=(second,)))
+    analyzer = ClangTidyAnalyzer(check=check)
+
+    produced = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp", "src/b.cc")), AnalyzerContext()
+    )
+
+    assert produced.suggestions == (first, second)
+
+
+def test_an_outcome_that_is_not_a_report_offers_nothing() -> None:
+    """A failure and a missing tool both still speak as findings; neither can suggest."""
+    failure = BuildFailure(stage="clang-tidy", output="error: no checks enabled")
+    gone = CapabilityStatus(available=False, reason="clang-tidy is not on PATH")
+    analyzer = ClangTidyAnalyzer(check=RecordingCheck(failure, gone))
+
+    produced = analyzer.run(
+        Scope(project_root=ROOT, files=("src/a.cpp", "src/b.cc")), AnalyzerContext()
+    )
+
+    assert produced.suggestions == ()
+    assert len(produced.findings) == 2
