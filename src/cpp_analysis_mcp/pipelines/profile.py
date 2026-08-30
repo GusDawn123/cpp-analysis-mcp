@@ -8,10 +8,11 @@ Composes primitives only (rule 1); Platform and Toolchain arrive as arguments (r
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from pathlib import Path, PurePosixPath
 
-from cpp_analysis_mcp import fingerprints, process, profiler
+from cpp_analysis_mcp import fingerprints, process, profiler, wsl
 from cpp_analysis_mcp.build import cmake, single_file
 from cpp_analysis_mcp.parsers import perf
 from cpp_analysis_mcp.platforms.base import Platform
@@ -21,6 +22,8 @@ from cpp_analysis_mcp.store.models import (
     BuildFailure,
     BuiltBinary,
     CapabilityStatus,
+    Hotspot,
+    Location,
     ProfileReport,
 )
 from cpp_analysis_mcp.toolchains.base import PROFILE_FLAGS, Toolchain
@@ -33,6 +36,14 @@ RUN_TIMEOUT_S = 300
 # reading the trace back means resolving every sampled address against the binary and every
 # shared library it loaded, which on a large C++ program is slower than it sounds
 REPORT_TIMEOUT_S = 120
+
+# perf places a sample at the innermost frame, which after inlining is a line in whatever
+# header the optimizer pulled in. The line is real and it is not where the hot function
+# lives, so it is labelled rather than dropped: evidence, just not an address to go open.
+OUTSIDE_NOTE = (
+    "this line is outside the profiled project, usually a library header inlined into the "
+    "function -- the function name, not this location, is what to act on"
+)
 
 
 def profile_file(
@@ -69,7 +80,7 @@ def profile_file(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(built, status, root=source.parent, run_timeout_s=run_timeout_s, runner=runner)
 
 
 def profile_project(
@@ -108,13 +119,14 @@ def profile_project(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(built, status, root=project_dir, run_timeout_s=run_timeout_s, runner=runner)
 
 
 def _observe(
     built: BuiltBinary,
     status: CapabilityStatus,
     *,
+    root: Path,
     run_timeout_s: int,
     runner: Runner,
 ) -> ProfileReport:
@@ -141,7 +153,7 @@ def _observe(
     )
 
     samples, event = perf.header(reported.output)
-    spots = perf.parse(reported.output)
+    spots = _attributed(perf.parse(reported.output), root)
     found = fingerprints.read(spots)
     return ProfileReport(
         analysis=Analysis.PROFILE,
@@ -156,3 +168,45 @@ def _observe(
         limitations=(*status.limitations, profiler.TRUNCATION),
         verified_by=status.verified_by,
     )
+
+
+def _attributed(spots: Sequence[Hotspot], root: Path) -> tuple[Hotspot, ...]:
+    """Note every hotspot whose line landed outside the project that was profiled."""
+    roots = _roots(root)
+    return tuple(spot if _inside(spot.location, roots) else _noted(spot) for spot in spots)
+
+
+def _roots(root: Path) -> tuple[PurePosixPath, ...]:
+    """Every absolute spelling the profiled project can appear under in a perf report.
+
+    The bridge hands the toolchain a /mnt/<drive> path, so that is the form a Windows tree
+    comes back in; the host's own spelling covers a run that never crossed into WSL. The
+    resolved spellings join the given ones, so a caller's relative path still draws the
+    boundary without disturbing a root that was already absolute.
+    """
+    resolved = root.resolve()
+    spellings = (
+        PurePosixPath(root.as_posix()),
+        PurePosixPath(wsl.to_wsl(str(root))),
+        PurePosixPath(resolved.as_posix()),
+        PurePosixPath(wsl.to_wsl(str(resolved))),
+    )
+    return tuple(dict.fromkeys(spelling for spelling in spellings if spelling.is_absolute()))
+
+
+def _inside(location: Location | None, roots: tuple[PurePosixPath, ...]) -> bool:
+    """Report whether a location is the project's own, by path alone.
+
+    Nothing is stat'd: a bridged run reports Linux paths this host cannot see. A relative
+    line, a location perf never placed, and a root absolute in no spelling all read as
+    inside -- the note is added on a match, never on a guess.
+    """
+    if location is None or not roots:
+        return True
+    file = PurePosixPath(location.file.replace("\\", "/"))
+    return not file.is_absolute() or any(file.is_relative_to(root) for root in roots)
+
+
+def _noted(spot: Hotspot) -> Hotspot:
+    """Append the note, keeping whatever the parser observed: both facts hold at once."""
+    return replace(spot, note=f"{spot.note}; {OUTSIDE_NOTE}" if spot.note else OUTSIDE_NOTE)
