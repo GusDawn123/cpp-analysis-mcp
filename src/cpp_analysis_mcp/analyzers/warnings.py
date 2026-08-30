@@ -1,9 +1,6 @@
-"""The compiler's own warnings behind the analyzer contract: plugin #2, and the proof
-that tools with nothing procedurally in common still fit one shape -- these findings
+"""The compiler's own warnings behind the analyzer contract: plugin #2, findings that
 fall out of a compile the toolchain was doing anyway (-fsyntax-only, -Wthread-safety).
-
-Thread-safety analysis is clang's alone, and this module never mentions that: gcc hosts
-probe it unavailable and the capability gate refuses with the probe's own reason.
+Thread-safety is clang's alone; on gcc the probe says unavailable and the gate refuses.
 """
 
 from pathlib import Path
@@ -82,7 +79,6 @@ def file_check(
     runner: Runner,
 ) -> CheckFile:
     """Bind the real compile-and-read invocation into the contract's one-argument shape.
-
     `checks` means something to clang-tidy alone; it rides on the shared signature so
     a caller never branches on the analysis before dispatching on it.
     """

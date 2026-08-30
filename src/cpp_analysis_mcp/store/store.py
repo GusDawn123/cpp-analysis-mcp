@@ -1,8 +1,6 @@
 """Where every tool's reports become one set of facts (ADR-0002, architecture v2 layer 2).
 
-In-memory and pure: no git, no filesystem, no persistence -- those belong to the scope
-resolver and caches of later phases. Suppression hides; it never deletes, so the
-complete record stays readable, in the same spirit as raw tool logs surviving on disk.
+In-memory and pure; suppression hides but never deletes, so the complete record stays readable.
 """
 
 from collections import deque
@@ -24,13 +22,9 @@ _SEVERITY_RANK: Mapping[Severity, int] = {
 
 
 class FindingStore:
-    """One run's findings, indexed by identity.
-
-    The primary index is a dict keyed by fingerprint: ingest and lookup are O(1) per
-    finding, and `new_since` is a key-difference walk, O(n + m) across two stores.
-    Insertion order is preserved everywhere order is not otherwise specified, so the
-    same reports ingested in the same order always read back the same way -- the
-    determinism claim, applied to a data structure.
+    """One run's findings in a fingerprint-keyed dict: ingest and lookup are O(1) per
+    finding, `new_since` an O(n + m) key-difference walk. Insertion order is preserved
+    wherever order is unspecified, so the same ingests always read back the same way.
     """
 
     def __init__(self) -> None:
@@ -44,17 +38,9 @@ class FindingStore:
         *,
         canonical: Callable[[str], str] | None = None,
     ) -> None:
-        """Fingerprint one run's findings and fold them in.
-
-        One run enters whole: occurrence indices resolve within a single call to
-        `fingerprint_batch`, so splitting a run across several ingests would let
-        identical duplicate lines land on the same index and wrongly merge.
-        `canonical` rides through to the hash exactly as fingerprint_batch takes it.
-
-        A repeat from the tool that already reported a fingerprint grows its
-        occurrence count. A report from a *different* tool attaches a Confirmation
-        and nothing else -- the first tool's evidence stays the finding of record,
-        and a tool confirms any one finding at most once.
+        """Fold one run in whole: occurrence indices resolve in a single `fingerprint_batch`
+        call, so a split run would wrongly merge identical duplicate lines. Same-tool repeats
+        grow the count; another tool attaches at most one Confirmation, evidence unchanged.
         """
         for stamped in fingerprint_batch(findings, read_line, canonical=canonical):
             existing = self._by_fingerprint.get(stamped.fingerprint)
@@ -71,11 +57,8 @@ class FindingStore:
                 )
 
     def findings(self, *, include_suppressed: bool = False) -> tuple[Finding, ...]:
-        """Everything on record, in the order it arrived; suppressed entries opt in.
-
-        The flag exists because suppression must be inspectable to be trustworthy:
-        hidden findings keep merging new reports, and only a reader who can still see
-        them can verify nothing was destroyed.
+        """Everything on record, in arrival order; suppressed entries opt in, because
+        suppression must stay inspectable to be trustworthy.
         """
         return tuple(
             finding
@@ -92,11 +75,8 @@ class FindingStore:
         )
 
     def new_against(self, baseline: AbstractSet[str]) -> tuple[Finding, ...]:
-        """The findings whose identity the given baseline set never saw.
-
-        The set-shaped twin of new_since, for baselines loaded from disk: only
-        identities persist across runs, never the findings that carried them.
-        Set-shaped on purpose -- membership must stay O(1) per finding.
+        """The findings whose identity the baseline set never saw -- new_since's twin for
+        baselines loaded from disk. Set-shaped on purpose: membership stays O(1) per finding.
         """
         return tuple(
             finding
@@ -107,9 +87,7 @@ class FindingStore:
     def new_since(self, baseline: "FindingStore") -> tuple[Finding, ...]:
         """The findings this store has and the baseline does not -- the review gate.
 
-        Identity is the fingerprint, so a baseline finding that moved, reformatted,
-        or reordered still matches, and only genuinely new findings survive the
-        subtraction. Suppressed findings are not news either way.
+        Fingerprints match a finding that moved or reformatted, so only genuine news survives.
         """
         return self.new_against(baseline._by_fingerprint.keys())
 
@@ -118,12 +96,9 @@ class FindingStore:
         self._suppressed.update(fingerprints)
 
     def ranked(self) -> tuple[Finding, ...]:
-        """Severity first, then variety: every place is heard from before any repeats.
-
-        Within one severity band the findings round-robin across files -- five
-        variations of one bug in one file must not crowd out the first report from
-        four other files, because a reader with a token budget sees the top of this
-        list and maybe nothing else. Ordering is stable for a given ingest history.
+        """Severity first, then variety: within a band, findings round-robin across files
+        so one noisy file cannot crowd out the rest for a token-budgeted reader who sees
+        only the top of this list. Ordering is stable for a given ingest history.
         """
         bands: dict[int, dict[str, list[Finding]]] = {}
         for finding in self.findings():
@@ -131,10 +106,8 @@ class FindingStore:
             place = finding.location.file if finding.location is not None else ""
             band.setdefault(place, []).append(finding)
 
-        # a queue of (bucket, next index) makes the round-robin linear: each finding is
-        # emitted exactly once and each bucket requeued only while it has more to say --
-        # a depth-based rescan of every bucket per pass would go quadratic when one file
-        # holds most of the findings
+        # a (bucket, next index) queue keeps the round-robin linear; rescanning every
+        # bucket per pass would go quadratic when one file holds most of the findings
         out: list[Finding] = []
         for rank in sorted(bands):
             queue: deque[tuple[list[Finding], int]] = deque(

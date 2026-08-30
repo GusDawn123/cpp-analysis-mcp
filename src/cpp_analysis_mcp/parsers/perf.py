@@ -1,9 +1,6 @@
 """Read `perf report`'s delimited table into Hotspots. Pure: no subprocess, no filesystem.
-
-Splits on a chosen delimiter rather than column widths, because the Symbol column is
-padded to the widest demangled C++ name in the profile -- a template-heavy program makes
-column positions move with the very profile being read. Anything that fails to parse is
-dropped rather than guessed at, so an invented row never competes with a measured one.
+Splits on a chosen delimiter, never column widths -- the Symbol column is padded to the
+widest demangled name. Anything that fails to parse is dropped rather than guessed at.
 """
 
 from __future__ import annotations
@@ -16,10 +13,9 @@ from cpp_analysis_mcp.store.models import Hotspot, Location
 # input have to agree on this, so it lives here and the pipeline imports it
 SEPARATOR = ";"
 
-# "# Samples: 282  of event 'cpu/cycles/P'" -- both numbers a reader needs to weigh the
-# table: a ranking built on a few dozen samples is noise wearing a decimal point, and a
-# host with no hardware counters silently profiles a timer instead, with the table
-# looking the same either way.
+# "# Samples: 282  of event 'cpu/cycles/P'" -- both numbers a reader needs: a ranking on a
+# few dozen samples is noise wearing a decimal point, and a host with no hardware counters
+# silently profiles a timer instead, the table looking the same either way
 HEADER = re.compile(r"^#\s*Samples:\s*([\dKMG]+)\s+of\s+event\s+'([^']*)'", re.MULTILINE)
 
 # perf abbreviates large sample counts in the header; the table itself is percentages, so
@@ -59,11 +55,9 @@ FIELDS = 4
 
 
 def parse(text: str) -> tuple[Hotspot, ...]:
-    """Read every table row, hottest self time first.
-
-    Sorted here rather than left in perf's order on purpose. perf ranks by cumulative time,
-    which puts `_start` and `main` at the top of every profile ever taken -- true, and never
-    the answer to where the time went. Self time is what names the code actually executing.
+    """Read every table row, hottest self time first. Sorted here on purpose: perf ranks by
+    cumulative time, which puts `_start` and `main` at the top of every profile ever taken.
+    Self time is what names the code actually executing.
     """
     found = [spot for line in text.splitlines() if (spot := _row(line)) is not None]
     # descending self, then descending cumulative, then by name so equal rows keep one order
@@ -72,11 +66,9 @@ def parse(text: str) -> tuple[Hotspot, ...]:
 
 
 def header(text: str) -> tuple[int, str]:
-    """Return how many samples the profile holds and which event they counted.
-
-    (0, "") when the header is absent, which is what a report over an empty or truncated
-    perf.data prints. Reported rather than raised: an empty profile is an ordinary outcome
-    for a program that exited before the first sample landed.
+    """How many samples the profile holds and which event they counted. (0, "") when the
+    header is absent -- what a report over an empty or truncated perf.data prints, an
+    ordinary outcome for a program that exited before the first sample landed.
     """
     matched = HEADER.search(text)
     if matched is None:
@@ -145,10 +137,9 @@ def _symbol(field: str) -> tuple[str, list[str]]:
 
 
 def _location(field: str) -> Location | None:
-    """Read "file:line", or None for every shape perf uses to mean it does not know.
-
-    Line 0 is one of those shapes: perf prints it when it resolved the object a symbol came
-    from but no line inside it, and a location a reader cannot open is worse than none.
+    """Read "file:line", or None for every shape perf uses to mean it does not know. Line 0
+    is one of those: perf prints it when it resolved the object but no line inside it, and
+    a location a reader cannot open is worse than none.
     """
     matched = SOURCE_LINE.match(field)
     if matched is None:

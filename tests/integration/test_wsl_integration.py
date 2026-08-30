@@ -1,8 +1,6 @@
-"""Run the sanitize chain through the real WSL bridge, on a machine that has one.
-
-The unit suite proves the bridge composes the right commands; this proves they still work:
-a real distro, TSan/LSan against real planted bugs, blamed from inside a Linux the caller
-never sees. Skips without a clang-capable distro -- all of CI -- where unit fakes cover it.
+"""Run the sanitize chain through the real WSL bridge, on a machine that has one: a real
+distro, TSan/LSan against real planted bugs, blamed from inside a Linux the caller never
+sees. Skips without a clang-capable distro -- all of CI -- where unit fakes cover it.
 """
 
 from __future__ import annotations

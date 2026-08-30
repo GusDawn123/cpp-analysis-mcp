@@ -1,7 +1,6 @@
 """Linux: the extra compile flag, the host facts a result depends on, and the crashes we hit.
-
-Every failure signature below was measured while capturing the goldens. Each one is a real
-tool crash whose output says nothing a reader can act on, mapped to what actually went wrong.
+Every failure signature below was measured while capturing the goldens -- real tool crashes
+whose output says nothing actionable, mapped to what actually went wrong.
 """
 
 from __future__ import annotations
@@ -69,10 +68,9 @@ def detect() -> Platform:
 
 
 def env_facts() -> dict[str, str]:
-    """Read the volatile host settings a capability result depends on.
-
-    Each is read on its own: one being unreadable says nothing about the other, and dropping
-    both because of one would retire a cache entry that is still valid.
+    """Read the volatile host settings a capability result depends on, each on its own:
+    one being unreadable says nothing about the other, and dropping both because of one
+    would retire a cache entry that is still valid.
     """
     facts: dict[str, str] = {}
     for name, path in HOST_SETTINGS.items():

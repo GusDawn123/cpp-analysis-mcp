@@ -1,8 +1,6 @@
-"""Check the UBSan parser against every committed UBSan golden.
-
-UBSan reports the source position on the runtime-error line itself, so the goldens
-agree on line and column and differ only in the path the build saw. The multi-error
-case is hand-written in the same format; no captured run trips twice.
+"""Check the UBSan parser against every committed UBSan golden. UBSan reports the source
+position on the runtime-error line itself, so the goldens agree on line and column and
+differ only in the path. The multi-error case is hand-written; no captured run trips twice.
 """
 
 from __future__ import annotations

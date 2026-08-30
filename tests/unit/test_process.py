@@ -1,8 +1,6 @@
-"""Pin the one module allowed to spawn processes.
-
-Everything here runs the interpreter already running the tests, so no C++ toolchain is
-involved. The timeout test really does wait a second: a kill that does not happen is the
-failure mode worth paying for.
+"""Pin the one module allowed to spawn processes. Everything here runs the interpreter
+already running the tests, so no C++ toolchain is involved. The timeout test really does
+wait a second: a kill that does not happen is the failure mode worth paying for.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
-"""Pin what the fingerprint table recognizes and what it refuses to guess about.
-
-The symbol names here are real: they come from profiling a deliberately naive order book
-(std::map book sides, shared_ptr per order, a hand-sorted vector) through the WSL bridge.
-If the table stops recognizing them, the report goes back to raw mangled names.
+"""Pin what the fingerprint table recognizes and what it refuses to guess about. The
+symbol names are real, profiled off a deliberately naive order book through the WSL
+bridge; if the table stops recognizing them, the report goes back to raw mangled names.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
-"""Pin the danger tiers and the verify-with hints: both are tables, read the same way.
-
-The table is the opinion, so these read it the way a report does -- a runtime tool's
-word outranks a linter's, the first matching row wins, and a category nobody has an
-opinion about says so instead of being guessed at.
+"""Pin the danger tiers and the verify-with hints: both are tables, read the way a report
+reads them -- a runtime tool's word outranks a linter's, the first matching row wins, and
+a category nobody has an opinion about says so instead of being guessed at.
 """
 
 from __future__ import annotations

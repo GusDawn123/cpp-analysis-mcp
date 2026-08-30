@@ -1,9 +1,6 @@
-"""Finding identity that survives edits: content-derived fingerprints (ADR-0002).
-
-Line numbers never enter the hash -- content moves, identity follows it; see ADR-0002 for
-the full scheme and its normative encoding. SHA-256 truncated to 16 hex chars (64 bits)
-keeps collision probability negligible even at a million findings (~3e-8, by the birthday
-bound); the 12-character alternative reaches ~2e-3 at the same scale and was rejected.
+"""Finding identity that survives edits: content-derived fingerprints (ADR-0002 holds the
+normative encoding). Line numbers never enter the hash -- content moves, identity follows.
+SHA-256 truncated to 16 hex chars keeps collision odds ~3e-8 at a million findings.
 """
 
 from collections.abc import Callable, Sequence
@@ -23,27 +20,23 @@ _DIGEST_CHARS = 16
 
 
 def _strip_ws(text: str) -> str:
-    # all whitespace, not just the edges: str.split() with no argument splits on every
-    # whitespace run. Accepted collision: "a + ++b" and "a++ + b" then share a
-    # fingerprint -- collapsing runs to one space instead would avoid that but change
-    # identity on every reformat, which happens daily.
+    # all whitespace, not just the edges: str.split() splits on every whitespace run.
+    # Accepted collision: "a + ++b" and "a++ + b" share a fingerprint -- collapsing runs
+    # to one space would avoid that but change identity on every reformat
     return "".join(text.split())
 
 
 def _normalize_path(path: str) -> str:
     # a fingerprint computed on Windows must equal one from the container, so separators
     # canonicalize to forward slashes; case is preserved because Linux filesystems care.
-    # callers hand in project-relative paths -- absolute paths would make identity depend
-    # on where the repo happens to be checked out
+    # Callers hand in project-relative paths -- absolute would tie identity to the checkout
     return path.replace("\\", "/").removeprefix("./")
 
 
 def compute_fingerprint(rule: str, path: str, line_text: str, occurrence_index: int) -> str:
-    """The pure primitive: canonicalize the four identity fields and hash them.
-
-    Every field is length-prefixed as bytes before hashing, so ("ab", "c") and
-    ("a", "bc") cannot meet at the same digest -- encoding ambiguity is not a
-    collision source this module accepts.
+    """The pure primitive: canonicalize the four identity fields and hash them. Every
+    field is length-prefixed as bytes, so ("ab", "c") and ("a", "bc") cannot meet at the
+    same digest -- encoding ambiguity is not an accepted collision source.
     """
     parts = (rule, _normalize_path(path), _strip_ws(line_text), str(occurrence_index))
     blob = bytearray()
@@ -62,16 +55,9 @@ def fingerprint(
     *,
     canonical: Callable[[str], str] | None = None,
 ) -> Finding:
-    """Return the finding carrying its identity; the original is left untouched.
-
-    A finding with no location fingerprints on rule and empty file and text -- build
-    failures and whole-run diagnostics are rare, and "the same rule with no location"
-    being one identity is the behavior a baseline wants for them. The text argument is
-    ignored for those on purpose: the spec says locationless findings contribute empty
-    text, and which entry point computed a fingerprint must never change it.
-
-    `canonical`, when given, rewrites the path before it enters the hash; the
-    finding's visible location keeps the tool's own spelling either way.
+    """Return the finding carrying its identity; the original is left untouched. A finding
+    with no location hashes its rule with empty path and text -- the spec's rule, so the
+    text argument is ignored for those. `canonical` rewrites only the path entering the hash.
     """
     if finding.location is None:
         path, line_text = "", ""
@@ -89,16 +75,9 @@ def fingerprint_batch(
     *,
     canonical: Callable[[str], str] | None = None,
 ) -> tuple[Finding, ...]:
-    """Fingerprint a whole run, resolving occurrence indices across it.
-
-    `read_line(file, line)` is injected rather than done here: the store reads real
-    files, tests hand in sources, and this layer stays free of I/O. Occurrence indices
-    are a dense rank over the distinct line numbers sharing (rule, file, stripped text),
-    so the second identical flagged line is index 1 wherever the block sits -- and two
-    reports of the same line share index, fingerprint, and therefore identity.
-
-    `canonical` rewrites paths entering the hash and the rank key; the finding and the
-    reads keep the tool's spelling. Findings come back in the order they arrived.
+    """Fingerprint a whole run, resolving occurrence indices across it. `read_line` is
+    injected so this layer stays free of I/O. Indices are a dense rank over the distinct
+    line numbers sharing (rule, file, stripped text), so identity survives blocks moving.
     """
     texts: list[str] = []
     keys: list[tuple[str, str, str]] = []

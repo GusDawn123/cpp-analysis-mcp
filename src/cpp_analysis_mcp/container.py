@@ -1,7 +1,6 @@
 """The rented Linux: run analyses inside a Docker container carrying the whole toolchain,
 for machines that have none of it installed. Twin of wsl.py -- discover() hands back a
-bridge whose runner respells paths on the way in and out, so everything above this file
-composes the same commands as always and never learns a container exists.
+bridge whose runner respells paths both ways, so nothing above ever learns of a container.
 """
 
 from __future__ import annotations
@@ -89,10 +88,9 @@ class Mount:
 
 @dataclass(frozen=True, slots=True)
 class Bridge:
-    """A Linux rented from Docker, bound to the analyses it carries.
-
-    Same shape as wsl.Bridge on purpose, and deliberately not shared with it: two engines,
-    each self-contained, is easier to read than one abstraction serving both.
+    """A Linux rented from Docker, bound to the analyses it carries. Same shape as
+    wsl.Bridge on purpose, and deliberately not shared: two self-contained engines are
+    easier to read than one abstraction serving both.
     """
 
     analyses: frozenset[Analysis]
@@ -111,9 +109,8 @@ class Absence:
 
 def discover(*, workspace: Path, runner: Runner = process.run) -> Bridge | Absence:
     """Find a Docker that answers and the toolbox image inside it, or say what is missing.
-
-    Never pulls and never builds: both cost minutes this server's startup does not have,
-    so an absent image comes back as an Absence carrying the one-time command instead.
+    Never pulls and never builds -- both cost minutes startup does not have, so an absent
+    image comes back as an Absence carrying the one-time command instead.
     """
     docker = shutil.which(DOCKER)
     if docker is None:
@@ -163,9 +160,8 @@ def dockerfile_dir() -> Path:
 
 def container_platform(env_facts: Mapping[str, str]) -> Platform:
     """Describe the Linux inside the image, in the same data every real OS is described in.
-
-    The failure signatures are linux.py's own table: the container is a Linux, and its
-    kernel facts (read inside, since they are the VM's, not this host's) decide which apply.
+    The failure signatures are linux.py's own table, keyed by kernel facts read inside --
+    they are the VM's, not this host's.
     """
     inside = (
         "runs inside a Docker container; the host is mounted read-only, builds stay in "
@@ -199,11 +195,9 @@ def container_platform(env_facts: Mapping[str, str]) -> Platform:
 
 
 def contained(runner: Runner, docker: str, mounts: Sequence[Mount]) -> Runner:
-    """Wrap a runner so every command it is handed runs inside a fresh toolbox container.
-
-    Paths in the argv and cwd are respelled for the container on the way in; the mount
-    prefixes are respelled back to host paths in the output on the way out. A timed-out
-    container is killed by name, because killing the docker client alone leaves it running.
+    """Wrap a runner so every command runs inside a fresh toolbox container: argv and cwd
+    paths respelled on the way in, mount prefixes respelled back in output on the way out.
+    A timed-out container is killed by name -- killing the docker client leaves it running.
     """
 
     def run(
@@ -243,10 +237,9 @@ def mount_table(
     temp: Path | None = None,
     drives: Sequence[Path] | None = None,
 ) -> tuple[Mount, ...]:
-    """What the container may see: scratch space writable, everything else read-only.
-
-    Deliberately less access than the WSL bridge, which sees every drive writable.
-    Ordered longest-key-first so translation always takes the most specific mount.
+    """What the container may see: scratch space writable, everything else read-only --
+    deliberately less than the WSL bridge sees. Ordered longest-key-first so translation
+    always takes the most specific mount.
     """
     scratch_mounts = [
         _mount(workspace, INSIDE_WS, writable=True),
@@ -260,7 +253,6 @@ def mount_table(
 
 def to_container(arg: str, mounts: Sequence[Mount]) -> str:
     """Respell one whole-argument host path for the container; anything else passes through.
-
     Whole arguments only, the measured rule wsl.py already follows: no command this
     project composes embeds an absolute path inside a larger argument.
     """
@@ -277,10 +269,9 @@ def to_container(arg: str, mounts: Sequence[Mount]) -> str:
 
 
 def host_spelling(text: str, mounts: Sequence[Mount]) -> str:
-    """Rewrite every container path in tool output back to the host's own spelling.
-
-    This is what keeps parsers, fingerprints and reports ignorant of the container:
-    by the time output leaves the runner, it reads as if the tool ran here.
+    """Rewrite every container path in tool output back to the host's own spelling -- what
+    keeps parsers, fingerprints and reports ignorant of the container: by the time output
+    leaves the runner, it reads as if the tool ran here.
     """
     ordered = sorted(mounts, key=lambda mount: len(mount.inside), reverse=True)
     for mount in ordered:
@@ -327,10 +318,8 @@ def _absolute(key: str) -> bool:
 
 
 def _env_facts(run: Runner) -> dict[str, str]:
-    """Read the kernel facts a capability depends on, off the container's own kernel.
-
-    Same settings linux.env_facts() reads on a real Linux: they live in Docker's VM,
-    not this host, so reading them here would answer about the wrong machine.
+    """Read the kernel facts a capability depends on, off the container's own kernel:
+    they live in Docker's VM, so reading this host's would answer for the wrong machine.
     """
     facts: dict[str, str] = {}
     for name, path in linux.HOST_SETTINGS.items():

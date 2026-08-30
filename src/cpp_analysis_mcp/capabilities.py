@@ -1,8 +1,6 @@
-"""Probes what this machine can actually do by compiling and running five-line smoke
-tests, rather than sniffing version numbers -- a compiler can report a version that
-supports ThreadSanitizer while the runtime library is missing or a system setting
-blocks it. A build that succeeded and then said nothing about its planted bug is
-unavailable, not available: a quiet runtime would call clean code and buggy code alike.
+"""Probes what this machine can actually do by compiling and running five-line smoke tests,
+not by sniffing versions -- a compiler can claim TSan while the runtime is missing. A build
+that succeeded and then said nothing about its planted bug is unavailable, not available.
 """
 
 from __future__ import annotations
@@ -142,16 +140,12 @@ int main() {
 }
 """
 
-# What a profiler must be able to say: nearly all of this program's time is in one named
-# function. The other probes plant a bug; this one plants a hotspot, and the same rule
-# applies -- a profiler that cannot find a function burning 99% of the run cannot be trusted
-# to rank a real one.
+# This probe plants a hotspot instead of a bug: a profiler that cannot find a function
+# burning 99% of the run cannot be trusted to rank a real one.
 #
-# Every defence here is load-bearing at -O2, which is what a profiled build uses. volatile
-# keeps the arithmetic from being folded away, noinline keeps the two functions from being
-# merged into main, and the cold loop gives the ranking something to outrank. The iteration
-# count is sized for roughly half a second of work: at 999 samples a second that is hundreds
-# of samples, enough that the ranking means something, and short enough to pay at startup.
+# Every defence is load-bearing at -O2: volatile keeps the arithmetic, noinline keeps the
+# functions out of main, the cold loop gives the ranking something to outrank, and the
+# count buys ~half a second -- hundreds of samples at 999/s, paid once at startup.
 PROFILE_SOURCE = """\
 volatile double sink = 0.0;
 
@@ -258,10 +252,9 @@ class Stage:
 
 
 def discover_toolchains(*, runner: Runner = process.run) -> tuple[Toolchain, ...]:
-    """Find the C++ compilers on PATH and read their versions.
-
-    The one place in this package that goes looking for a toolchain rather than being handed
-    one, because finding compilers is host probing and host probing lives here.
+    """Find the C++ compilers on PATH and read their versions -- the one place in this
+    package that goes looking for a toolchain rather than being handed one, because
+    host probing lives here.
     """
     found: dict[tuple[str, str], Toolchain] = {}
     for name in COMPILER_CANDIDATES:
@@ -425,13 +418,8 @@ def _probe(
     toolchain: Toolchain, platform: Platform, analysis: Analysis, runner: Runner
 ) -> CapabilityStatus:
     """Write this analysis's planted bug into a scratch directory and try to catch it.
-
-    ignore_cleanup_errors, because on Windows the directory is regularly still in use when
-    the probe finishes: a bridged analysis ran its program inside WSL against this path, and
-    the distro does not release a /mnt/c directory the instant the process using it exits.
-    Without this the rmdir raises out of the probe, out of the thread pool, and out of
-    resolve() -- a server refusing to start because a scratch directory outlived it. The
-    directory is disposable and the temp cleaner will take it; the answer is what matters.
+    ignore_cleanup_errors: on Windows a bridged WSL run holds the /mnt/c directory briefly
+    after exit, and the rmdir would otherwise raise a server-stopping error over a temp dir.
     """
     with tempfile.TemporaryDirectory(prefix=TEMP_PREFIX, ignore_cleanup_errors=True) as directory:
         source = Path(directory) / f"{PROBE_STEM}{analysis.value}.cpp"
@@ -515,14 +503,8 @@ def _probe_profile(
     toolchain: Toolchain, platform: Platform, source: Path, runner: Runner
 ) -> CapabilityStatus:
     """Build the planted hotspot optimized, sample it, and look for its name in the report.
-
-    Three steps, all must_succeed, because profiling has three separate ways to half-work
-    and each ends in a plausible-looking empty table: recording can be refused outright (no
-    perf, or a kernel that won't open a performance counter); it can succeed and collect
-    nothing, what a virtualized host with no counters and no fallback does; or it can
-    collect plenty and resolve none of it to a name, what a stripped binary or missing llvm
-    looks like -- the one that reads most convincingly like a flat profile. Only that last
-    case is caught by the marker; the first two are caught by exit codes.
+    All steps must_succeed: recording can be refused or collect nothing (exit codes catch
+    those), or samples can resolve to no name -- the empty table only the marker catches.
     """
     binary = source.with_suffix(platform.executable_suffix)
     compiled = Stage(
@@ -633,10 +615,9 @@ STATUS_FIELDS = ("available", "reason", "suggestion", "verified_by", "limitation
 
 
 def read_cache(path: Path) -> dict[Analysis, CapabilityStatus] | None:
-    """Return the cached statuses, or None when the file is missing or not what we wrote.
-
-    Anything unexpected condemns the whole file rather than part of it: a cache that answers
-    for some analyses and not others would leave the caller with a hole it cannot see.
+    """The cached statuses, or None when the file is missing or not what we wrote. Anything
+    unexpected condemns the whole file: a cache answering for some analyses and not others
+    would leave the caller with a hole it cannot see.
     """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))

@@ -1,8 +1,6 @@
-"""Enforce the layer rules from docs/architecture.md by reading the source tree with ast.
-
-A violation fails a test instead of relying on review discipline. Most of the package is
-still docstring stubs, so these tests are a ratchet for what gets added. Each rule's own
-test below explains its own reasoning, including Rule 3's sanctioned exception.
+"""Enforce the layer rules from docs/architecture.md by reading the source tree with ast:
+a violation fails a test instead of relying on review discipline. Each rule's own test
+below explains its own reasoning, including Rule 3's sanctioned exception.
 """
 
 from __future__ import annotations
@@ -62,7 +60,6 @@ IMPURE_ATTRIBUTES = ("os.system", "os.popen")
 
 
 def modules_in(*package_names: str) -> list[Path]:
-    """Return every .py file under the named subpackages, nested ones included."""
     found: list[Path] = []
     for name in package_names:
         found.extend(sorted((PACKAGE_DIR / name).rglob("*.py")))
@@ -80,11 +77,9 @@ def package_of(path: Path) -> str:
 
 
 def import_targets(node: ast.stmt, package: str) -> list[str]:
-    """Return the dotted names one import statement pulls in, relative forms resolved.
-
-    `from ..pipelines import sanitize` inside cpp_analysis_mcp.build yields both
-    cpp_analysis_mcp.pipelines and cpp_analysis_mcp.pipelines.sanitize, since the
-    imported name may be either a submodule or an attribute of the package.
+    """The dotted names one import statement pulls in, relative forms resolved: `from
+    ..pipelines import sanitize` yields both cpp_analysis_mcp.pipelines and .sanitize,
+    since the imported name may be either a submodule or an attribute of the package.
     """
     if isinstance(node, ast.Import):
         return [alias.name for alias in node.names]
@@ -109,15 +104,13 @@ def imports_of(tree: ast.Module, package: str) -> Iterator[tuple[ast.stmt, list[
 
 
 def reaches(target: str, package: str) -> bool:
-    """Report whether a dotted name is that package or something inside it."""
     return target == package or target.startswith(f"{package}.")
 
 
 def platform_lookups(tree: ast.Module) -> Iterator[ast.Attribute]:
-    """Yield every reference to platforms.detect, spelled bare or fully qualified.
-
-    An aliased import (`import ...platforms as p`) could still slip past; the ratchet is
-    aimed at honest drift in the spellings this package actually uses, not at evasion.
+    """Yield every reference to platforms.detect, spelled bare or fully qualified. An
+    aliased import could still slip past; the ratchet is aimed at honest drift in the
+    spellings this package actually uses, not at evasion.
     """
     for node in ast.walk(tree):
         if (
@@ -153,9 +146,8 @@ def test_layer_packages_exist() -> None:
 
 
 def test_every_layer_directory_under_tests_is_collected(pytestconfig: pytest.Config) -> None:
-    """pytest skips directories named "build" by default, and tests/unit/build/ is one.
-
-    Left at the default the build tests are never collected: no failures, no count, green.
+    """pytest skips directories named "build" by default, and tests/unit/build/ is one --
+    left at the default those tests are never collected: no failures, no count, green.
     A test that cannot run is worse than one that fails, so the exclusion is pinned here.
     """
     excluded = list(pytestconfig.getini("norecursedirs"))
@@ -215,11 +207,9 @@ def test_server_has_no_control_flow() -> None:
 
 
 def test_only_the_composition_root_looks_the_platform_up() -> None:
-    """Rule 3's sanctioned exception, made structural rather than remembered.
-
-    Something has to call platforms.detect(), and context.resolve() is that something. A
-    second caller is how the rule erodes: code that looks the platform up itself always
-    finds this machine, so the Linux behaviour it decides can never be tested from here.
+    """Rule 3's sanctioned exception, made structural rather than remembered: something
+    has to call platforms.detect(), and context.resolve() is that something. A second
+    caller always finds this machine, so the Linux behaviour it decides is untestable here.
     """
     violations: list[str] = []
     for path in sorted(PACKAGE_DIR.rglob("*.py")):
@@ -293,7 +283,6 @@ def test_only_process_may_spawn() -> None:
 
 
 def _callee_name(func: ast.expr) -> str:
-    """Return the last name in a call target: `open`, `p.open` -> open."""
     if isinstance(func, ast.Name):
         return func.id
     if isinstance(func, ast.Attribute):
@@ -302,13 +291,9 @@ def _callee_name(func: ast.expr) -> str:
 
 
 def test_analyzer_plugins_import_no_upper_layer() -> None:
-    """Plugins receive their tooling injected; they may never reach for it themselves.
-
-    The analyzer contract's promise is that a plugin knows nothing about the protocol,
-    the composition root, or the pipelines behind its injected callable. A plugin
-    importing any of them is a pipeline growing back under a new name -- and the wiring
-    that legitimately composes those layers lives at the composition root, outside
-    analyzers/, precisely so this rule can stay absolute.
+    """Plugins receive their tooling injected; they may never reach for it themselves. A
+    plugin importing the protocol, the composition root, or the pipelines is a pipeline
+    growing back under a new name -- the legitimate wiring lives outside analyzers/.
     """
     forbidden = (
         "mcp",

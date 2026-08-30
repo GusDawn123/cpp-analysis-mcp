@@ -1,9 +1,6 @@
-"""Turn clang-tidy output into Findings.
-
-Shares its diagnostic line shape with parsers.diagnostics but disagrees about what the
-trailing bracket means -- a compiler names the flag, clang-tidy names the check (no `-W`,
-sometimes several comma-separated) -- which is why this is its own module rather than a
-shared reader guessing which tool wrote the text.
+"""Turn clang-tidy output into Findings. Shares its line shape with parsers.diagnostics
+but disagrees about the trailing bracket -- a compiler names the flag, clang-tidy the check
+(no `-W`, sometimes several) -- so it is its own module, not a shared reader guessing.
 """
 
 from __future__ import annotations
@@ -23,7 +20,6 @@ DIAGNOSTIC = re.compile(
     r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<column>\d+))?: "
     r"(?P<severity>warning|error): (?P<message>.*?)\s*$"
 )
-# the check that produced the line, in brackets, at the end
 CHECK_SUFFIX = re.compile(r"\s*\[(?P<checks>[^\]]+)\]$")
 
 # clang-tidy quotes the offending source under each diagnostic, then a caret line, then the

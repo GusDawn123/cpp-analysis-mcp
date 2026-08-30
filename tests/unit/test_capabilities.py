@@ -1,8 +1,6 @@
-"""Probe the prober with no compiler anywhere: every runner here is a fake.
-
-A capability counts available only when a planted bug came back reported -- most tests
-script a probe that compiles, runs, and says nothing, the false all-clear this module
-exists to prevent. Hand-built platform tables let Linux and macOS both run from one machine.
+"""Probe the prober with no compiler anywhere: every runner here is a fake. A capability
+counts available only when a planted bug came back reported -- most tests script the false
+all-clear. Hand-built platform tables let Linux and macOS both run from one machine.
 """
 
 from __future__ import annotations
@@ -114,11 +112,9 @@ class FakeRunner:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names.
-
-    perf is asked for by name rather than by the file it works on: its report step names
-    only the trace and its own flags, none of which carry the probe's stem, and perf is
-    reached for by exactly one analysis.
+    """Read which probe a command belongs to off the scratch file it names. perf is asked
+    for by name instead: its report step names only the trace and its own flags, and perf
+    is reached for by exactly one analysis.
     """
     if cmd and Path(cmd[0]).name == profiler.PERF:
         return Analysis.PROFILE
@@ -135,11 +131,9 @@ def is_run(cmd: Sequence[str]) -> bool:
 
 
 def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
-    """Say whether this is the step whose output has to carry the marker.
-
-    Profiling is the one probe with three steps rather than two, and the marker belongs to
-    the last of them: recording produces a binary trace that says nothing readable, so only
-    the report can name the function that was planted.
+    """Say whether this is the step whose output has to carry the marker. Profiling is the
+    one probe with three steps, and the marker belongs to the last: recording produces a
+    binary trace that says nothing readable, so only the report can name the plant.
     """
     if analysis is Analysis.PROFILE:
         return len(cmd) > 1 and cmd[1] == "report"
@@ -177,8 +171,6 @@ def compile_returns(analysis: Analysis, result: RunResult) -> Reply:
 
 
 def version_replies(versions: Mapping[str, RunResult]) -> Reply:
-    """Answer `<compiler> --version` per compiler name."""
-
     def reply(cmd: list[str]) -> RunResult:
         return versions[Path(cmd[0]).name]
 

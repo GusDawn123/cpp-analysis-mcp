@@ -1,7 +1,6 @@
 """Windows's borrowed Linux: find a WSL distro with clang and run through it what Windows
-cannot -- no compiler ships TSan or LSan for Windows, but WSL's clang carries both.
-Spawns only through the Runner it is handed; everything above this file stays ignorant
-of the bridge, composing the same commands as always and getting Linux answers back.
+cannot -- no compiler ships TSan or LSan for Windows. Spawns only through the Runner it is
+handed; everything above stays ignorant of the bridge and gets Linux answers back.
 """
 
 from __future__ import annotations
@@ -64,11 +63,9 @@ DISTRO_FACT = "distro"
 
 @dataclass(frozen=True, slots=True)
 class Bridge:
-    """A Linux inside this Windows host, bound to the analyses it carries.
-
-    The three fields after `analyses` are exactly what a pipeline call varies by, so a
-    resolved context can point an analysis here instead of at the native host and nothing
-    downstream can tell the difference.
+    """A Linux inside this Windows host, bound to the analyses it carries. The fields after
+    `analyses` are exactly what a pipeline call varies by, so a resolved context can point
+    an analysis here instead of at the native host and nothing downstream can tell.
     """
 
     analyses: frozenset[Analysis]
@@ -79,12 +76,8 @@ class Bridge:
 
 def discover(*, runner: Runner = process.run) -> Bridge | None:
     """Find a WSL distro that answers for clang, or None on the many machines without one.
-
-    Each distro is asked `clang++ --version` through the same wrapped spawn shape the
-    bridge itself uses, so what passes here works later. Utility distros (docker-desktop)
-    fail that question and are skipped by measurement, not a name denylist. Every miss --
-    no wsl.exe, no distro, no clang -- is an ordinary machine: None, and the native
-    denials already say what to do.
+    Each distro is asked `clang++ --version` through the bridge's own spawn shape; utility
+    distros (docker-desktop) fail that question and are skipped by measurement, not name.
     """
     wsl_exe = shutil.which(WSL)
     if wsl_exe is None:
@@ -118,11 +111,8 @@ def discover(*, runner: Runner = process.run) -> Bridge | None:
 
 def bridge_platform(distro: str, env_facts: Mapping[str, str]) -> Platform:
     """Describe the Linux behind the bridge, as the same data every real OS is described in.
-
-    The failure signatures are linux.py's own table: the bridge is a Linux, and those
-    crashes (ASLR width, split runtime packages) were measured there. The env facts carry
-    the distro name and its vm.mmap_rnd_bits into the capability-cache fingerprint, so a
-    swapped distro or a changed kernel setting retires the cached answers.
+    Failure signatures are linux.py's table -- those crashes were measured there. env facts
+    (distro, vm.mmap_rnd_bits) join the cache fingerprint, so a change retires cached answers.
     """
     inside = (
         f"runs inside WSL distro {distro!r}; file paths in its reports appear "
@@ -150,13 +140,9 @@ def bridge_platform(distro: str, env_facts: Mapping[str, str]) -> Platform:
 
 
 def bridged(runner: Runner, wsl_exe: str, distro: str) -> Runner:
-    """Wrap a runner so every command it is handed runs inside the distro instead.
-
-    Windows drive paths in the argv are respelled /mnt/<drive>; a cwd rides in on --cd,
-    which takes the Windows spelling as it stands; and the sanitizer option variables --
-    the one part of the environment that must cross, since WSL forwards nothing else --
-    are pinned onto the Linux side through the `env` prefix. The outer wsl.exe process
-    keeps the caller's environment untouched.
+    """Wrap a runner so every command it is handed runs inside the distro: argv drive paths
+    respelled /mnt/<drive>, cwd riding in on --cd, and the sanitizer option variables pinned
+    through the `env` prefix -- WSL forwards nothing else of the environment on its own.
     """
 
     def run(
@@ -178,10 +164,8 @@ def bridged(runner: Runner, wsl_exe: str, distro: str) -> Runner:
 
 def to_wsl(arg: str) -> str:
     """Respell one whole-argument Windows drive path for Linux; anything else passes through.
-
-    Whole arguments only, on purpose: every command composed for the bridge's platform was
-    checked, and none embeds a drive path inside a larger argument -- a substring rewrite
-    would be guessing at shapes that do not occur.
+    Whole arguments only, on purpose: no command composed for the bridge embeds a drive path
+    inside a larger argument, and a substring rewrite would guess at shapes that don't occur.
     """
     matched = DRIVE_PATH.match(arg)
     if matched is None:
@@ -191,20 +175,17 @@ def to_wsl(arg: str) -> str:
 
 
 def _distros(output: str) -> list[str]:
-    """Read distro names out of `wsl -l -q` output.
-
-    The NUL strip covers a wsl.exe old enough to ignore WSL_UTF8 and answer in UTF-16
-    anyway, which the runner's decode leaves as NUL-riddled text. Measured shape.
+    """Read distro names out of `wsl -l -q` output. The NUL strip covers a wsl.exe old
+    enough to ignore WSL_UTF8 and answer in UTF-16 anyway, which the runner's decode
+    leaves as NUL-riddled text. Measured shape.
     """
     return [line.strip() for line in output.replace("\x00", "").splitlines() if line.strip()]
 
 
 def _env_facts(wsl_exe: str, distro: str, runner: Runner) -> dict[str, str]:
-    """Read the volatile facts a bridged capability depends on, off the distro itself.
-
-    The same settings linux.env_facts() reads on a real Linux, asked one at a time through
-    the bridge: these live in the distro's kernel, not this Windows one, so reading them
-    here would answer about the wrong machine.
+    """Read the volatile facts a bridged capability depends on, off the distro itself: the
+    settings linux.env_facts() reads live in the distro's kernel, not this Windows one, so
+    reading them here would answer about the wrong machine.
     """
     facts = {DISTRO_FACT: distro}
     for name, path in linux.HOST_SETTINGS.items():
@@ -222,10 +203,8 @@ def _env_facts(wsl_exe: str, distro: str, runner: Runner) -> dict[str, str]:
 
 
 def _pins(env: Mapping[str, str] | None) -> tuple[str, ...]:
-    """The K=V assignments the `env` prefix carries across: sanitizer options and only those.
-
-    process.py owns the list. The rest of the caller's environment stays on the Windows
-    side, which is where hygienic_env already scrubbed it.
+    """The K=V assignments the `env` prefix carries across: sanitizer options only
+    (process.py owns the list). The rest stays on the Windows side, already scrubbed.
     """
     if env is None:
         return ()

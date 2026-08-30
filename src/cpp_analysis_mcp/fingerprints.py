@@ -1,9 +1,6 @@
-"""Read a hotspot ranking back in plain words.
-
-A profile of real C++ is mostly mangled library machinery: _Rb_tree walks, __shared_count
-traffic, raw hex where symbols are missing. An expert recognizes those on sight; this table
-is that recognition, written down. Facts only: each fingerprint says where the time went
-and names the rewrite families known for that pattern. Choosing one stays with the caller.
+"""Read a hotspot ranking back in plain words: a profile of real C++ is mostly mangled
+library machinery an expert recognizes on sight, and this table is that recognition written
+down. Facts only -- fingerprints name the rewrite families; choosing stays with the caller.
 """
 
 from __future__ import annotations

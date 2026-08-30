@@ -1,8 +1,6 @@
 """The harness entry point: load tasks, get a transcript for each, print a scorecard.
-
-The scorecard is a measurement, not a gate, so a failing task does not fail the
-command -- reading the table is the point. Only --driver real with --spend ever starts
-a session; everything else is free.
+The scorecard is a measurement, not a gate, so a failing task does not fail the command.
+Only --driver real with --spend ever starts a session; everything else is free.
 """
 
 from __future__ import annotations

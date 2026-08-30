@@ -1,9 +1,6 @@
-"""Check the ASan parser against every committed ASan golden.
-
-Each constant below was read out of the golden file it is keyed by. clang prints a
-column and gcc does not, so the same bug yields different expectations per toolchain;
-nothing here is derived from another platform's output. Headlines are pinned only up
-to `at pc`, since re-capturing the same run prints different pc/bp/sp addresses.
+"""Check the ASan parser against every committed ASan golden. Each constant below was read
+out of the golden it is keyed by -- clang prints a column and gcc does not. Headlines are
+pinned only up to `at pc`, since re-capturing prints different pc/bp/sp addresses.
 """
 
 from __future__ import annotations
@@ -19,8 +16,6 @@ from cpp_analysis_mcp.store.models import Severity
 
 @dataclass(frozen=True)
 class Expected:
-    """What one golden file should parse into."""
-
     category: str
     # only the front of the headline: pc/bp/sp move with ASLR on every run
     message_prefix: str

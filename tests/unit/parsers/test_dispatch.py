@@ -1,8 +1,6 @@
-"""Pin the analysis-to-parser table against the analysis-to-sanitizer one.
-
-An analysis with a sanitizer but no reader would build, run, and silently report nothing;
-entries are compared by module, not just by key, so mismatched wiring (TSan output routed
-to the ASan reader) fails here.
+"""Pin the analysis-to-parser table against the analysis-to-sanitizer one: an analysis
+with a sanitizer but no reader would build, run, and silently report nothing. Entries
+compare by module, so mismatched wiring (TSan output to the ASan reader) fails here.
 """
 
 from __future__ import annotations

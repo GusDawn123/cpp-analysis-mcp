@@ -1,8 +1,6 @@
 """Where a transcript comes from: a recording on disk, or a headless Claude Code session.
-
-The fake driver replays and costs nothing, so every test uses it. The real driver
-composes the whole `claude -p` command and can run it, but only through `spend=True`
--- an eval that spends the maintainer's usage by accident is a bug, not a feature.
+The fake driver replays and costs nothing; the real one runs `claude -p` only through
+`spend=True` -- an eval that spends the maintainer's usage by accident is a bug.
 """
 
 from __future__ import annotations
@@ -52,10 +50,9 @@ class Driver(Protocol):
 
 @dataclass(frozen=True)
 class FakeDriver:
-    """Replays `<transcripts>/<task id>.json`; a task with no recording is skipped.
-
-    Knows nothing about arms: a recording is whatever it was recorded against, so the
-    operator points --transcripts at the directory belonging to the arm they mean.
+    """Replays `<transcripts>/<task id>.json`; a task with no recording is skipped. Knows
+    nothing about arms: a recording is whatever it was recorded against, so the operator
+    points --transcripts at the directory belonging to the arm they mean.
     """
 
     transcripts: Path

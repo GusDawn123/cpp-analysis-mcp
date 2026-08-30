@@ -1,8 +1,6 @@
 """clang-tidy behind the analyzer contract: the plugin, and its real invocation.
-
-The plugin's check step arrives as a constructor argument, so import time never
-triggers toolchain discovery; file_check() builds the real one, binding a toolchain,
-platform, and runner it is handed -- never ones it goes looking for.
+The check step arrives as a constructor argument, so import time never triggers toolchain
+discovery; file_check() binds a toolchain, platform, and runner it is handed.
 """
 
 import tempfile
@@ -59,11 +57,9 @@ EXPORT_PREFIX = "cpp-analysis-tidy-"
 # the files clang-tidy itself looks for above a source file, in its own order
 TIDY_CONFIG_NAMES = (".clang-tidy", "_clang-tidy")
 
-# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy, it exits 1
-# printing "Error: no checks enabled." and its usage text, parsing to no findings and reading
-# as a broken tool -- measured behavior. So an unconfigured project gets a default: correctness
-# and cost families only, since readability-* and modernize-* are opinions about style that
-# would bury the few findings that matter under a hundred unasked ones.
+# clang-tidy enables nothing on its own: given neither --checks nor a .clang-tidy it exits 1
+# with "Error: no checks enabled." and usage text -- measured. So an unconfigured project gets
+# correctness and cost families only; readability/modernize style opinions would bury them.
 DEFAULT_CHECKS = "bugprone-*,clang-analyzer-*,performance-*,portability-*"
 
 DEFAULT_CHECKS_NOTE = (
@@ -109,7 +105,6 @@ def file_check(
     runner: Runner,
 ) -> CheckFile:
     """Bind the real clang-tidy invocation into the contract's one-argument shape.
-
     Everything a spawn needs travels in the closure, and the probe's status rides
     along so a report can say who verified the capability.
     """
@@ -205,10 +200,8 @@ def _file_bytes(file: str) -> bytes | None:
 
 def _tidy_checks(source: Path, checks: str | None) -> tuple[str | None, tuple[str, ...]]:
     """Decide what to enable, and what the caller has to be told about that decision.
-
-    Three cases and only the last of them chooses anything. An explicit `checks` is the
-    caller's. A committed .clang-tidy is the project's, and is left to decide by passing no
-    --checks at all. Nothing at all is the case that used to come back as usage text.
+    An explicit `checks` is the caller's; a committed .clang-tidy is left to decide by
+    passing no --checks; nothing at all is the case that used to come back as usage text.
     """
     if checks is not None:
         return checks, ()

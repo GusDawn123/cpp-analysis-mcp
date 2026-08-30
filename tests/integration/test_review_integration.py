@@ -1,5 +1,4 @@
 """The acceptance run: plant a bug, review, get exactly the planted finding back as new.
-
 Real git, real compiler, real clang-tidy -- the whole gate with nothing faked, on a
 throwaway repository whose first commit already carries one known finding.
 """

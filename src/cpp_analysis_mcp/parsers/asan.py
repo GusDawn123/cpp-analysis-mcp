@@ -1,8 +1,6 @@
-"""Turn AddressSanitizer output into findings.
-
-One report -- headline, error stack, and the allocation stack when ASan kept one --
-becomes one Finding. The frame formats differ between clang and gcc and between
-macOS and Linux, so the goldens in tests/fixtures/golden are the specification.
+"""Turn AddressSanitizer output into findings: one report -- headline, error stack, and
+the allocation stack when ASan kept one -- becomes one Finding. Frame formats differ by
+compiler and OS, so the goldens in tests/fixtures/golden are the specification.
 """
 
 from __future__ import annotations
@@ -17,10 +15,9 @@ TOOL = "asan"
 HEADLINE = re.compile(r"^(?:=+\d+=+\s*)?ERROR: AddressSanitizer: (?P<message>.+?)\s*$")
 FRAME = re.compile(r"^\s*#\d+\s+0x[0-9a-f]+\s+(?P<rest>.*)$")
 
-# a frame carries source only when the symbolizer resolved it, and then it trails
-# the line: `#1 0x... in main /w/heap_overflow.cpp:8:19`. Paths containing spaces
-# truncate here: the format is unquoted and function names carry spaces too, so
-# the boundary between them cannot be recovered.
+# a frame carries source only when the symbolizer resolved it, trailing the line:
+# `#1 0x... in main /w/heap_overflow.cpp:8:19`. Paths with spaces truncate here -- the
+# format is unquoted and function names carry spaces too, so the boundary is unrecoverable
 FRAME_SOURCE = re.compile(r"(?P<file>[^\s():]+):(?P<line>\d+)(?::(?P<column>\d+))?$")
 
 # covers both spellings: `allocated by thread T0 here:` and `previously allocated ...`

@@ -1,9 +1,6 @@
 """Gate on the capability, build, run, parse -- the four steps of one sanitizer analysis.
-
-The gate is a hard stop, not a note on the report: if the probe couldn't catch a planted
-bug here, nothing is spawned and the status comes back as the answer. Running anyway
-would produce an empty finding list that reads exactly like clean code -- the false
-all-clear this project exists to avoid.
+The gate is a hard stop: if the probe couldn't catch a planted bug here, nothing is spawned,
+because an empty finding list reads exactly like clean code -- the false all-clear.
 """
 
 from __future__ import annotations
@@ -45,10 +42,9 @@ def analyze_file(
     run_timeout_s: int = RUN_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Build one source file under its sanitizer and report what running it produced.
-
-    Three outcomes, all of them ordinary: a report, the build failure that stopped one being
-    produced, or the capability status saying this machine cannot run this analysis at all.
+    """Build one source file under its sanitizer and report what running it produced. Three
+    ordinary outcomes: a report, the build failure that stopped one, or the capability
+    status saying this machine cannot run this analysis at all.
     """
     kind = SANITIZER_FOR[analysis]
     status = capabilities[analysis]
@@ -85,7 +81,6 @@ def analyze_project(
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
     """Build a CMake project under its sanitizer and report what running its binary produced.
-
     With no `target`, a project holding one executable builds it; anything else comes back
     as the build's failure naming the targets there are.
     """
@@ -123,10 +118,9 @@ def analyze_snippet(
     run_timeout_s: int = RUN_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Write a piece of C++ to disk and analyze it as a file.
-
-    The file stays behind on purpose: every path in a compiler diagnostic and every frame in
-    a sanitizer report names it, and those are unreadable pointing at something deleted.
+    """Write a piece of C++ to disk and analyze it as a file. The file stays behind on
+    purpose: every diagnostic path and sanitizer frame names it, and those are unreadable
+    pointing at something deleted.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
     source = build_dir / f"{SNIPPET_STEM}.cpp"

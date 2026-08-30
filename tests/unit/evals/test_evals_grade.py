@@ -1,8 +1,6 @@
-"""One verdict per check, and a task passes only when every one of them does.
-
-Grading is pure: a task plus the calls an agent made, in, verdicts out. The stories
-here are the ones the sample transcripts record, written small so each check fails
-alone.
+"""One verdict per check, and a task passes only when every one of them does. Grading is
+pure: a task plus the calls an agent made, in, verdicts out. The stories here are the
+sample transcripts', written small so each check fails alone.
 """
 
 from __future__ import annotations

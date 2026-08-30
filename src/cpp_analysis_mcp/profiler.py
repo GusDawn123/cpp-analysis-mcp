@@ -1,8 +1,6 @@
 """The two perf invocations, kept together because record's flags decide what report can
-say: no frame pointers means no call graph, no field separator means the parser reads
-column positions that drift with symbol width. Kept apart, they silently drift out of
-sync. Spawns nothing itself -- these are argument lists a Runner executes, which is what
-lets Windows profile through the WSL bridge without this file knowing.
+say -- kept apart they silently drift out of sync. Spawns nothing itself: these are
+argument lists a Runner executes, which is what lets Windows profile through the bridge.
 """
 
 from __future__ import annotations

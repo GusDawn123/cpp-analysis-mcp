@@ -1,8 +1,6 @@
 """Gate on the capability, run one compile-time check, parse -- one static analysis.
-
-The real invocations live with their plugins (analyzers.clang_tidy and
-analyzers.warnings); this front routes one file or snippet through the registry's
-gates, binds the check, and stamps every finding with its identity on the way out.
+The real invocations live with their plugins (analyzers.clang_tidy, analyzers.warnings);
+this front routes through the registry's gates and stamps every finding with its identity.
 """
 
 from __future__ import annotations
@@ -59,10 +57,9 @@ def check_file(
     timeout_s: int = CHECK_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Check one source file at compile time and report what the tool said about it.
-
-    Three outcomes, all of them ordinary: a report, the failure that stopped one being
-    produced, or the capability status saying this machine cannot run this check at all.
+    """Check one source file at compile time and report what the tool said about it. Three
+    ordinary outcomes: a report, the failure that stopped one, or the capability status
+    saying this machine cannot run this check at all.
     """
     outcome, _ = _routed_check(
         source,
@@ -89,10 +86,8 @@ def check_snippet(
     timeout_s: int = CHECK_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Write a piece of C++ to disk and check it as a file.
-
-    The file stays behind on purpose: every finding names it, and a location pointing at
-    something that was deleted is unreadable.
+    """Write a piece of C++ to disk and check it as a file. The file stays behind on purpose:
+    every finding names it, and a location pointing at something deleted is unreadable.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
     source = build_dir / f"{SNIPPET_STEM}.cpp"
@@ -126,16 +121,9 @@ def _routed_check(
     runner: Runner,
     canonical: Callable[[str], str] | None = None,
 ) -> tuple[AnalysisReport | BuildFailure | CapabilityStatus, tuple[Resolution, ...]]:
-    """The registry decides, the check runs, and every finding leaves carrying identity.
-
-    Routes through the registry's gate chain over both compile-time plugins, so a refusal
-    here and a skip in a plan trace are the same verdict from the same code. A
-    caller-named scope passes the selection gates by design; the capability gate binds
-    regardless, returning the probe's own status object on refusal.
-
-    File checks fingerprint the tool's printed absolute paths (no `canonical`): their
-    project root arrives with the git-aware scope, and no persisted baseline exists yet
-    for that change to orphan. Snippet checks pass one rooted at their scratch dir.
+    """The registry decides, the check runs, and every finding leaves carrying identity --
+    a refusal here and a skip in a plan trace are the same verdict from the same code.
+    File checks fingerprint the tool's absolute paths; snippets hash scratch-relative.
     """
     build_check = _BUILDERS[analysis]
     resolutions = _registry().resolve(
@@ -169,10 +157,8 @@ def _routed_check(
 
 
 def _registry() -> Registry:
-    """Both compile-time plugins, registered for their gates alone.
-
-    The sentinel check documents that resolution never executes: if it ever fires, a
-    plugin's run loop entered a path that promised verdicts only.
+    """Both compile-time plugins, registered for their gates alone; the sentinel check
+    documents that resolution never executes a tool.
     """
     registry = Registry()
     registry.register(ClangTidyAnalyzer(check=_no_execution))

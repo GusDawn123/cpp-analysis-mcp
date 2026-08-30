@@ -1,8 +1,6 @@
 """Read clang-tidy's --export-fixes file: the machine-readable edits behind its advice.
-
-YAML because that is the format clang-tidy writes, parsed with safe_load only. Offsets
-in it are byte offsets into the file the diagnostic named, so the bytes are needed to
-say which line an edit lands on and what it would overwrite.
+YAML because that is what clang-tidy writes, parsed with safe_load only. Offsets are byte
+offsets into the file the diagnostic named, so the bytes decide the line and the overwrite.
 """
 
 from __future__ import annotations
@@ -25,11 +23,9 @@ ReadBytes = Callable[[str], bytes | None]
 
 
 def parse(text: str, read_bytes: ReadBytes) -> tuple[SuggestedFix, ...]:
-    """Return one suggestion per diagnostic that offered an applicable edit.
-
-    Every disappointment is silent: a missing key, a malformed document, an offset past
-    the end of a file someone has edited since. The finding this belongs to already
-    stands on its own, and a fix sliced from the wrong bytes is worse than none.
+    """Return one suggestion per diagnostic that offered an applicable edit. Every
+    disappointment is silent -- a missing key, an offset past the end of an edited file --
+    because a fix sliced from the wrong bytes is worse than none.
     """
     try:
         document: Any = yaml.safe_load(text)
@@ -46,10 +42,8 @@ def parse(text: str, read_bytes: ReadBytes) -> tuple[SuggestedFix, ...]:
 
 @dataclass(frozen=True, slots=True)
 class _Source:
-    """One file's bytes and the offset of every newline in it.
-
-    The scan happens once per file; each edit then finds its line by bisecting the
-    offsets, so a file with many fix-its costs O(n + k log n) rather than a rescan each.
+    """One file's bytes and the offset of every newline: each edit finds its line by
+    bisecting, so a file with many fix-its costs O(n + k log n) rather than a rescan each.
     """
 
     content: bytes

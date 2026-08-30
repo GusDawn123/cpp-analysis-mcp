@@ -1,9 +1,6 @@
 """The MCP tool surface: every tool, its schema, and one line each into a pipeline.
-
-No control flow in this file at all -- a test walks it with ast to keep it that way (rule
-2); every decision lives in context.py or the pipeline a handler delegates to. Nothing is
-serialized by hand: the union return annotations are the schema, which the SDK reads off
-the signatures and converts the dataclasses through on the way out.
+No control flow here at all -- a test walks the file with ast to keep it that way (rule 2).
+Nothing is serialized by hand: the union return annotations are the schema the SDK reads.
 """
 
 from __future__ import annotations
@@ -329,12 +326,9 @@ file decides. The file written for the snippet stays behind, since every finding
 
 @asynccontextmanager
 async def live(server: MCPServer[Context]) -> AsyncIterator[Context]:
-    """Read this host once at startup and hand the result to every request the process serves.
-
-    Off the event loop, because a cold cache means compiling and running six probes -- minutes
-    on a first start -- and resolve() is ordinary blocking code. Run inline it would stall the
-    loop for all of that, and a host waiting on the initialize response would give up on a
-    server that is working exactly as intended.
+    """Read this host once at startup and hand the result to every request the process
+    serves. Off the event loop: a cold cache means minutes of probes, and run inline that
+    would stall initialize until the host gives up on a server working as intended.
     """
     yield await to_thread.run_sync(context.resolve)
 
@@ -408,9 +402,8 @@ def profile_file(
     ctx: ServerContext[Context],
 ) -> ProfileReport | BuildFailure | CapabilityStatus:
     """Delegate to the profile pipeline, on the engine this analysis was resolved onto.
-
-    No `analysis` argument, unlike the sanitizer tools: there is one profiler, so there is
-    nothing here for a caller to choose and no wrong choice to make.
+    No `analysis` argument, unlike the sanitizer tools: there is one profiler, so there
+    is nothing to choose and no wrong choice to make.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis.PROFILE]
@@ -453,12 +446,9 @@ def benchmark_variants(
         int, Field(ge=benchmark.MIN_REPEATS, le=benchmark.MAX_REPEATS)
     ] = benchmark.DEFAULT_REPEATS,
 ) -> BenchmarkReport | BuildFailure:
-    """Delegate to the benchmark pipeline, on the host's own engine.
-
-    No capability gate, unlike every other tool that runs something: the probes exist to
-    catch detectors that break silently, and a plain compile-and-run cannot -- a failed
-    build is loud, and the clock always ticks. What a race needs is a toolchain, and the
-    server does not start without one.
+    """Delegate to the benchmark pipeline, on the host's own engine. No capability gate,
+    unlike every tool that runs something: probes catch detectors that break silently, and
+    a plain compile-and-run cannot -- a failed build is loud, and the clock always ticks.
     """
     app = ctx.request_context.lifespan_context
     return benchmark.race(
@@ -476,10 +466,9 @@ def full_check_file(
     ctx: ServerContext[Context],
     checks: str | None = None,
 ) -> FullCheckReport:
-    """Delegate the whole battery to battery.py, each analysis on its own engine.
-
-    One return type on purpose: an unavailable analysis or a failed build is a section
-    inside the report, not a different outcome, so the battery never refuses whole.
+    """Delegate the whole battery to battery.py, each analysis on its own engine. One
+    return type on purpose: an unavailable analysis or a failed build is a section inside
+    the report, not a different outcome, so the battery never refuses whole.
     """
     app = ctx.request_context.lifespan_context
     return battery.check_file(
@@ -552,10 +541,9 @@ def static_check_file(
     ctx: ServerContext[Context],
     checks: str | None = None,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the static_check pipeline; nothing is built, so there is no build directory.
-
-    `checks` travels as it arrived, None included: a default filled in here would override
-    whatever .clang-tidy the project committed.
+    """Delegate to the static_check pipeline; nothing is built, so there is no build
+    directory. `checks` travels as it arrived, None included: a default filled in here
+    would override whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis(analysis)]
@@ -576,10 +564,9 @@ def static_check_snippet(
     ctx: ServerContext[Context],
     checks: str | None = None,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the static_check pipeline; the snippet needs somewhere to be written down.
-
-    `checks` travels as it arrived, None included: a default filled in here would override
-    whatever .clang-tidy the project committed.
+    """Delegate to the static_check pipeline; the snippet needs somewhere to be written
+    down. `checks` travels as it arrived, None included: a default filled in here would
+    override whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis(analysis)]
@@ -596,10 +583,9 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register every tool against one server; `lifespan` is the seam a test starts through.
-
-    The default is what ships. A test injects a context it wrote down instead, because the
-    live one probes the machine the suite happens to be running on.
+    """Register every tool against one server; `lifespan` is the seam a test starts
+    through -- the default is what ships, and a test injects a context it wrote down
+    because the live one probes the machine the suite runs on.
     """
     server: MCPServer[Context] = MCPServer(
         SERVER_NAME, instructions=INSTRUCTIONS, lifespan=lifespan

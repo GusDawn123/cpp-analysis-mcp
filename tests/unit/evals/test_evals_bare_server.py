@@ -1,5 +1,4 @@
 """The A/B arm: the same tools, with the teaching taken out of their descriptions.
-
 Nothing here starts a server or probes a machine -- registration is all that is
 asserted, because registration is the whole difference between the two arms.
 """

@@ -1,8 +1,6 @@
-"""The plan: what will run in what order, what will not and why (ADR-0001).
-
-Assembled from the registry's verdicts before anything executes, and deterministic
-by construction. Files are carried once for the whole plan -- per-step file lists
-arrive when units of work split beyond whole-scope dispatch.
+"""The plan: what will run in what order, what will not and why (ADR-0001). Assembled
+from the registry's verdicts before anything executes, deterministic by construction.
+Files are carried once for the whole plan until units of work split further.
 """
 
 from __future__ import annotations
@@ -49,10 +47,8 @@ class Plan:
 
 def plan(scope: Scope, context: AnalyzerContext, registry: Registry) -> Plan:
     """Resolve every analyzer once and fix the running order before anything executes.
-
-    Steps sort by (tier, name) so cheap evidence lands first and dispatch order can
-    never depend on registration order. Skips keep the registry's order and each
-    refusal's own words.
+    Steps sort by (tier, name) so cheap evidence lands first and dispatch order never
+    depends on registration order; skips keep the registry's order and their own words.
     """
     steps: list[Step] = []
     skips: list[Skip] = []
