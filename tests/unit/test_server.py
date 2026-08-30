@@ -421,6 +421,24 @@ async def test_the_review_gate_tools_teach_the_audit_then_review_flow(tmp_path: 
 
 
 @pytest.mark.anyio
+async def test_the_review_gate_tools_teach_how_to_read_a_tiered_report(tmp_path: Path) -> None:
+    """Counts by tier lead the report, so the descriptions have to say what a tier means:
+    critical is a defect something watched happen, style is counted rather than expanded,
+    and the compilation database named at the top is what decided everything below it."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    docs = {tool.name: tool.description or "" for tool in listed.tools}
+    for name in ("review", "audit"):
+        assert "tier" in docs[name]
+        assert "critical" in docs[name].lower()
+        assert "compilation database" in docs[name]
+    assert "style" in docs["review"].lower()
+
+
+@pytest.mark.anyio
 async def test_each_sanitizer_tool_says_what_it_costs_and_which_rung_comes_first(
     tmp_path: Path,
 ) -> None:

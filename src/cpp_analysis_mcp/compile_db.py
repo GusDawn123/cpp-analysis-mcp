@@ -66,10 +66,18 @@ def find_under(root: Path) -> Path | None:
     Never walks upward -- find() does, on purpose, but a project-scoped lookup that left
     the root would hand back a parent checkout's database describing someone else's build.
     """
+    return next(iter(databases_under(root)), None)
+
+
+def databases_under(root: Path) -> tuple[Path, ...]:
+    """Every database at the root, best first; find_under takes the head of this list.
+
+    A checkout commonly holds several build trees that do not describe the same build,
+    so a report naming the one it read needs to know how many it chose between.
+    """
     beside = root / DATABASE
-    if beside.is_file():
-        return beside
-    return next(iter(sorted(root.glob(f"{BUILD_GLOB}/{DATABASE}"))), None)
+    found = sorted(root.glob(f"{BUILD_GLOB}/{DATABASE}"))
+    return (beside, *found) if beside.is_file() else tuple(found)
 
 
 def sources(database: Path) -> tuple[Path, ...]:
