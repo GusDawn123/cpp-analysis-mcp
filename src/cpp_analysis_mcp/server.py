@@ -89,6 +89,11 @@ you already know which question you are asking.
 
 capabilities says which analyses this machine proved it can do, and is worth reading before
 trusting an empty result from any of them.
+
+A machine missing tools is not out of the game: with Docker running, anything the host
+cannot run happens inside a pinned toolbox container instead -- automatically, probed with
+the same planted bugs, and every finding says which engine observed it. When something is
+unavailable, its status names the one docker pull that would unlock it.
 """
 
 CAPABILITIES_DOC = """\
@@ -101,7 +106,9 @@ ThreadSanitizer while the runtime library is missing.
 
 An analysis reported unavailable returns that status instead of findings when you call it,
 and an available one can still carry limitations: ThreadSanitizer runs on macOS but its
-deadlock detector does not, so deadlock findings there require Linux.
+deadlock detector does not, so deadlock findings there require Linux. Where Docker could
+carry an unavailable analysis, the suggestion says so: one toolbox image pull, no other
+installs.
 
 Read this when a result surprises you, particularly an empty one.
 """
