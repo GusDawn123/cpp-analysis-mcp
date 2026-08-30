@@ -261,9 +261,8 @@ class FullCheckReport:
     and `failed_builds` carry the ones that could not, each with its reason. Without
     those two, a battery missing half its detectors would read as a clean bill of health.
 
-    The one model here without slots=. It is the only dataclass returned bare from a
-    tool, and the SDK's schema builder reads class attributes for defaults on that path,
-    where a slots descriptor gets mistaken for an unserializable default.
+    The one model without slots=: returned bare from a tool, whose schema builder reads
+    class attributes for defaults and mistakes a slots descriptor for an unserializable one.
     """
 
     findings: tuple[Finding, ...]

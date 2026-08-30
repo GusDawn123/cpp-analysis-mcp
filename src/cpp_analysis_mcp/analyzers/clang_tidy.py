@@ -59,15 +59,11 @@ EXPORT_PREFIX = "cpp-analysis-tidy-"
 # the files clang-tidy itself looks for above a source file, in its own order
 TIDY_CONFIG_NAMES = (".clang-tidy", "_clang-tidy")
 
-# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy above the
-# file, clang-tidy 22 exits 1 printing "Error: no checks enabled." and its whole usage text,
-# which parses to no findings and reads as a broken tool. Measured. So a project that has
-# committed no configuration gets one, and is told that it did.
-#
-# Correctness and cost, not style: these are the families whose findings are worth acting on
-# without knowing anything about a project's conventions. readability-* and modernize-* are
-# deliberately absent -- they are opinions about how code should look, and handing someone a
-# hundred of them unasked buries the four that matter.
+# clang-tidy enables nothing on its own. Given neither --checks nor a .clang-tidy, it exits 1
+# printing "Error: no checks enabled." and its usage text, parsing to no findings and reading
+# as a broken tool -- measured behavior. So an unconfigured project gets a default: correctness
+# and cost families only, since readability-* and modernize-* are opinions about style that
+# would bury the few findings that matter under a hundred unasked ones.
 DEFAULT_CHECKS = "bugprone-*,clang-analyzer-*,performance-*,portability-*"
 
 DEFAULT_CHECKS_NOTE = (

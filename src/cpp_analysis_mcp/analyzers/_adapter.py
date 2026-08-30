@@ -22,9 +22,7 @@ from cpp_analysis_mcp.store.models import (
     SuggestedFix,
 )
 
-# what a compile-time check can be pointed at: translation units, not headers -- a header
-# is checked through the units that include it, and a bare .hpp was never meant to stand
-# alone in front of a compiler
+# headers aren't checked directly -- a header is checked through the units that include it
 CPP_SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
 
 # one file in, one of the pipeline's three ordinary outcomes out; the toolchain, platform,
