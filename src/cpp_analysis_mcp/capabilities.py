@@ -19,7 +19,7 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process, profiler
 from cpp_analysis_mcp.build.single_file import place_runtime_dlls
-from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.platforms.base import LOCAL_ENGINE, Platform
 from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
@@ -597,6 +597,10 @@ def _probe_clang_tidy(platform: Platform, source: Path, runner: Runner) -> Capab
 
 def find_clang_tidy(platform: Platform) -> Path | None:
     """PATH first, then wherever this OS keeps llvm: brew does not link it into PATH."""
+    # a bridged platform runs commands somewhere else entirely: the bare name resolves
+    # on the engine's own PATH, and a host-side search would answer for the wrong machine
+    if platform.engine != LOCAL_ENGINE:
+        return Path(CLANG_TIDY)
     on_path = shutil.which(CLANG_TIDY)
     if on_path is not None:
         return Path(on_path)

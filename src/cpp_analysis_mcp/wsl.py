@@ -135,6 +135,7 @@ def bridge_platform(distro: str, env_facts: Mapping[str, str]) -> Platform:
     )
     return Platform(
         name=NAME,
+        engine=NAME,
         compile_extras=linux.COMPILE_EXTRAS,
         cmake_extras=CMAKE_EXTRAS,
         denied=DENIED,
