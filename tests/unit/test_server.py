@@ -553,7 +553,7 @@ async def test_the_review_gates_outcomes_are_in_their_published_schemas(tmp_path
     published = {
         tool.name: set((tool.output_schema or {}).get("$defs", {})) for tool in listed.tools
     }
-    assert published["review"] >= {"ReviewReport", "CapabilityStatus", "Proposal", "Skip"}
+    assert published["review"] >= {"ReviewReport", "CapabilityStatus", "IndexEntry", "Skip"}
     assert published["audit"] >= {"AuditReport", "CapabilityStatus", "IndexEntry"}
     assert published["get_finding"] >= {"Finding", "NoSuchFinding"}
 

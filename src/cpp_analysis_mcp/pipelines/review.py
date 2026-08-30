@@ -1,8 +1,8 @@
 """The review gate: audit remembers a ref, review reports only what a change added.
 
 Everything composed here exists one layer down -- scope, plan, dispatch, store,
-baselines, escalation. Baselines are recorded on purpose by audit and never built
-behind the caller's back; a missing one reports everything and says so.
+baselines. Baselines are recorded on purpose by audit and never built behind the
+caller's back; a missing one reports everything and says so.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from cpp_analysis_mcp.analyzers.clang_tidy import CHECK_TIMEOUT_S, ClangTidyAnal
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.capabilities import find_clang_tidy
 from cpp_analysis_mcp.planner.dispatch import execute
-from cpp_analysis_mcp.planner.escalation import RULES_DIR, Proposal, load_rules, propose
 from cpp_analysis_mcp.planner.plan import Plan, Skip, Step, plan
 from cpp_analysis_mcp.planner.scope import (
     analyzer_context,
@@ -68,7 +67,6 @@ class ReviewReport:
     skips: tuple[Skip, ...]
     baseline_used: bool
     notes: tuple[str, ...]
-    proposals: tuple[Proposal, ...]
     total_new: int
     index: tuple[IndexEntry, ...]
     detailed: tuple[Finding, ...]
@@ -144,7 +142,6 @@ def review_project(
 
     fresh_identities = {finding.fingerprint for finding in fresh}
     ranked = tuple(finding for finding in store.ranked() if finding.fingerprint in fresh_identities)
-    escalated = propose(ranked, load_rules(RULES_DIR))
     index, detailed, truncated = _shaped(ranked)
     return ReviewReport(
         root=str(scoped.root),
@@ -153,8 +150,7 @@ def review_project(
         steps=decided.steps,
         skips=decided.skips,
         baseline_used=remembered is not None,
-        notes=(*baseline_notes, *escalated.notes),
-        proposals=escalated.proposals,
+        notes=baseline_notes,
         total_new=len(ranked),
         index=index,
         detailed=detailed,

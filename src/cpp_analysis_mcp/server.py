@@ -65,8 +65,7 @@ locked. Escalating is the point, though: a clean compile-time result is not an a
 because a data race, a leak and a use-after-free exist only while the program is running.
 
 For "did MY change break anything?", the review gate: audit records a ref's whole picture
-once, then review reports only the findings your change introduced, with proposals naming
-which runtime check would be worth its minutes:
+once, then review reports only the findings your change introduced:
 
   audit, review, get_finding                seconds   the compile-time tier over git scope
 
@@ -161,8 +160,7 @@ The review gate: run this before declaring work done. It asks git what changed s
 `against`, runs every applicable compile-time analyzer over exactly those files, and
 subtracts the ref's recorded baseline so pre-existing findings stay out of the way. What
 comes back is an index of every new finding with its fingerprint, full detail for the top
-few, the plan trace saying what ran and what was skipped and why, and any escalation
-proposals -- static evidence that a runtime check would be worth its minutes.
+few, and the plan trace saying what ran and what was skipped and why.
 
 Subtraction needs a memory: run audit on the ref once to record its baseline. With no
 trustworthy baseline, everything found is reported and a note says so -- never a silent
@@ -580,7 +578,7 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the ten tools against one server; `lifespan` is the seam a test starts through.
+    """Register every tool against one server; `lifespan` is the seam a test starts through.
 
     The default is what ships. A test injects a context it wrote down instead, because the
     live one probes the machine the suite happens to be running on.

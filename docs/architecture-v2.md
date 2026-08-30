@@ -5,19 +5,18 @@ agent, on any machine, without lying about the results?" It works, and most of
 it survives unchanged. What it cannot do is scale the *middle*: three hand-wired
 pipelines (`static_check`, `sanitize`, `profile`) each know their tools by name,
 so every new analyzer means editing a pipeline, and any behavior that spans
-tools — deduplication, baseline comparison, escalation — has nowhere to live.
+tools — deduplication, baseline comparison, correlation — has nowhere to live.
 
 v2 restructures that middle layer once, so that everything afterward lands as a
 plugin. The product it enables: a **review gate** — an agent runs one tool call
 before declaring work done, and sees only the findings its change introduced,
-confirmed across independent analyzers, with expensive dynamic verification
-proposed exactly where the static evidence warrants it.
+confirmed across independent analyzers.
 
 The reference points for this design are documented in the ADRs
 ([0001](adr/0001-planner-is-deterministic-code.md),
 [0002](adr/0002-finding-fingerprints.md),
-[0003](adr/0003-escalation-rules-as-data.md),
-[0004](adr/0004-execution-engines.md)). This file describes the shape they add
+[0004](adr/0004-execution-engines.md),
+[0005](adr/0005-escalation-retired.md)). This file describes the shape they add
 up to.
 
 ## The five layers
@@ -30,7 +29,7 @@ up to.
 ├────────────────────────────────────────────────────────────┤
 │ 4. PLANNER      deterministic — never an LLM               │
 │    applicability gates → plan → parallel dispatch →        │
-│    escalation rules → plan trace                           │
+│    plan trace                                              │
 ├────────────────────────────────────────────────────────────┤
 │ 3. ANALYZERS    one contract, N plugins                    │
 │    clang-tidy · warnings · cppcheck · IWYU · Infer ·       │
@@ -54,9 +53,9 @@ reason about is where agents fumble.
 
 **Planner** is deterministic code (ADR-0001). It resolves scope to files,
 applies each analyzer's gate chain, orders work by cost tier, dispatches in
-parallel around shared-resource locks, consults the escalation rule table, and
-emits a **plan trace** — what ran, on what, why, and what was skipped and why —
-before anything executes. Same inputs, same plan, every run.
+parallel around shared-resource locks, and emits a **plan trace** — what ran,
+on what, why, and what was skipped and why — before anything executes. Same
+inputs, same plan, every run.
 
 **Analyzers** all implement one contract: `applicable(scope)` → `cost_tier` →
 `unit_of_work` → `run(scope, engine)` → findings. Static and dynamic tools are
@@ -82,7 +81,7 @@ Every finding records the engine that produced it.
 ```
 src/cpp_analysis_mcp/
 ├── surface/        # layer 5: tool definitions, output shaping
-├── planner/        # layer 4: gates, scheduler, escalation rules + fixtures
+├── planner/        # layer 4: scope, gates, scheduler, dispatch, plan trace
 ├── analyzers/      # layer 3: one module per analyzer, each owning its parser
 ├── store/          # layer 2: models, fingerprints, dedup, baselines, suppressions
 ├── engines/        # layer 1: local / wsl / container, toolchains, process, probes
@@ -144,11 +143,10 @@ images are what make "fixed tool versions" true for every user (ADR-0004).
 | LLM judge filters findings       | The calling agent, armed with evidence + `get_finding` |
 | `.coderabbit.yaml`               | `.cpp-analysis.toml`                        |
 | Learnings                        | Suppression store                           |
-| —                                | **Dynamic escalation: sanitizers + profiler** |
+| —                                | **Dynamic verification: sanitizers + profiler** |
 
 The last row is the moat. A static-only reviewer can suspect a data race; this
-system can *witness* it, and the planner knows when the suspicion is worth the
-minutes it costs to check.
+system can *witness* it.
 
 ## Migration phases
 
@@ -157,7 +155,7 @@ minutes it costs to check.
 | 1     | Store core + analyzer contract; clang-tidy and warnings as the first plugins |
 | 2     | Planner + `review()`/`audit()` surface; scope resolver; baseline cache — **the review gate** |
 | 3     | Container engine + toolbox image; cppcheck proves the registry |
-| 4     | Sanitizers and perf as plugins; escalation live; suppressions; Infer |
+| 4     | Sanitizers and perf as plugins; suppressions; Infer          |
 | 5     | Eval harness, PyPI, registry listings                        |
 
 Every phase is releasable. Nothing built in one phase is rebuilt in a later

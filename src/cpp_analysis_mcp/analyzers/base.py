@@ -42,8 +42,8 @@ class UnitOfWork(StrEnum):
     """The granularity an analyzer naturally works in, declared rather than assumed.
 
     clang-tidy wants translation units, sanitizers want build targets, and forcing
-    either into per-file calls would be wrong twice. Escalation depends on this too:
-    a TARGET-grained analyzer can be pointed at the one target a finding implicates.
+    either into per-file calls would be wrong twice. Dynamic verification depends on
+    this too: a TARGET-grained analyzer is pointed at the target a finding implicates.
     """
 
     FILE = "file"
