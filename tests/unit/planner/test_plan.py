@@ -14,6 +14,7 @@ import pytest
 
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
+    AnalyzerRun,
     Applicability,
     CostTier,
     Registry,
@@ -23,12 +24,7 @@ from cpp_analysis_mcp.analyzers.base import (
 from cpp_analysis_mcp.analyzers.clang_tidy import ClangTidyAnalyzer
 from cpp_analysis_mcp.analyzers.warnings import WarningsAnalyzer
 from cpp_analysis_mcp.planner.plan import Skip, Step, plan
-from cpp_analysis_mcp.store.models import (
-    AnalysisReport,
-    BuildFailure,
-    CapabilityStatus,
-    Finding,
-)
+from cpp_analysis_mcp.store.models import AnalysisReport, BuildFailure, CapabilityStatus
 
 ROOT = Path("/repo")
 
@@ -48,9 +44,9 @@ class FakeAnalyzer:
     def applicable(self, scope: Scope, context: AnalyzerContext) -> Applicability:
         return self.verdict
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         self.ran.append(scope)
-        return ()
+        return AnalyzerRun(findings=())
 
 
 def registered(*analyzers: FakeAnalyzer) -> Registry:

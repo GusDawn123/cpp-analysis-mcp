@@ -8,6 +8,8 @@ dependencies = [
     "anyio>=4.14.2",
     "mcp>=2.0.0",
     "pydantic>=2.0",
+    # clang-tidy writes its fix-its as YAML (--export-fixes); this reads that file
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -26,6 +28,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]

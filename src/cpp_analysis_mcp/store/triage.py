@@ -1,8 +1,9 @@
-"""How dangerous a finding is: the tiers a report counts by and leads with.
+"""How dangerous a finding is, and which runtime tool could settle the question.
 
 Witnessed beats suspected. CRITICAL belongs to defects a runtime tool watched happen;
 static analysis matches patterns in source text and tops out at MAJOR, however sure it
-sounds. Both opinions live in the tables below, so a new one is a row, never a branch.
+sounds -- which is also why a suspected defect is worth naming the tool that could watch
+it. Every opinion here is a table row read through one matcher, never a branch.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from enum import StrEnum
 
 from cpp_analysis_mcp.store.models import Finding
 
-__all__ = ["STATIC_TIERS", "WITNESSED", "Tier", "tier_for"]
+__all__ = ["STATIC_TIERS", "WITNESSED", "WOULD_WITNESS", "Tier", "tier_for", "verify_with"]
 
 
 class Tier(StrEnum):
@@ -76,6 +77,41 @@ def tier_for(finding: Finding) -> Tier:
         if _matches(pattern, finding.category):
             return tier
     return Tier.UNRATED
+
+
+# which runtime analysis could witness this class of defect for real, first match wins.
+# A linter suspects from source text; these are the tools that would watch the defect
+# happen, and naming one turns a suspicion into a next step worth its minutes.
+WOULD_WITNESS: tuple[tuple[str, str | None], ...] = (
+    # a check that died is not a defect anything could watch happen: the file failed to
+    # compile, and it would fail the same way under a sanitizer. Above the families below,
+    # or thread-safety-failed reads as a race worth minutes of TSan
+    ("*-failed", None),
+    # a moved-from object is alive and reading it is legal C++ -- no sanitizer traps it
+    ("bugprone-use-after-move", None),
+    ("bugprone-dangling-handle", "asan"),
+    # above the family it belongs to: memory still held at exit is what the leak detector
+    # watches for, and ASan run without it would report nothing
+    ("clang-analyzer-cplusplus.NewDeleteLeaks", "lsan"),
+    ("clang-analyzer-cplusplus.NewDelete*", "asan"),
+    ("thread-safety*", "tsan"),
+    ("concurrency-*", "tsan"),
+    # cost is not correctness: no sanitizer ranks it, and reading code for it is famously
+    # unreliable, so the profiler is the only thing that could confirm the opinion
+    ("performance-*", "profile"),
+)
+
+
+def verify_with(finding: Finding) -> str | None:
+    """The runtime analysis that could witness this class of defect, or None for most.
+
+    Silence is the honest answer for a category no runtime tool watches for: an
+    uninitialized member or a magic number is settled by reading, not by running.
+    """
+    for pattern, analysis in WOULD_WITNESS:
+        if _matches(pattern, finding.category):
+            return analysis
+    return None
 
 
 def _matches(pattern: str, category: str) -> bool:

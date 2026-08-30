@@ -161,7 +161,9 @@ The review gate: run this before declaring work done. It asks git what changed s
 subtracts the ref's recorded baseline so pre-existing findings stay out of the way. What
 comes back is counts by danger tier, an index of every new finding with its fingerprint,
 full detail for the top few, the plan trace saying what ran and what was skipped and why,
-and the name of the compilation database that decided how your files parsed.
+and the name of the compilation database that decided how your files parsed. Each detailed
+finding carries clang-tidy's own committable fix where the check offered one, and names the
+runtime tool that could watch the defect happen rather than suspect it.
 
 Read the tiers first. Critical means a runtime tool watched the defect happen, so a
 compile-time review never reports one -- a linter suspects, and tops out at major. Style
@@ -183,8 +185,9 @@ name, or the commit when detached -- and retires itself the moment the world cha
 new compiler, changed flags, an edited clang-tidy config.
 
 Costs seconds per file and executes nothing. The report is the same shape review returns:
-counts by danger tier, an index of everything, detail for the top few, the plan trace, and
-the compilation database it read. Critical is reserved for defects a runtime tool watched
+counts by danger tier, an index of everything, detail for the top few -- each with the fix
+its check offered and the runtime tool that could witness it -- the plan trace, and the
+compilation database it read. Critical is reserved for defects a runtime tool watched
 happen, so an audit of the compile-time tier counts none of them.
 """
 

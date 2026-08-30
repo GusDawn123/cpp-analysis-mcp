@@ -21,6 +21,7 @@ from cpp_analysis_mcp.analyzers._adapter import (
 )
 from cpp_analysis_mcp.analyzers.base import (
     AnalyzerContext,
+    AnalyzerRun,
     Applicability,
     CostTier,
     Scope,
@@ -62,12 +63,13 @@ class WarningsAnalyzer:
             ),
         )
 
-    def run(self, scope: Scope, context: AnalyzerContext) -> tuple[Finding, ...]:
+    def run(self, scope: Scope, context: AnalyzerContext) -> AnalyzerRun:
         findings: list[Finding] = []
         for file in checkable_sources(scope, context):
             checked = self._check(scope.project_root / file)
             findings.extend(as_findings(checked, file, self.name))
-        return tuple(findings)
+        # the compiler offers no machine-readable edits, so none travel from here
+        return AnalyzerRun(findings=tuple(findings))
 
 
 def file_check(

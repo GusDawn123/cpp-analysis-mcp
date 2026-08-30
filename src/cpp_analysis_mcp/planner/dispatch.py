@@ -13,17 +13,18 @@ from itertools import groupby
 
 from cpp_analysis_mcp.analyzers.base import Analyzer, AnalyzerContext, Registry, Scope
 from cpp_analysis_mcp.planner.plan import Plan
-from cpp_analysis_mcp.store.models import Finding
+from cpp_analysis_mcp.store.models import Finding, SuggestedFix
 
 __all__ = ["Executed", "execute"]
 
 
 @dataclass(frozen=True, slots=True)
 class Executed:
-    """One analyzer's completed dispatch: who ran and what it found."""
+    """One analyzer's completed dispatch: who ran, what it found, what it would fix."""
 
     analyzer: str
     findings: tuple[Finding, ...]
+    suggestions: tuple[SuggestedFix, ...] = ()
 
 
 def execute(
@@ -46,7 +47,11 @@ def execute(
         with ThreadPoolExecutor(max_workers=len(steps)) as pool:
             results = pool.map(lambda step: analyzers[step.analyzer].run(scope, context), steps)
             ran += [
-                Executed(analyzer=step.analyzer, findings=found)
-                for step, found in zip(steps, results, strict=True)
+                Executed(
+                    analyzer=step.analyzer,
+                    findings=produced.findings,
+                    suggestions=produced.suggestions,
+                )
+                for step, produced in zip(steps, results, strict=True)
             ]
     return tuple(ran)
