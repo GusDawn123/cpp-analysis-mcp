@@ -1,8 +1,6 @@
-"""Pin the shape of the shared vocabulary in models.py.
-
-The dataclasses are frozen and slotted on purpose: a Finding passed between layers
-must not be edited in place, and a typo like `finding.messge = ...` must fail loudly
-rather than attach a new attribute nobody reads.
+"""Pin the shape of the shared vocabulary in models.py. The dataclasses are frozen and
+slotted on purpose: a Finding must not be edited in place, and a typo like
+`finding.messge = ...` must fail loudly rather than attach an attribute nobody reads.
 """
 
 from __future__ import annotations
@@ -188,9 +186,8 @@ def test_every_sanitizer_analysis_names_its_sanitizer() -> None:
 
 def test_the_analyses_that_instrument_nothing_have_no_sanitizer() -> None:
     """Two run at compile time and one builds optimized; none takes a -fsanitize= flag.
-
-    The profiler is the one worth stating outright: instrumenting a build would change the
-    very thing it is measuring, so it is not a sanitizer that happens to lack a flag.
+    The profiler is the one worth stating outright: instrumenting a build would change
+    the very thing it is measuring.
     """
     assert Analysis.THREAD_SAFETY not in SANITIZER_FOR
     assert Analysis.CLANG_TIDY not in SANITIZER_FOR

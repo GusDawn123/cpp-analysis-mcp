@@ -1,8 +1,6 @@
 """Race real binaries built by the real compiler, and require the ranking to be right.
-
-The unit suite proves the methodology over a fake clock; this proves the whole loop on
-real hardware, ranking a heavy program correctly against a light one. A variant that's
-instant but wrong must still lose -- the same-answer rule is the tool's whole warranty.
+A variant that's instant but wrong must still lose -- the same-answer rule is the tool's
+whole warranty. The unit suite proves the methodology; this proves it on real hardware.
 """
 
 from __future__ import annotations

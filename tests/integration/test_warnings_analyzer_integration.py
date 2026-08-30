@@ -1,8 +1,6 @@
 """Run the warnings plugin against the real compiler and require the planted lock bug.
-
-Same doctrine as the clang-tidy integration suite. The compiler is clang specifically
-because -Wthread-safety is clang-only -- the plugin never checks compiler identity itself,
-only the capability probe decides what runs.
+clang specifically, because -Wthread-safety is clang-only -- the plugin never checks
+compiler identity itself; only the capability probe decides what runs.
 """
 
 from __future__ import annotations

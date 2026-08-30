@@ -1,7 +1,6 @@
 """The single place subprocesses get launched: timeouts, output capture, environment
-hygiene. Every layer must call through here instead of subprocess directly (a test
-enforces it). scripts/fixtures.py duplicates this logic on purpose -- it predates the
-package and runs bare in CI -- so a kill-path fix belongs in both.
+hygiene. Every layer calls through here, never subprocess directly (a test enforces it).
+scripts/fixtures.py duplicates this on purpose, so a kill-path fix belongs in both.
 """
 
 from __future__ import annotations
@@ -50,11 +49,9 @@ def run(
     env: Mapping[str, str] | None = None,
     cwd: Path | None = None,
 ) -> RunResult:
-    """Run a command to completion or to its timeout, stderr merged into stdout.
-
-    A missing tool returns exit 127 with the OS's own message rather than raising --
-    callers already treat tool failure as an ordinary result to report, and raising here
-    would crash a layer above just because one optional tool was absent.
+    """Run a command to completion or to its timeout, stderr merged into stdout. A missing
+    tool returns exit 127 with the OS's own message rather than raising -- callers already
+    treat tool failure as an ordinary result to report.
     """
     try:
         # New session so a hung sanitizer takes its symbolizer child down with it.
@@ -81,15 +78,9 @@ def run(
 
 
 def _kill_tree(pid: int) -> None:
-    """Take down a timed-out process and its children, in each OS's own words.
-
-    POSIX: start_new_session made the child its own group leader, so its pid is the pgid;
-    it may also exit on its own between the timeout and the kill. Windows has no process
-    groups to signal, so taskkill /T walks the child's process tree instead; a tree
-    already gone exits nonzero, ignored the same way as ProcessLookupError on POSIX.
-
-    Branches on sys.platform, not os.name: mypy narrows on the former, and killpg/SIGKILL
-    aren't in the Windows stubs, so only this spelling type-checks on both.
+    """Take down a timed-out process and its children: killpg on POSIX (start_new_session
+    made the child its own group leader), taskkill /F /T on Windows, an already-gone tree
+    ignored on both. sys.platform, not os.name -- only that spelling type-checks on both.
     """
     if sys.platform == "win32":
         # Full path: a bare "taskkill" can resolve through the process's current
@@ -109,14 +100,9 @@ def _kill_tree(pid: int) -> None:
 
 
 def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
-    """Collect what a killed process left in its pipe, without waiting forever for it.
-
-    The tree kill isn't guaranteed: taskkill can't touch an elevated child, and a
-    grandchild that started its own session escapes the POSIX group. A survivor keeps
-    the pipe's write end open, so an untimed communicate() would block forever -- one
-    timeout becoming a request that never returns. So this read is itself bound, the
-    root is killed directly if it expires, and whatever output was gathered still comes
-    back, with a note.
+    """Collect what a killed process left in its pipe, without waiting forever for it. The
+    tree kill isn't guaranteed -- an elevated child or a new-session grandchild survives and
+    keeps the pipe open -- so this read is itself bound and the root killed if it expires.
     """
     try:
         output, _ = proc.communicate(timeout=KILL_GRACE_S)
@@ -130,10 +116,9 @@ def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
 
 
 def _salvaged(undead: subprocess.TimeoutExpired) -> str:
-    """Read the partial output off a timed-out communicate(), whatever shape it took.
-
-    text=True notwithstanding, communicate() attaches what it had read as bytes on
-    POSIX and attaches nothing at all on Windows -- only run() re-raises with str.
+    """Read the partial output off a timed-out communicate(), whatever shape it took:
+    text=True notwithstanding, communicate() attaches bytes on POSIX and nothing at all
+    on Windows -- only run() re-raises with str.
     """
     if isinstance(undead.output, bytes):
         return undead.output.decode(errors="replace")
@@ -141,10 +126,8 @@ def _salvaged(undead: subprocess.TimeoutExpired) -> str:
 
 
 class Runner(Protocol):
-    """run's call shape, named so anything that spawns can be handed a fake instead.
-
-    Lives here rather than beside its callers so every layer that takes a runner takes the
-    same one, and a test can inject something that never reaches a subprocess.
+    """run's call shape, named so anything that spawns can be handed a fake instead --
+    living here so every layer that takes a runner takes the same one.
     """
 
     def __call__(
@@ -159,9 +142,8 @@ class Runner(Protocol):
 
 def hygienic_env(overrides: Mapping[str, str]) -> dict[str, str]:
     """Copy the environment with every sanitizer option stripped, then apply overrides.
-
-    Stricter than scripts/fixtures.py, which drops two of the four and pins two of its own:
-    here nothing survives from the user's shell and every pin arrives through overrides.
+    Stricter than scripts/fixtures.py: nothing survives from the user's shell, and every
+    pin arrives through overrides.
     """
     env = dict(os.environ)
     for name in SANITIZER_ENV_VARS:

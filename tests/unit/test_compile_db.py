@@ -1,8 +1,6 @@
-"""Find and read a compilation database, with nothing but files on disk.
-
-Every shape here came off a real cmake build tree, not imagined -- especially the response
-file case: on Windows, cmake moves include flags into one once a project has a few, so a
-command with no -I at all is the norm there, the exact case this module exists to handle.
+"""Find and read a compilation database, with nothing but files on disk. Every shape here
+came off a real cmake build tree -- especially the response file case: on Windows cmake
+moves include flags into one, so a command with no -I at all is the norm there.
 """
 
 from __future__ import annotations
@@ -32,7 +30,6 @@ def write_db(directory: Path, entries: list[dict[str, object]]) -> Path:
 
 
 def a_project(root: Path) -> tuple[Path, Path]:
-    """A source file and the include directory it needs, on disk."""
     source = root / "engine" / "src" / "OrderBook.cpp"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text('#include "orderbook/OrderBook.hpp"\n', encoding="utf-8")
@@ -65,9 +62,8 @@ def test_a_database_in_a_build_directory_is_found(tmp_path: Path) -> None:
 
 
 def test_the_database_that_names_the_file_wins_over_a_nearer_one(tmp_path: Path) -> None:
-    """A checkout commonly holds several build trees and they do not describe the same files.
-
-    The one that compiled this file knows its flags; the others are guesses about it. Named
+    """A checkout commonly holds several build trees and they do not describe the same
+    files: the one that compiled this file knows its flags, the others are guesses. Named
     so the wrong one sorts first, or the preference would pass by accident.
     """
     source, _ = a_project(tmp_path)

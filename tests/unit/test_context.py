@@ -1,8 +1,6 @@
 """Resolve the composition root with no compiler anywhere: the only fake is the subprocess.
-
 resolve() reads the real host on purpose, as platforms.detect()'s one sanctioned caller;
-tests fake only the boundary beneath it -- PATH and spawn output -- while discovery,
-preference, the cache, and the probe gate all run for real, against written-down expectations.
+tests fake only the boundary beneath it, against written-down expectations.
 """
 
 from __future__ import annotations
@@ -116,10 +114,9 @@ class RefusingRunner:
 
 
 def perf_step(cmd: Sequence[str]) -> str | None:
-    """Return which perf subcommand a command runs, or None when it does not run perf.
-
-    Found by position rather than at argv[0], because a bridged spawn buries the real
-    command behind `wsl.exe -d Ubuntu --exec env` and the step still has to be readable.
+    """Return which perf subcommand a command runs, or None when it does not run perf --
+    found by position rather than at argv[0], because a bridged spawn buries the real
+    command behind `wsl.exe -d Ubuntu --exec env`.
     """
     names = [Path(arg).name for arg in cmd]
     if profiler.PERF not in names:
@@ -129,11 +126,9 @@ def perf_step(cmd: Sequence[str]) -> str | None:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names.
-
-    .exe comes off as well as .cpp, since Windows probes carry the platform's suffix. perf
-    is recognized by name instead: its report step names only the trace and its own flags,
-    none of which carry the probe's stem.
+    """Read which probe a command belongs to off the scratch file it names. .exe comes off
+    as well as .cpp, since Windows probes carry the platform's suffix; perf is recognized
+    by name, because its report step never carries the probe's stem.
     """
     if perf_step(cmd) is not None:
         return Analysis.PROFILE
@@ -150,12 +145,9 @@ def probe_calls(runner: FakeRunner) -> list[list[str]]:
 
 
 def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
-    """Say whether this is the step whose output has to carry the marker.
-
-    A sanitizer probe detects when its binary runs, which is a bare one-element command;
-    the compile-time checks detect in the only step they have. Profiling has three steps
-    and detects in the last: recording writes a binary trace that says nothing readable,
-    so only the report can name the function the probe planted.
+    """Say whether this is the step whose output has to carry the marker: a sanitizer
+    probe detects when its bare binary runs, the compile-time checks in their only step,
+    and profiling in its report -- the recording is a binary trace saying nothing readable.
     """
     if analysis is Analysis.PROFILE:
         return perf_step(cmd) == "report"
@@ -246,10 +238,9 @@ def test_resolve_binds_the_host_the_compiler_and_the_probes_into_one_value(
 def test_discovery_asked_the_callers_runner_what_the_compilers_are(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Discovery is a spawn too -- `<compiler> --version` on everything PATH offered -- and it
-    has to go through the injected runner like every other one. A resolve() that discovered
-    with its own runner would run the developer's real compilers behind a test's back, and
-    then bind the context to whatever those said rather than to what the test scripted."""
+    """Discovery is a spawn too -- `<compiler> --version` on everything PATH offered -- and
+    it must go through the injected runner: a resolve() that discovered with its own
+    runner would run the developer's real compilers behind a test's back."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -263,11 +254,9 @@ def test_discovery_asked_the_callers_runner_what_the_compilers_are(
 def test_the_probes_ran_through_the_callers_runner_on_the_chosen_compiler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The capability table must describe the toolchain the context binds, and its probes must
-    be visible to whoever injected the runner. A resolve() that probed with its own runner
-    would compile for real behind a test's back, and one that probed the other compiler would
-    hand every request a table about a machine the pipelines never build on: -Wthread-safety
-    probed on gcc reads unavailable while the clang builds quietly have it."""
+    """The capability table must describe the toolchain the context binds, and its probes
+    must be visible to whoever injected the runner: probing the other compiler would hand
+    every request a table about a machine the pipelines never build on."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -288,11 +277,8 @@ def test_startup_still_prefers_clang_when_discovery_hands_back_gcc_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """prefer() is tested on its own above; this pins that resolve() is the one asking it.
-
-    The two version texts are swapped, which inverts discovery's order the way a real host
-    can -- family comes off the version text, so the clang++ binary here is a gcc and the g++
-    binary is a clang. Taking whatever discovery found first would cost every -Wthread-safety
-    analysis on a machine that has clang, and nothing in the suite would notice."""
+    The two version texts are swapped, inverting discovery's order the way a real host
+    can -- family comes off the version text, so the g++-named binary here is the clang."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_each_binary_reports_the_other_family)
 
@@ -310,12 +296,9 @@ def test_startup_still_prefers_clang_when_discovery_hands_back_gcc_first(
 def test_asking_for_no_cache_probes_again_and_leaves_nothing_behind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """cache_dir=None is the explicit "don't remember this", which is what a test asking not
-    to touch the developer's home directory needs, and what probe_all already understands.
-
-    What proves nothing was remembered is the second start paying for every probe again.
-    Watching the real ~/.cache would prove less and flake more: any other process on the
-    machine writing there mid-test fails a run of perfectly correct code."""
+    """cache_dir=None is the explicit "don't remember this". What proves nothing was
+    remembered is the second start paying for every probe again -- watching the real
+    ~/.cache would prove less and flake more on unrelated writers."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -355,10 +338,9 @@ def test_the_cache_directory_the_caller_named_is_the_one_the_probes_use(
 
 
 def test_a_server_that_asks_for_nothing_gets_the_probe_cache() -> None:
-    """The default is the whole point of CACHE_DIR: a live start that forgot to ask must pay
-    the six probes once per machine, not once per start. No test may exercise the default
-    behaviorally -- it writes into the developer's real home directory -- so the promise is
-    pinned on the signature, where a default quietly flipped to None is still visible."""
+    """The default is the whole point of CACHE_DIR: a live start must pay the probes once
+    per machine, not once per start. No test may exercise the default behaviorally -- it
+    writes the developer's real home -- so the promise is pinned on the signature."""
     default = inspect.signature(resolve).parameters["cache_dir"].default
 
     # spelled out rather than imported from context.py: a pin that reads CACHE_DIR back
@@ -508,11 +490,9 @@ UBUNTU_CLANG = "Ubuntu clang version 21.1.8 (6ubuntu1)\nTarget: x86_64-pc-linux-
 
 
 def a_windows_machine(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pin the detected platform to Windows, whatever OS this test host happens to be.
-
-    The bridge exists for exactly one platform, and these tests have to hold on the other
-    two as well -- so this is the one section that fakes detect() rather than reading the
-    real host, in order to stand on the platform whose behaviour it pins.
+    """Pin the detected platform to Windows, whatever OS this test host happens to be:
+    the bridge exists for one platform and these tests must hold on the other two, so
+    this is the one section that fakes detect() rather than reading the real host.
     """
     both_compilers_on_path(monkeypatch)
     monkeypatch.setattr(platforms, "detect", windows.detect)

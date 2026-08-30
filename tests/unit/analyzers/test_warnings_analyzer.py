@@ -1,8 +1,6 @@
-"""Prove plugin #2 fits the same shape -- which is the contract's whole claim.
-
-The clang-tidy suite already proves the shared spine's mechanics; repeating that here
-would test the extraction twice. This file pins only what makes the warnings plugin
-itself: its name in every finding, its own refusal words, and its failure stage.
+"""Prove plugin #2 fits the same shape -- which is the contract's whole claim. The
+clang-tidy suite already proves the shared spine's mechanics; this file pins only what
+makes the warnings plugin itself: its name, its refusal words, its failure stage.
 """
 
 from __future__ import annotations

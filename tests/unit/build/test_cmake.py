@@ -1,8 +1,6 @@
-"""Build a cmake project with no cmake anywhere: every runner here is a fake.
-
-cmake answers "which targets did you build and where did they land" through files; a fake
-configure writes that reply tree itself, so target selection, the executable filter, and
-the index rule all run at unit speed, with the real thing left to the integration suite.
+"""Build a cmake project with no cmake anywhere: every runner here is a fake. A fake
+configure writes the File API reply tree itself, so target selection, the executable
+filter, and the index rule all run at unit speed; the real thing is integration's.
 """
 
 from __future__ import annotations
@@ -150,10 +148,8 @@ def a_reply(*targets: FakeTarget, stamp: str = LATER_STAMP, database: bool = Fal
 
 
 def two_replies(build_dir: Path) -> None:
-    """Two configures' worth of reply, the older one describing a binary that has moved.
-
-    Nothing prunes the old index, so picking the wrong one is a live way to hand back a path
-    to a file that is not there.
+    """Two configures' worth of reply, the older one describing a binary that has moved --
+    nothing prunes the old index, so picking the wrong one hands back a path to nothing.
     """
     write_reply(build_dir, [an_executable(artifact=STALE_ARTIFACT)], EARLIER_STAMP)
     write_reply(build_dir, [an_executable()], LATER_STAMP)
@@ -161,9 +157,8 @@ def two_replies(build_dir: Path) -> None:
 
 def a_multi_config_reply(build_dir: Path) -> None:
     """What a multi-config generator leaves: several configurations, Release listed first.
-
-    Each configuration carries its own artifact paths, so reading one and building another
-    hands back a path the build never wrote. Release-first proves nothing assumes Debug.
+    Each carries its own artifact paths, so reading one and building another hands back a
+    path the build never wrote; Release-first proves nothing assumes Debug.
     """
     reply_dir = build_dir / REPLY_DIR
     entries: dict[str, list[dict[str, object]]] = {}
@@ -232,10 +227,8 @@ def a_codemodel_naming_a_missing_target(build_dir: Path) -> None:
 @dataclass
 class FakeCmake:
     """Stand in for both cmake runs, writing on the configure what a real one leaves behind.
-
-    The query file check happens from inside the call: afterwards there is no way to tell a
-    query written before the configure -- the only time cmake reads it -- from one written
-    after, and a query cmake never saw produces no reply at all.
+    The query file check happens from inside the call: cmake reads the query only during
+    configure, and afterwards a too-late query is indistinguishable from a timely one.
     """
 
     on_configure: Writer | None = None
@@ -406,12 +399,9 @@ def test_the_build_names_its_target_and_asks_for_parallelism(tmp_path: Path) -> 
 
 
 def test_a_multi_config_generator_builds_the_configuration_it_reports(tmp_path: Path) -> None:
-    """The artifact path and the --config must come from the same configuration entry.
-
-    A user's shell can hand cmake a multi-config generator through CMAKE_GENERATOR, where
-    CMAKE_BUILD_TYPE is ignored and an untold build produces its own default -- analyzing a
-    binary from a different configuration than the one reported is the wrong-binary bug
-    this layer exists to prevent.
+    """The artifact path and the --config must come from the same configuration entry: a
+    shell's CMAKE_GENERATOR can force a multi-config generator, where an untold build
+    produces its own default -- the wrong-binary bug this layer exists to prevent.
     """
     runner = FakeCmake(on_configure=a_multi_config_reply)
 

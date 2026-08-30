@@ -1,8 +1,6 @@
-"""Verdicts: a task's expectations against the calls one session actually made.
-
-Pure list scans over a handful of calls -- no I/O, no clock, no driver. Every check
-explains itself in words, because a scorecard row that only says "fail" tells the
-maintainer nothing about which habit slipped.
+"""Verdicts: a task's expectations against the calls one session actually made. Pure list
+scans -- no I/O, no clock, no driver. Every check explains itself in words, because a
+scorecard row that only says "fail" tells the maintainer nothing about which habit slipped.
 """
 
 from __future__ import annotations

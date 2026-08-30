@@ -1,8 +1,6 @@
 """The A/B control arm: the same tools with the teaching cut out of their descriptions.
-
-Wraps the shipped server rather than flagging it -- the product has no "bare" mode and
-never will, so the arm lives here. Each description keeps its first sentence, which is
-what a tool would say if nobody had thought about how agents pick one.
+Wraps the shipped server rather than flagging it -- the product has no "bare" mode. Each
+description keeps its first sentence: what a tool would say if nobody had thought about it.
 """
 
 from __future__ import annotations

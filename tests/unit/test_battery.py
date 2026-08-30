@@ -1,8 +1,6 @@
-"""Drive the whole battery with no compiler and no child process anywhere.
-
-The runner answers by command content rather than call order, because the six analyses
-run in parallel and their order is not promised. The pipelines, the capability gates and
-the parsers underneath are all the real code; two of the replies are committed goldens.
+"""Drive the whole battery with no compiler and no child process anywhere. The runner
+answers by command content, because the six analyses run in parallel with no promised
+order. Everything underneath is real code; two of the replies are committed goldens.
 """
 
 from __future__ import annotations

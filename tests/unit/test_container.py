@@ -1,5 +1,4 @@
 """The container engine with no Docker anywhere: the only fake is the subprocess boundary.
-
 Discovery, the mount table, path respelling both directions, and the wrapping runner are
 real code; the fakes script only what the docker CLI would answer.
 """

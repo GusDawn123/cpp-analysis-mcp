@@ -1,8 +1,6 @@
-"""Read clang-tidy's own fix-it export, or read nothing and say nothing.
-
-A suggestion is a bonus on top of a finding that already stands, so every way the
-export can disappoint -- absent, truncated, malformed, pointing past the end of a
-file someone edited since -- has to come back empty rather than loudly.
+"""Read clang-tidy's own fix-it export, or read nothing and say nothing. A suggestion is
+a bonus on top of a finding that already stands, so every way the export can disappoint --
+absent, truncated, malformed, pointing past a stale end -- comes back empty, not loudly.
 """
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 """Where a transcript comes from: a recording on disk, or a session nobody here starts.
-
 The real driver is exercised only as far as the argv it composes. Nothing in this
 suite spawns `claude`, and the spend gate below is what keeps it that way.
 """

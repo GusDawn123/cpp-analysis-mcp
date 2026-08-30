@@ -1,8 +1,6 @@
-"""Drive the profile chain with no compiler, no perf and no child process anywhere.
-
-Only the subprocess boundary is faked; capability gating, build composition, and parsing
-are real code. What's pinned is mostly what the chain must never do: sanitize the build,
-build at -O1, drop a recording because its run failed, or rank with no sample count behind it.
+"""Drive the profile chain with no compiler, no perf and no child process anywhere. Only
+the subprocess boundary is faked. Pinned is mostly what the chain must never do: sanitize
+the build, build at -O1, drop a failed run's recording, or rank with no sample count.
 """
 
 from __future__ import annotations
@@ -174,7 +172,6 @@ def test_a_build_that_failed_comes_back_as_the_failure(tmp_path: Path) -> None:
     assert isinstance(answer, BuildFailure)
     assert answer.stage == "compile"
     assert BUILD_FAILED in answer.output
-    # and nothing was profiled after the build died
     assert [step(cmd) for cmd in runner.calls] == ["compile"]
 
 
@@ -415,10 +412,9 @@ def hotspots_of(report: str, source: Path, tmp_path: Path) -> tuple[Hotspot, ...
 
 
 def a_cmake_reply(build_dir: Path, target: str) -> None:
-    """Leave behind the File API reply a real configure would have written.
-
-    build_project reads the reply off disk after its configure returns, so planting it up
-    front is all a faked configure needs. The layout is cmake's own contract.
+    """Leave behind the File API reply a real configure would have written: build_project
+    reads it off disk after configure returns, so planting it up front is all a faked
+    configure needs. The layout is cmake's own contract.
     """
     reply = build_dir / ".cmake" / "api" / "v1" / "reply"
     reply.mkdir(parents=True, exist_ok=True)

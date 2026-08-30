@@ -1,8 +1,6 @@
 """Drive the whole static_check chain with no compiler, no clang-tidy and no child process.
-
-Only the subprocess boundary is faked -- the capability gate, each check's command, and
-parsing are real code, and replies are committed goldens, never invented strings, so a
-hand-written approximation can't keep passing after the real tool's output changes.
+Only the subprocess boundary is faked, and replies are committed goldens, never invented
+strings, so an approximation can't keep passing after the real tool's output changes.
 """
 
 from __future__ import annotations
@@ -209,10 +207,9 @@ def a_denied_status() -> CapabilityStatus:
 
 
 def statuses(status: CapabilityStatus) -> dict[Analysis, CapabilityStatus]:
-    """The same status under every analysis, the sanitizer ones included.
-
-    TSAN and friends are in here on purpose: asking this pipeline for one must fail on the
-    check lookup, not on a capability the test forgot to write down.
+    """The same status under every analysis, the sanitizer ones included on purpose:
+    asking this pipeline for one must fail on the check lookup, not on a capability
+    the test forgot to write down.
     """
     return dict.fromkeys(Analysis, status)
 
@@ -228,10 +225,9 @@ def build_dir(tmp_path: Path) -> Path:
 
 
 def install_tidy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Put a clang-tidy where only this platform's tool directories can see it.
-
-    PATH is blinded first, so a real clang-tidy on the developer's machine cannot be the one
-    the pipeline finds and the recorded argv is this file's own path either way.
+    """Put a clang-tidy where only this platform's tool directories can see it. PATH is
+    blinded first, so a real clang-tidy on the developer's machine cannot be the one the
+    pipeline finds and the recorded argv is this file's own path either way.
     """
     monkeypatch.setattr(shutil, "which", lambda name: None)
     tidy = tmp_path / TIDY_NAME
@@ -320,11 +316,9 @@ def test_the_compile_is_syntax_only_and_carries_this_hosts_flags(tmp_path: Path)
 def test_the_check_replaces_the_shells_sanitizer_options_and_keeps_the_rest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Hygiene means dropping the four, not starting from an empty world.
-
-    All four are poisoned in this process first, so this proves the pipeline stripped them
-    rather than that they happened to be absent. The canary is the other half: a compile that
-    lost PATH would not find its own headers.
+    """Hygiene means dropping the four, not starting from an empty world. All four are
+    poisoned first, proving the pipeline stripped them; the canary is the other half --
+    a compile that lost PATH would not find its own headers.
     """
     for name in EVERY_SANITIZER_VAR:
         monkeypatch.setenv(name, POISON)
@@ -363,10 +357,9 @@ def test_a_sanitizer_analysis_is_a_caller_bug(tmp_path: Path) -> None:
 def test_a_tidy_that_vanished_since_the_probe_refuses_rather_than_reporting_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The gate passed on a cached answer, and the binary is not there any more.
-
-    An uninstall between the probe and the call would otherwise reach the runner with an
-    unspawnable command; refusing in the probe's own words keeps the caller told.
+    """The gate passed on a cached answer, and the binary is not there any more: an
+    uninstall between probe and call would otherwise reach the runner as an unspawnable
+    command. Refusing in the probe's own words keeps the caller told.
     """
     monkeypatch.setattr(shutil, "which", lambda name: None)
     nowhere = Platform(
@@ -570,10 +563,9 @@ def test_an_ordinary_failure_is_not_blamed_on_a_missing_database(tmp_path: Path)
 def test_a_committed_clang_tidy_is_left_in_charge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A --checks= of any shape overrules a project's committed .clang-tidy file.
-
-    So when the project has one, nothing may be passed: a repository that curated its own
-    check list would otherwise silently be given someone else's.
+    """A --checks= of any shape overrules a project's committed .clang-tidy file, so when
+    the project has one, nothing may be passed: a repository that curated its own check
+    list would otherwise silently be given someone else's.
     """
     tidy = install_tidy(monkeypatch, tmp_path)
     (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
@@ -594,11 +586,9 @@ def test_a_committed_clang_tidy_is_left_in_charge(
 def test_a_project_with_no_clang_tidy_gets_a_default_rather_than_usage_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """clang-tidy enables nothing of its own accord.
-
-    Given neither --checks nor a .clang-tidy above the file it exits 1 and prints its usage
-    text, which parses to no findings and reads as a tool that is broken. Measured on
-    clang-tidy 22. The default is chosen for the caller, and the caller is told it was.
+    """clang-tidy enables nothing of its own accord: with neither --checks nor a .clang-tidy
+    it exits 1 printing usage text, which reads as a broken tool (measured on clang-tidy 22).
+    The default is chosen for the caller, and the caller is told it was.
     """
     tidy = install_tidy(monkeypatch, tmp_path)
     runner = ScriptedRunner([CLEAN])
@@ -865,7 +855,6 @@ def test_a_snippet_is_written_down_before_it_is_checked(tmp_path: Path) -> None:
 
 def test_the_same_snippet_shares_identity_across_scratch_directories(tmp_path: Path) -> None:
     """Two calls, two random scratch directories, one snippet: the fingerprints agree.
-
     Snippet paths are minted fresh per call, so hashing them verbatim would make the
     same snippet a new finding every time -- dedup and baselines would never hold.
     """

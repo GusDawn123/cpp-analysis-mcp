@@ -1,8 +1,6 @@
-"""One Claude Code session, reduced to the tool calls it made, in order.
-
-`claude -p --output-format stream-json` emits one JSON object per line; only the assistant events
-carry tool_use blocks, and only those become calls. Our own tools arrive MCP-prefixed and lose the
-prefix here, so tasks name tools the way the server does.
+"""One Claude Code session, reduced to the tool calls it made, in order. stream-json emits
+one JSON object per line; only assistant events carry tool_use blocks. Our own tools arrive
+MCP-prefixed and lose the prefix here, so tasks name tools the way the server does.
 """
 
 from __future__ import annotations
@@ -35,7 +33,8 @@ def read_transcript(path: Path) -> tuple[ToolCall, ...]:
 
 
 def parse_stream_json(text: str, *, source: str) -> tuple[ToolCall, ...]:
-    """Walk the stream line by line; a line that will not parse names itself and stops."""
+    """Walk the stream line by line: blank lines are skipped, and a line that is not JSON
+    raises TranscriptError naming the source and line number."""
     calls: list[ToolCall] = []
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():

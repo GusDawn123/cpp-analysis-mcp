@@ -1,8 +1,6 @@
 """Scope resolution: one canonical language for paths, and the review's two questions.
-
-Fingerprints hash project-relative POSIX paths (ADR-0002); relativizer() turns tool
-spellings into that form, changed_since() asks git what changed, and
-analyzer_context() asks the compilation database what is actually in the build.
+relativizer() turns tool spellings into the project-relative POSIX that fingerprints hash
+(ADR-0002); changed_since() asks git what changed; analyzer_context() asks the build.
 """
 
 from __future__ import annotations
@@ -23,11 +21,9 @@ GIT_TIMEOUT_S = 30
 
 
 def relativizer(root: Path) -> Callable[[str], str]:
-    """Canonicalize spellings against the root, resolving each distinct one once.
-
-    Under the root: relative POSIX ("src/a.cpp"). Outside it: kept whole, so two
-    same-named files cannot collide. Relative spellings pass through untouched --
-    only the tool that printed one knows what it was relative to.
+    """Canonicalize spellings against the root, resolving each distinct one once. Under
+    the root: relative POSIX. Outside: kept whole, so same-named files cannot collide.
+    Relative spellings pass through -- only the tool knows what they were relative to.
     """
     settled = root.resolve()
     cache: dict[str, str] = {}
@@ -44,7 +40,6 @@ def relativizer(root: Path) -> Callable[[str], str]:
 
 def line_reader() -> Callable[[str, int], str]:
     """Read flagged lines for fingerprinting, each file once, misses as empty text.
-
     Reads use the paths exactly as the tool printed them; how a path enters the hash
     is the caller's `canonical` to decide, never this reader's.
     """
@@ -107,7 +102,6 @@ def changed_since(
     directory: Path, ref: str, *, runner: Runner = process.run
 ) -> ChangedScope | CapabilityStatus:
     """Ask git what changed between the working tree and ref, untracked files included.
-
     Deletes are dropped and a rename counts as its new name. Refusals carry git's own
     words, and a missing git refuses too: scope never silently widens to a full scan.
     """
@@ -134,10 +128,9 @@ def changed_since(
 def tracked_files(
     directory: Path, *, runner: Runner = process.run
 ) -> ChangedScope | CapabilityStatus:
-    """Every file git tracks, from the root -- the audit's whole-project scope.
-
-    Selection stays with the analyzer gates: non-C++ files ride along and are refused
-    there, so scope resolution never grows its own idea of relevance.
+    """Every file git tracks, from the root -- the audit's whole-project scope. Selection
+    stays with the analyzer gates: non-C++ files ride along and are refused there, so
+    scope resolution never grows its own idea of relevance.
     """
     root = repo_root(directory, runner=runner)
     if isinstance(root, CapabilityStatus):
@@ -166,11 +159,9 @@ def current_ref(directory: Path, *, runner: Runner = process.run) -> str | Capab
 
 
 def analyzer_context(root: Path, capabilities: Mapping[str, CapabilityStatus]) -> AnalyzerContext:
-    """One place answers "which files are in the build?" for every gate.
-
-    The database's files come back canonical (root-relative POSIX), so membership and
-    fingerprints speak one language. No database, or a broken one, means the empty
-    set -- the meaning the gates already give it.
+    """One place answers "which files are in the build?" for every gate. The database's
+    files come back canonical (root-relative POSIX) so membership and fingerprints speak
+    one language; no database, or a broken one, means the empty set.
     """
     database = compile_db.find_under(root)
     if database is None:

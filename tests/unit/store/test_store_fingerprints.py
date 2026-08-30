@@ -1,8 +1,6 @@
-"""Prove fingerprints hold identity still while everything around a finding moves.
-
-An inserted line, a reformat, or a moved block must not change who a finding is, or the
-diff against main reports false "new" findings from a one-line edit. The other direction
-matters too: identical lines are still two findings, and adjacent fields can't collide.
+"""Prove fingerprints hold identity still while everything around a finding moves: an
+inserted line, a reformat, or a moved block must not mint false "new" findings. The other
+direction too -- identical lines stay two findings, and adjacent fields cannot collide.
 """
 
 from __future__ import annotations
@@ -36,8 +34,6 @@ def a_finding(file: str = "src/order_book.cpp", line: int = 40, rule: str = RULE
 
 
 def source_where(mapping: dict[tuple[str, int], str]) -> Callable[[str, int], str]:
-    """A read_line that serves the given (file, line) -> text table, blank elsewhere."""
-
     def read_line(file: str, line: int) -> str:
         return mapping.get((file, line), "")
 
@@ -203,13 +199,9 @@ def test_batch_preserves_order_and_count() -> None:
 
 
 def test_spacing_only_token_differences_share_identity_by_design() -> None:
-    """The accepted boundary of scheme 1, pinned so a change to it is a decision.
-
-    Stripping every whitespace run merges `a + ++b` with `a++ + b`. The alternative --
-    collapsing runs to one space -- would keep those apart but change every finding's
-    identity on each reformat, and reformats vastly outnumber adjacent-operator edits.
-    If this assertion ever needs to flip, that is a new scheme: bump SCHEME_VERSION
-    rather than editing the stripping (see the module docstring and ADR-0002).
+    """The accepted boundary of scheme 1, pinned so a change to it is a decision: stripping
+    every whitespace run merges `a + ++b` with `a++ + b`, and collapsing instead would
+    change identity on every reformat. Flipping this is a SCHEME_VERSION bump (ADR-0002).
     """
     spaced = compute_fingerprint(RULE, "src/a.cpp", "result = a + ++b;", 0)
     munched = compute_fingerprint(RULE, "src/a.cpp", "result = a++ + b;", 0)
@@ -219,10 +211,8 @@ def test_spacing_only_token_differences_share_identity_by_design() -> None:
 
 def test_inserting_a_duplicate_above_grows_the_identity_set_by_exactly_one() -> None:
     """Attribution among identical duplicates may rotate; the set difference may not.
-
-    With duplicates at lines 50 and 90, inserting a third identical line at 10 reranks
-    the survivors -- but baseline subtraction works on fingerprint sets, and the set
-    must grow by exactly the inserted finding for the review gate to be honest.
+    Baseline subtraction works on fingerprint sets, and the set must grow by exactly
+    the inserted finding for the review gate to be honest.
     """
     text = {("src/order_book.cpp", line): LINE_TEXT for line in (10, 50, 90)}
     before = fingerprint_batch(
@@ -242,11 +232,9 @@ def test_inserting_a_duplicate_above_grows_the_identity_set_by_exactly_one() -> 
 
 
 def test_ten_thousand_findings_fingerprint_in_under_a_second() -> None:
-    """The latency gate: identity must stay noise next to the analyzers it serves.
-
-    The bound is generous on purpose (a Windows dev box measured 0.14s where the Mac it
-    was calibrated on sat well under 0.1): its one job is catching a quadratic
-    regression, which at this size overshoots a full second by an order of magnitude.
+    """The latency gate: identity must stay noise next to the analyzers it serves. The
+    bound is generous on purpose (a Windows dev box measured 0.14s); its one job is
+    catching a quadratic regression, which at this size overshoots by an order of magnitude.
     """
     findings = tuple(
         a_finding(file=f"src/file_{index % 200}.cpp", line=index) for index in range(10_000)
@@ -296,12 +284,9 @@ def test_two_spellings_of_one_file_share_identity_under_a_canonical() -> None:
 
 
 def spec_literal_fingerprint(rule: str, path: str, text: str, index: int) -> str:
-    """ADR-0002's normative encoding, reimplemented from the document alone.
-
-    Written against the prose, not the production code: each canonicalized field as
-    UTF-8, prefixed with the ASCII decimal byte length and a colon, concatenated,
-    SHA-256, lowercase hex, first sixteen characters. If this and compute_fingerprint
-    ever disagree, one of them changed scheme without saying so.
+    """ADR-0002's normative encoding, reimplemented from the document alone -- written
+    against the prose, not the production code. If this and compute_fingerprint ever
+    disagree, one of them changed scheme without saying so.
     """
     normalized_path = path.replace("\\", "/").removeprefix("./")
     stripped = "".join(text.split())
@@ -335,11 +320,9 @@ def test_production_matches_the_spec_literal_reimplementation() -> None:
 
 
 def test_known_answer_digests_are_pinned_forever() -> None:
-    """The ADR's worked example and companions, as constants.
-
-    These hex strings appear in ADR-0002 and here, nowhere derived. A synchronized
-    change to the spec and the implementation still breaks this test -- which is the
-    point: moving these digests is a scheme bump, never a refactor.
+    """The ADR's worked example and companions, as constants: these hex strings appear in
+    ADR-0002 and here, nowhere derived. A synchronized spec-and-implementation change
+    still breaks this test -- moving these digests is a scheme bump, never a refactor.
     """
     expected = (
         "e56adf7bdc0bf0a3",

@@ -1,9 +1,6 @@
-"""Paths and lookups shared by the unit tests.
-
-Every buggy fixture in tests/fixtures/cpp/ marks its planted bug with a `// BUG:`
-comment on exactly one line. Tests find that line through `bug_line` instead of
-hardcoding a number, so editing a fixture moves the assertions with it rather
-than silently checking the wrong line.
+"""Paths and lookups shared by the unit tests. Every buggy fixture marks its planted bug
+with a `// BUG:` comment on one line; tests find it through `bug_line`, so editing a
+fixture moves the assertions with it rather than silently checking the wrong line.
 """
 
 from __future__ import annotations
@@ -25,7 +22,6 @@ CLEAN_FIXTURE = "clean"
 
 
 def cpp_source(fixture_stem: str) -> Path:
-    """Return the path to a fixture's C++ source."""
     return CPP_DIR / f"{fixture_stem}.cpp"
 
 
