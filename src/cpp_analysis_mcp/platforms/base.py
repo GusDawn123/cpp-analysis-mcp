@@ -32,11 +32,17 @@ class FailureSignature:
     suggestion: str | None = None
 
 
+LOCAL_ENGINE = "local"
+
+
 @dataclass(frozen=True, slots=True)
 class Platform:
     """One operating system's differences, as data."""
 
     name: str  # "linux", "darwin" or "windows"
+    # which engine work sent here runs on -- Finding.engine's value. Bridges (wsl,
+    # container) set their own name; a real OS keeps "local".
+    engine: str = LOCAL_ENGINE
     compile_extras: tuple[str, ...] = ()
     # what a runnable binary's name must end in: ".exe" on Windows, "" elsewhere
     executable_suffix: str = ""
