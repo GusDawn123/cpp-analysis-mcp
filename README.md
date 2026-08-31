@@ -1,7 +1,12 @@
 # cpp-analysis-mcp
 
 An MCP server that lets AI coding agents actually test C++ code
-instead of just reading it.
+instead of just reading it. It catches the bugs that don't show up
+in source text — data races, memory leaks, use-after-free, undefined
+behavior — tells you which findings *your* change added, and measures
+where your latency actually goes instead of guessing. And if the
+machine has no C++ tools installed at all, it runs everything inside
+a Docker container: the only install is Docker itself.
 
 ## The problem
 
@@ -23,22 +28,25 @@ up to. This project is that wiring.
 
 ## What it does
 
-Thirteen tools, six questions:
+Thirteen tools, six jobs:
 
-| Question                    | Tools                                     | Cost    |
-|-----------------------------|-------------------------------------------|---------|
-| Does anything look wrong?   | `static_check_file` / `_snippet`          | seconds |
-| Did *my* change break it?   | `review` / `audit` / `get_finding`        | seconds |
-| Is it actually wrong?       | `sanitize_file` / `_project` / `_snippet` | minutes |
-| Where is it slow?           | `profile_file` / `_project`               | minutes |
-| Which rewrite is faster?    | `benchmark_variants`                      | minutes |
-| Everything at once?         | `full_check_file`                         | minutes |
+| The problem                                        | Tools                                     | Cost    |
+|----------------------------------------------------|-------------------------------------------|---------|
+| Bug patterns and risky code, cheap first pass      | `static_check_file` / `_snippet`          | seconds |
+| Findings *my* change added to the codebase         | `review` / `audit` / `get_finding`        | seconds |
+| Data races, leaks, use-after-free, crashes — caught by running the code | `sanitize_file` / `_project` / `_snippet` | minutes |
+| Latency: which functions eat the time              | `profile_file` / `_project`               | minutes |
+| Two rewrites — which one is *really* faster        | `benchmark_variants`                      | minutes |
+| The whole correctness battery in one call          | `full_check_file`                         | minutes |
 
-The agent starts cheap and escalates only when it has to, or calls
-`full_check_file` to run both compile-time checks and all four
-sanitizers in parallel and get one merged, deduplicated report. The
-thirteenth tool, capabilities, reports what this machine can really
-run.
+Behind those rows: ThreadSanitizer watches data races happen,
+AddressSanitizer catches use-after-free and buffer overflows,
+LeakSanitizer catches leaks, UBSan catches undefined behavior like
+signed overflow, clang-tidy and `-Wthread-safety` read the source,
+and perf measures where the time goes. The agent starts cheap and
+escalates only when it has to, or calls `full_check_file` for one
+merged, deduplicated report. The thirteenth tool, `capabilities`,
+reports what this machine can really run.
 
 benchmark_variants is the one that ends arguments: it races up to
 five versions of a program on your machine, feeds them the same
@@ -57,11 +65,6 @@ slash commands. `checkup` runs the whole correctness pass and fixes
 findings until the file comes back clean. `make-it-faster` walks the
 loop this tool exists for: profile, write rewrite candidates, race
 them, adopt only a proven winner, and prove it again.
-
-Under the hood: ThreadSanitizer for data races, AddressSanitizer
-for memory corruption, LeakSanitizer for leaks, UBSan for undefined
-behavior, clang-tidy and -Wthread-safety at compile time, and perf
-for profiling.
 
 ## The review gate
 
@@ -127,6 +130,7 @@ baseline, no silent guess.
 | ASan, UBSan, static checks | yes   | yes     | yes          |
 | TSan, LSan                 | yes   | yes     | yes, via WSL |
 | Profiler (perf)            | yes   | not yet | yes, via WSL |
+| Everything but the profiler, zero tools installed | yes, via Docker | yes, via Docker | yes, via Docker |
 
 On Windows the server finds a WSL distro on its own and routes the
 Linux-only tools through it. You keep passing normal C:\ paths.
