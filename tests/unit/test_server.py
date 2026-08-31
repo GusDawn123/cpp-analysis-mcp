@@ -1,18 +1,6 @@
-"""Drive the six tools over a real MCP session with no compiler and no child process anywhere.
-
-The client here is the SDK's in-memory one, so what these tests exercise is the protocol
-surface an assistant actually meets: the tool names it can call, the descriptions it chooses
-from, the schemas it validates against, and the JSON that comes back. Underneath, the only
-thing faked is the subprocess boundary and the startup that would have probed this host --
-the pipelines, the capability gate and the parsers are all the real code.
-
-resolve() is never called. A unit test that resolved the context would compile and run six
-probes on whatever machine it happened to be on, which is minutes, needs a toolchain, and
-would bind the tools to that host's answers rather than to the ones written down here.
-
-The fakes are copied from tests/unit/test_context.py and the pipeline tests rather than
-shared: hoisting them into tests/helpers.py is a refactor of its own, and one shared fake
-grown to serve four suites stops resembling the boundary any of them is testing.
+"""Drive the six tools over a real MCP session with no compiler and no child process. The
+in-memory SDK client exercises the real protocol surface with only the subprocess boundary
+and startup faked. resolve() is never called: it would probe whatever host runs the suite.
 """
 
 from __future__ import annotations
@@ -32,10 +20,10 @@ from mcp import Client
 from mcp.server import MCPServer
 
 from cpp_analysis_mcp.context import Context
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
 from cpp_analysis_mcp.server import Lifespan, build_server, live
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations
@@ -52,7 +40,24 @@ TOOL_NAMES = frozenset(
         "static_check_snippet",
         "profile_file",
         "profile_project",
+        "benchmark_variants",
+        "full_check_file",
+        "review",
+        "audit",
+        "get_finding",
     }
+)
+
+# the two tools that publish no CapabilityStatus outcome: capabilities returns the statuses
+# themselves, and the race gates on nothing -- a plain compile-and-run cannot break silently
+UNGATED_TOOLS = (
+    "capabilities",
+    "benchmark_variants",
+    "full_check_file",
+    # the review gate returns its own report shapes; its outcome test lives below
+    "review",
+    "audit",
+    "get_finding",
 )
 
 SANITIZER_TOOLS = ("sanitize_file", "sanitize_project", "sanitize_snippet")
@@ -75,6 +80,12 @@ SHAPE_PHRASES: Mapping[str, tuple[str, ...]] = {
     # the probe is why an unavailable answer is worth anything: a version number can claim
     # a sanitizer the runtime library is missing
     "capabilities": ("probe", "unavailable"),
+    # the race's contract: whole programs, the first one defines the right answer, and a
+    # fast variant with a different answer must be told from a win
+    "benchmark_variants": ("whole programs", "baseline", "same output", "fixed seed"),
+    # the battery is the one-call road; its description must say what its report sections
+    # mean, or an empty ran list reads as a clean file
+    "full_check_file": ("single call", "in parallel", "unavailable", "failed_builds"),
 }
 
 # the two outcomes every pipeline can hand back whatever it was asked. Both have to be in
@@ -135,11 +146,9 @@ COMPILE_FAILED = RunResult(
 
 COMPILE_STAGE = "compile"
 
-# the phrases the server's own instructions have to carry. They are read once at initialize,
-# before any tool description is, so this is where an assistant learns there is an order to
-# try things in at all -- a client showing only the tool list still gets the ladder.
-# Each phrase is short enough to sit inside one line of the prose, since a pin spanning a
-# wrap would fail on a reflow that changed nothing an assistant reads.
+# the phrases the server's own instructions must carry, read once at initialize before any
+# tool description -- so a client showing only the tool list still gets the ladder. Each is
+# short enough to sit on one line, since a pin spanning a wrap would break on a harmless reflow.
 INSTRUCTION_PHRASES = (
     "Cheapest rung first",
     "seconds",
@@ -151,6 +160,11 @@ INSTRUCTION_PHRASES = (
     "why is this code slow?",
     "profile_project",
     "Only measurement ranks anything",
+    # the race sits beside the profiler, and the instructions are where an assistant
+    # learns a speedup claim needs one behind it
+    "benchmark_variants",
+    "races",
+    "full_check_file",
 )
 
 
@@ -255,11 +269,9 @@ def write_json(path: Path, document: object) -> None:
 
 
 def write_reply(build_dir: Path, executables: tuple[tuple[str, str], ...]) -> None:
-    """Leave the index, codemodel and target files a real configure would have written.
-
-    Reading these is how the build learns which targets exist and where each artifact lands,
-    so the target that gets built and the binary that gets run are only right if the whole
-    chain read them.
+    """Leave the index, codemodel and target files a real configure would have written:
+    reading these is how the build learns which targets exist and where each artifact
+    lands, so the built target and the run binary are only right if the chain read them.
     """
     reply_dir = build_dir / REPLY_DIR
     entries = []
@@ -280,9 +292,8 @@ def write_reply(build_dir: Path, executables: tuple[tuple[str, str], ...]) -> No
 @dataclass
 class ScriptedCmake(ScriptedRunner):
     """A ScriptedRunner that also writes the File API reply when the configure goes by.
-
-    The build directory is read off the configure's own argv, because the handler makes one
-    per call under the workspace and no test can know its name in advance.
+    The build directory is read off the configure's own argv, because the handler makes
+    one per call under the workspace and no test can know its name in advance.
     """
 
     executables: tuple[tuple[str, str], ...] = TWO_EXECUTABLES
@@ -374,7 +385,7 @@ def result_of(structured: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_eight_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
+async def test_the_tools_the_ladder_needs_are_the_ones_offered(tmp_path: Path) -> None:
     """The names are the API. A client config lists them, so a rename breaks every caller,
     and an extra one is a rung nobody documented."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
@@ -386,13 +397,49 @@ async def test_the_eight_tools_the_ladder_needs_are_the_ones_offered(tmp_path: P
 
 
 @pytest.mark.anyio
+async def test_the_review_gate_tools_teach_the_audit_then_review_flow(tmp_path: Path) -> None:
+    """The gate only works as a pair, and the descriptions are where an assistant learns
+    that: review names audit as the source of its baseline, audit says it records one,
+    and get_finding says what key it answers to."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    docs = {tool.name: tool.description or "" for tool in listed.tools}
+    assert "audit" in docs["review"]
+    assert "baseline" in docs["review"]
+    assert "get_finding" in docs["review"]
+    assert "record" in docs["audit"]
+    assert "baseline" in docs["audit"]
+    assert "fingerprint" in docs["get_finding"]
+
+
+@pytest.mark.anyio
+async def test_the_review_gate_tools_teach_how_to_read_a_tiered_report(tmp_path: Path) -> None:
+    """Counts by tier lead the report, so the descriptions have to say what a tier means:
+    critical is a defect something watched happen, style is counted rather than expanded,
+    and the compilation database named at the top is what decided everything below it."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    docs = {tool.name: tool.description or "" for tool in listed.tools}
+    for name in ("review", "audit"):
+        assert "tier" in docs[name]
+        assert "critical" in docs[name].lower()
+        assert "compilation database" in docs[name]
+    assert "style" in docs["review"].lower()
+
+
+@pytest.mark.anyio
 async def test_each_sanitizer_tool_says_what_it_costs_and_which_rung_comes_first(
     tmp_path: Path,
 ) -> None:
-    """Descriptions are the only thing an assistant reads before choosing, so a sanitizer has
-    to place itself: minutes rather than seconds, it executes the code, and the compile-time
-    check is the rung to have tried first. Vague here and the profiler gets called before
-    anyone checked whether the door was locked."""
+    """Descriptions are the only thing an assistant reads before choosing, so a sanitizer
+    has to place itself: minutes rather than seconds, it executes the code, and the
+    compile-time check is the rung to have tried first."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
         client
     ):
@@ -467,7 +514,7 @@ async def test_every_analysis_outcome_is_in_the_published_schema(tmp_path: Path)
     ):
         listed = await client.list_tools()
 
-    analysis_tools = [tool for tool in listed.tools if tool.name != "capabilities"]
+    analysis_tools = [tool for tool in listed.tools if tool.name not in UNGATED_TOOLS]
     incomplete = [
         f"{tool.name}: {sorted((tool.output_schema or {}).get('$defs', {}))}"
         for tool in analysis_tools
@@ -475,10 +522,56 @@ async def test_every_analysis_outcome_is_in_the_published_schema(tmp_path: Path)
         >= UNION_MEMBERS | {REPORT_MEMBER.get(tool.name, DEFAULT_REPORT)}
     ]
 
-    assert len(analysis_tools) == len(TOOL_NAMES) - 1
+    assert len(analysis_tools) == len(TOOL_NAMES) - len(UNGATED_TOOLS)
     assert not incomplete, "an outcome is missing from a published schema:\n" + "\n".join(
         incomplete
     )
+
+
+@pytest.mark.anyio
+async def test_the_races_own_outcomes_are_in_its_published_schema(tmp_path: Path) -> None:
+    """The race's union has no CapabilityStatus arm on purpose -- nothing gates it -- but
+    its two real outcomes and the shapes inside them still have to be published, or a
+    client validates a build failure as a protocol fault."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    tool = next(entry for entry in listed.tools if entry.name == "benchmark_variants")
+    published = set((tool.output_schema or {}).get("$defs", {}))
+    assert published >= {"BenchmarkReport", "BuildFailure", "VariantResult"}
+    assert "Variant" in set(tool.input_schema.get("$defs", {}))
+
+    # the limits live in the schema too, so a client refuses a six-variant race before
+    # anything is spawned instead of learning the bounds from a failed call
+    properties = tool.input_schema["properties"]
+    assert properties["variants"]["minItems"] == 2
+    assert properties["variants"]["maxItems"] == 5
+    assert properties["repeats"]["minimum"] == 2
+    assert properties["repeats"]["maximum"] == 20
+
+
+@pytest.mark.anyio
+async def test_the_review_gates_outcomes_are_in_their_published_schemas(tmp_path: Path) -> None:
+    """Refusals and misses are ordinary returns here too: a client that cannot validate a
+    CapabilityStatus from review, or a NoSuchFinding from get_finding, retries a protocol
+    fault instead of reading an answer."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    published = {
+        tool.name: set((tool.output_schema or {}).get("$defs", {})) for tool in listed.tools
+    }
+    assert published["review"] >= {"ReviewReport", "CapabilityStatus", "IndexEntry", "Skip"}
+    assert published["audit"] >= {"AuditReport", "CapabilityStatus", "IndexEntry"}
+    # detail is a wrapper, not a Finding: a client that cannot validate the fix and the
+    # verify-with hint reads the whole detail section as a shape it did not expect
+    for gate in ("review", "audit"):
+        assert published[gate] >= {"Detailed", "SuggestedFix", "Finding"}
+    assert published["get_finding"] >= {"Finding", "NoSuchFinding"}
 
 
 @pytest.mark.anyio
@@ -559,10 +652,9 @@ async def test_capabilities_reports_the_statuses_the_startup_probes_produced(
 async def test_a_snippet_is_built_run_and_parsed_without_a_file_anywhere(
     tmp_path: Path,
 ) -> None:
-    """The whole chain over the protocol: text in, a sanitized build, a run under the options
-    that build chose, and a parsed report out as JSON. The reply is a committed golden -- a
-    chain that parsed a hand-written approximation would keep passing on the day it stopped
-    understanding what TSan really prints."""
+    """The whole chain over the protocol: text in, a sanitized build, a run under the
+    options that build chose, a parsed report out as JSON. The reply is a committed
+    golden -- an approximation would keep passing after TSan's real output changed."""
     runner = ScriptedRunner(
         [SUCCESS, RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))]
     )
@@ -591,11 +683,9 @@ async def test_a_snippet_is_built_run_and_parsed_without_a_file_anywhere(
 async def test_a_file_on_disk_is_built_run_and_parsed_through_the_contexts_own_runner(
     tmp_path: Path,
 ) -> None:
-    """The same chain as the snippet, entered by path instead of by text.
-
-    The runner is the assertion that matters here. Dropped on the way down, the pipeline
-    falls back to its own default and the tool really does compile and execute whatever the
-    caller pointed at -- silently, and green, because the fake simply never hears about it."""
+    """The same chain as the snippet, entered by path instead of by text. The runner is the
+    assertion that matters: dropped on the way down, the pipeline falls back to its default
+    and really compiles and executes what the caller pointed at -- silently, and green."""
     source = tmp_path / f"{FILE_STEM}.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner(
@@ -623,9 +713,8 @@ async def test_the_target_the_caller_named_is_the_one_cmake_is_told_to_build(
     tmp_path: Path,
 ) -> None:
     """A project with two executables cannot choose for itself, which is what makes `target`
-    worth passing. Dropped between the tool and the pipeline, the caller gets a build failure
-    listing the very targets they already picked from -- and a project with one executable
-    quietly builds the wrong thing with no sign anything was ignored."""
+    worth passing. Dropped between the tool and the pipeline, the caller gets a build
+    failure listing the very targets they already picked from."""
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     runner = ScriptedCmake([SUCCESS, SUCCESS, RunResult(exit_code=1, output=golden(ASAN_GOLDEN))])
@@ -681,13 +770,202 @@ async def test_a_snippet_is_checked_at_compile_time_without_being_linked(
 
 
 @pytest.mark.anyio
+async def test_a_race_runs_whole_over_the_protocol_and_ranks_what_matched(
+    tmp_path: Path,
+) -> None:
+    """The full race as an assistant meets it: two variants in as JSON, release builds, the
+    baseline's warmup defining the answer, interleaved timed runs, and a ranking out. The
+    spawn order is the methodology, so it is pinned call by call."""
+    answer = RunResult(exit_code=0, output="trades=1200\n")
+    runner = ScriptedRunner([SUCCESS, SUCCESS, answer, answer, answer, answer, answer, answer])
+    app = a_context(tmp_path, runner)
+
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool(
+            "benchmark_variants",
+            {
+                "variants": [
+                    {"name": "baseline", "code": SNIPPET_SOURCE},
+                    {"name": "flat", "code": SNIPPET_SOURCE},
+                ],
+                "repeats": 2,
+            },
+        )
+
+    report = result_of(result.structured_content)
+    assert report["baseline"] == "baseline"
+    assert report["repeats"] == 2
+    assert {row["name"] for row in report["variants"]} == {"baseline", "flat"}
+    assert all(row["matches_baseline"] for row in report["variants"])
+    assert all(row["rejected"] is None for row in report["variants"])
+    assert all(row["runs"] == 2 for row in report["variants"])
+    assert report["next_step"] is not None
+
+    # both compiles at release optimization, neither instrumented
+    for spawn in runner.spawns[:2]:
+        assert "-O2" in spawn.cmd
+        assert not [arg for arg in spawn.cmd if arg.startswith("-fsanitize")]
+    # warmups first, then the rounds interleave: nobody gets the machine twice in a row
+    ran = [Path(spawn.cmd[0]).stem for spawn in runner.spawns[2:]]
+    assert ran == ["baseline", "flat", "baseline", "flat", "baseline", "flat"]
+
+
+@pytest.mark.anyio
+async def test_a_variant_that_answers_differently_is_rejected_over_the_protocol(
+    tmp_path: Path,
+) -> None:
+    """The same-answer rule surviving serialization: the lying variant comes back rejected
+    with no numbers, and not one timed run was spent on it."""
+    right = RunResult(exit_code=0, output="trades=1200\n")
+    wrong = RunResult(exit_code=0, output="trades=999\n")
+    runner = ScriptedRunner([SUCCESS, SUCCESS, right, wrong, right, right])
+    app = a_context(tmp_path, runner)
+
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool(
+            "benchmark_variants",
+            {
+                "variants": [
+                    {"name": "baseline", "code": SNIPPET_SOURCE},
+                    {"name": "liar", "code": SNIPPET_SOURCE},
+                ],
+                "repeats": 2,
+            },
+        )
+
+    report = result_of(result.structured_content)
+    liar = next(row for row in report["variants"] if row["name"] == "liar")
+    assert liar["rejected"] == "output differs from the baseline"
+    assert liar["mean_ms"] is None
+    assert [Path(spawn.cmd[0]).stem for spawn in runner.spawns[2:]] == [
+        "baseline",
+        "liar",  # its warmup, where the answer check caught it
+        "baseline",
+        "baseline",
+    ]
+
+
+@pytest.mark.anyio
+async def test_the_batterys_own_outcomes_are_in_its_published_schema(tmp_path: Path) -> None:
+    """The battery folds failure modes into report sections instead of union arms, so the
+    one shape it returns has to publish whole."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_tools()
+
+    tool = next(entry for entry in listed.tools if entry.name == "full_check_file")
+    schema = tool.output_schema or {}
+    # a bare dataclass return publishes itself as the schema root, nested shapes in $defs
+    assert schema.get("title") == "FullCheckReport"
+    assert set(schema.get("$defs", {})) >= {"Finding", "Location"}
+    assert set(schema.get("properties", {})) >= {"findings", "ran", "unavailable", "failed_builds"}
+
+
+@pytest.mark.anyio
+async def test_the_battery_runs_whole_over_the_protocol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One call, six analyses in parallel, one merged JSON answer. The runner dispatches
+    by command content because parallel order is not promised, and the reply for TSan is
+    a committed golden so the merge is proved against real sanitizer output."""
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
+    source = tmp_path / f"{FILE_STEM}.cpp"
+    source.write_text(SNIPPET_SOURCE, encoding="utf-8")
+
+    def dispatch(
+        cmd: Sequence[str],
+        *,
+        timeout_s: int,
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
+    ) -> RunResult:
+        listed = list(cmd)
+        if Path(listed[0]).name == "clang-tidy" or "-fsyntax-only" in listed:
+            return RunResult(exit_code=0, output="")
+        if any(arg.startswith("-fsanitize=") for arg in listed):
+            return RunResult(exit_code=0, output="")
+        if Path(listed[0]).name.endswith(".thread"):
+            return RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))
+        return RunResult(exit_code=0, output="")
+
+    app = a_context(tmp_path, dispatch)
+    async with Client(a_server(app), raise_exceptions=True) as client:
+        result = await client.call_tool("full_check_file", {"source": str(source)})
+
+    # a bare dataclass return arrives unwrapped, no {"result": ...} envelope
+    report = result.structured_content
+    assert report is not None
+    assert sorted(report["ran"]) == sorted(
+        ["thread-safety", "clang-tidy", "tsan", "asan", "lsan", "ubsan"]
+    )
+    assert [finding["category"] for finding in report["findings"]] == [RACE_CATEGORY]
+    assert report["unavailable"] == {}
+    assert report["failed_builds"] == {}
+    assert report["next_step"] is not None
+
+
+@pytest.mark.anyio
+async def test_the_two_recipes_are_published_as_prompts(tmp_path: Path) -> None:
+    """Prompts are how a client surfaces whole workflows as slash commands, and the
+    argument must be declared required or a client renders the recipe with a hole in it."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        listed = await client.list_prompts()
+
+    prompts_by_name = {prompt.name: prompt for prompt in listed.prompts}
+    assert set(prompts_by_name) == {"checkup", "make-it-faster"}
+    for prompt in prompts_by_name.values():
+        assert prompt.description
+        assert [argument.name for argument in prompt.arguments or []] == ["source"]
+        assert all(argument.required for argument in prompt.arguments or [])
+
+
+@pytest.mark.anyio
+async def test_the_checkup_recipe_names_its_tools_and_its_rules(tmp_path: Path) -> None:
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        result = await client.get_prompt("checkup", {"source": "book.cpp"})
+
+    text = result.messages[0].content.text  # type: ignore[union-attr]
+    assert "book.cpp" in text
+    steps = text[text.index("Steps:") :]
+    assert steps.index("capabilities") < steps.index("full_check_file")
+    assert "never delete or weaken a check" in text
+    # the precondition and its trap: a library file gets a driver, never a pasted main()
+    assert "never add a main() to the library itself" in text
+
+
+@pytest.mark.anyio
+async def test_the_speed_recipe_orders_profile_race_check(tmp_path: Path) -> None:
+    """The order is the method: measure, then rewrite, then race, then prove correctness,
+    and a recipe that stopped saying so would let a speedup claim skip its race."""
+    async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
+        client
+    ):
+        result = await client.get_prompt("make-it-faster", {"source": "book.cpp"})
+
+    text = result.messages[0].content.text  # type: ignore[union-attr]
+    assert "book.cpp" in text
+    steps = text[text.index("Steps:") :]
+    assert (
+        steps.index("profile_file")
+        < steps.index("benchmark_variants")
+        < steps.index("full_check_file")
+    )
+    assert "never claim a speedup without a race" in text
+    assert "write a small driver" in text
+
+
+@pytest.mark.anyio
 async def test_the_servers_instructions_teach_the_ladder_before_any_tool_is_read(
     tmp_path: Path,
 ) -> None:
-    """Instructions arrive with the initialize response, ahead of every tool description, and
-    some clients surface them as the whole of what this server is. A tool description can only
-    argue for its own rung; the order to try rungs in, and the reason an empty result is worth
-    checking capabilities over, exist nowhere else."""
+    """Instructions arrive with the initialize response, ahead of every tool description.
+    A tool description can only argue for its own rung; the order to try rungs in, and why
+    an empty result is worth checking capabilities over, exist nowhere else."""
     async with Client(a_server(a_context(tmp_path, RefusingRunner())), raise_exceptions=True) as (
         client
     ):
@@ -723,7 +1001,7 @@ async def test_asking_for_no_checks_leaves_the_projects_own_config_in_charge(
     """A --checks the caller never asked for overrides whatever .clang-tidy the project
     committed, so a repository with a curated check list silently gets a different one. The
     absence has to survive all the way to argv, not be filled in with a default on the way."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
@@ -746,7 +1024,7 @@ async def test_a_file_with_no_clang_tidy_anywhere_still_gets_checks(
     """clang-tidy enables nothing by itself: with no --checks and no .clang-tidy above the
     file it exits 1 printing usage text, which parses to no findings and is indistinguishable
     from clean code. A project that committed no configuration gets a default instead."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner([SUCCESS])
@@ -766,7 +1044,7 @@ async def test_the_checks_the_caller_did_ask_for_reach_the_tool(
 ) -> None:
     """The other half of the same promise: passed through means passed through, so a caller
     hunting one check gets that check rather than the project's whole list."""
-    monkeypatch.setattr(shutil, "which", lambda name: TIDY_PATH)
+    monkeypatch.setattr(shutil, "which", lambda _name: TIDY_PATH)
     source = tmp_path / "widget.cpp"
     source.write_text(SNIPPET_SOURCE, encoding="utf-8")
     runner = ScriptedRunner([SUCCESS])
@@ -834,9 +1112,8 @@ async def test_code_that_does_not_compile_comes_back_as_the_build_failure(
 
 def test_a_server_built_with_no_arguments_resolves_this_host() -> None:
     """The fake lifespan every test above injects must not be what production gets. No test
-    may exercise the live one behaviorally -- it compiles and runs six probes on whatever
-    machine the suite is on -- so the promise is pinned on the signature, where a default
-    quietly left pointing at a stub is still visible."""
+    may exercise the live one behaviorally -- it probes the suite's machine -- so the
+    promise is pinned on the signature, where a default left on a stub is still visible."""
     default = inspect.signature(build_server).parameters["lifespan"].default
 
     assert default is live

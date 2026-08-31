@@ -1,20 +1,12 @@
 """Drive the whole static_check chain with no compiler, no clang-tidy and no child process.
-
-The only thing faked is the subprocess boundary: the capability gate, the command each check
-composes, the environment it goes out under and the parsing are all the real code, and the
-fake answers each spawn with text a real tool once printed. That is why the replies are
-committed goldens rather than invented strings -- a chain that parsed a hand-written
-approximation would keep passing on the day it stopped understanding the real thing.
-
-Every expectation is written down rather than read from the code under test: the argv each
-check composes, the category and line each golden holds, the words gcc uses to refuse
--Wthread-safety. Assertions are on what the fake recorded and on what came back, never on how
-many times something was called.
+Only the subprocess boundary is faked, and replies are committed goldens, never invented
+strings, so an approximation can't keep passing after the real tool's output changes.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -23,15 +15,16 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
+from cpp_analysis_mcp.analyzers.clang_tidy import CHECK_TIMEOUT_S, DEFAULT_CHECKS
 from cpp_analysis_mcp.pipelines.static_check import (
-    CHECK_TIMEOUT_S,
-    DEFAULT_CHECKS,
+    _routed_check,
     check_file,
     check_snippet,
 )
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.fingerprints import compute_fingerprint
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations
@@ -214,10 +207,9 @@ def a_denied_status() -> CapabilityStatus:
 
 
 def statuses(status: CapabilityStatus) -> dict[Analysis, CapabilityStatus]:
-    """The same status under every analysis, the sanitizer ones included.
-
-    TSAN and friends are in here on purpose: asking this pipeline for one must fail on the
-    check lookup, not on a capability the test forgot to write down.
+    """The same status under every analysis, the sanitizer ones included on purpose:
+    asking this pipeline for one must fail on the check lookup, not on a capability
+    the test forgot to write down.
     """
     return dict.fromkeys(Analysis, status)
 
@@ -233,10 +225,9 @@ def build_dir(tmp_path: Path) -> Path:
 
 
 def install_tidy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Put a clang-tidy where only this platform's tool directories can see it.
-
-    PATH is blinded first, so a real clang-tidy on the developer's machine cannot be the one
-    the pipeline finds and the recorded argv is this file's own path either way.
+    """Put a clang-tidy where only this platform's tool directories can see it. PATH is
+    blinded first, so a real clang-tidy on the developer's machine cannot be the one the
+    pipeline finds and the recorded argv is this file's own path either way.
     """
     monkeypatch.setattr(shutil, "which", lambda name: None)
     tidy = tmp_path / TIDY_NAME
@@ -325,11 +316,9 @@ def test_the_compile_is_syntax_only_and_carries_this_hosts_flags(tmp_path: Path)
 def test_the_check_replaces_the_shells_sanitizer_options_and_keeps_the_rest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Hygiene means dropping the four, not starting from an empty world.
-
-    All four are poisoned in this process first, so this proves the pipeline stripped them
-    rather than that they happened to be absent. The canary is the other half: a compile that
-    lost PATH would not find its own headers.
+    """Hygiene means dropping the four, not starting from an empty world. All four are
+    poisoned first, proving the pipeline stripped them; the canary is the other half --
+    a compile that lost PATH would not find its own headers.
     """
     for name in EVERY_SANITIZER_VAR:
         monkeypatch.setenv(name, POISON)
@@ -368,10 +357,9 @@ def test_a_sanitizer_analysis_is_a_caller_bug(tmp_path: Path) -> None:
 def test_a_tidy_that_vanished_since_the_probe_refuses_rather_than_reporting_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The gate passed on a cached answer, and the binary is not there any more.
-
-    An uninstall between the probe and the call would otherwise reach the runner with an
-    unspawnable command; refusing in the probe's own words keeps the caller told.
+    """The gate passed on a cached answer, and the binary is not there any more: an
+    uninstall between probe and call would otherwise reach the runner as an unspawnable
+    command. Refusing in the probe's own words keeps the caller told.
     """
     monkeypatch.setattr(shutil, "which", lambda name: None)
     nowhere = Platform(
@@ -434,7 +422,9 @@ def test_the_asked_for_checks_reach_tidy_before_the_file_and_the_compiler_flags_
     )
 
     cmd = runner.checked.cmd
-    assert cmd == [
+    # the export file lands in a scratch directory this run owns, so its path is not pinned
+    (exported,) = [arg for arg in cmd if arg.startswith("--export-fixes=")]
+    assert [arg for arg in cmd if arg != exported] == [
         str(tidy),
         f"--checks={EXPLICIT_CHECKS}",
         str(tmp_path / f"{SOURCE_STEM}.cpp"),
@@ -573,10 +563,9 @@ def test_an_ordinary_failure_is_not_blamed_on_a_missing_database(tmp_path: Path)
 def test_a_committed_clang_tidy_is_left_in_charge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A --checks= of any shape overrules a project's committed .clang-tidy file.
-
-    So when the project has one, nothing may be passed: a repository that curated its own
-    check list would otherwise silently be given someone else's.
+    """A --checks= of any shape overrules a project's committed .clang-tidy file, so when
+    the project has one, nothing may be passed: a repository that curated its own check
+    list would otherwise silently be given someone else's.
     """
     tidy = install_tidy(monkeypatch, tmp_path)
     (tmp_path / ".clang-tidy").write_text("Checks: 'readability-*'\n", encoding="utf-8")
@@ -597,11 +586,9 @@ def test_a_committed_clang_tidy_is_left_in_charge(
 def test_a_project_with_no_clang_tidy_gets_a_default_rather_than_usage_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """clang-tidy enables nothing of its own accord.
-
-    Given neither --checks nor a .clang-tidy above the file it exits 1 and prints its usage
-    text, which parses to no findings and reads as a tool that is broken. Measured on
-    clang-tidy 22. The default is chosen for the caller, and the caller is told it was.
+    """clang-tidy enables nothing of its own accord: with neither --checks nor a .clang-tidy
+    it exits 1 printing usage text, which reads as a broken tool (measured on clang-tidy 22).
+    The default is chosen for the caller, and the caller is told it was.
     """
     tidy = install_tidy(monkeypatch, tmp_path)
     runner = ScriptedRunner([CLEAN])
@@ -716,6 +703,130 @@ def test_a_tidy_run_killed_at_its_timeout_names_the_clang_tidy_stage(
     assert failure.timed_out is True
 
 
+# ---------------------------------------------------------------- identity and routing
+
+FINGERPRINT_SHAPE = re.compile(r"^[0-9a-f]{16}$")
+
+
+def test_report_findings_carry_their_identity(tmp_path: Path) -> None:
+    """The re-front's visible promise: every finding leaves stamped, scheme and all."""
+    runner = ScriptedRunner([RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))])
+
+    report = reported(check(tmp_path, runner))
+
+    finding = report.findings[0]
+    assert FINGERPRINT_SHAPE.match(finding.fingerprint), finding.fingerprint
+    assert finding.fingerprint_scheme == 1
+
+
+def test_identical_flagged_lines_are_two_findings_with_two_identities(tmp_path: Path) -> None:
+    """The occurrence rank at work through the whole pipeline: same rule, same text,
+    different lines -- merging them would hide the second bug."""
+    source = tmp_path / "twice.cpp"
+    source.write_text("int a = 0;\nint x = 1;\nint x = 1;\n", encoding="utf-8")
+    output = (
+        f"{source}:2:5: warning: declaration shadows a variable [-Wshadow]\n"
+        f"{source}:3:5: warning: declaration shadows a variable [-Wshadow]\n"
+    )
+    runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+
+    report = reported(
+        check_file(
+            source,
+            Analysis.THREAD_SAFETY,
+            toolchain=a_clang(),
+            platform=a_linux(),
+            capabilities=statuses(a_working_status()),
+            runner=runner,
+        )
+    )
+
+    first, second = report.findings
+    assert FINGERPRINT_SHAPE.match(first.fingerprint)
+    assert first.fingerprint != second.fingerprint
+
+
+def test_fingerprints_are_the_same_on_every_run(tmp_path: Path) -> None:
+    """Identity that changes between identical runs is not identity."""
+    replay = RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))
+
+    once = reported(check(tmp_path, ScriptedRunner([replay])))
+    again = reported(check(tmp_path, ScriptedRunner([replay])))
+
+    assert [finding.fingerprint for finding in once.findings] == [
+        finding.fingerprint for finding in again.findings
+    ]
+
+
+def test_a_file_checks_identity_still_hashes_the_printed_path(tmp_path: Path) -> None:
+    """The deferral, pinned: file checks have no project root until the git-aware scope
+    supplies one, so their identity hashes the tool's own absolute spelling. Making
+    this portable is a decision for that chunk, not a drive-by."""
+    source = tmp_path / "v.cpp"
+    source.write_text("int x = 1;\n", encoding="utf-8")
+    output = f"{source}:1:5: warning: unused variable 'x' [-Wunused-variable]\n"
+    runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+
+    report = reported(
+        check_file(
+            source,
+            Analysis.THREAD_SAFETY,
+            toolchain=a_clang(),
+            platform=a_linux(),
+            capabilities=statuses(a_working_status()),
+            runner=runner,
+        )
+    )
+
+    (finding,) = report.findings
+    assert finding.location is not None
+    assert finding.fingerprint == compute_fingerprint(
+        finding.category, finding.location.file, "int x = 1;", 0
+    )
+
+
+def test_the_routed_check_records_a_verdict_for_every_analyzer(tmp_path: Path) -> None:
+    """The registry is consulted for real: both plugins answer, and the requested one's
+    verdict is what let the check run."""
+    runner = ScriptedRunner([CLEAN])
+
+    _, resolutions = _routed_check(
+        a_source(tmp_path),
+        Analysis.THREAD_SAFETY,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=statuses(a_working_status()),
+        checks=None,
+        timeout_s=CHECK_TIMEOUT_S,
+        runner=runner,
+    )
+
+    verdicts = {row.analyzer.name: row.verdict.eligible for row in resolutions}
+    assert verdicts == {"clang-tidy": True, "compiler-warnings": True}
+
+
+def test_a_refused_gate_still_returns_todays_exact_status(tmp_path: Path) -> None:
+    """The registry decides, and the caller still receives the probe's own object --
+    the identity assertion the pre-registry tests already pin, kept under routing."""
+    status = a_denied_status()
+
+    outcome, resolutions = _routed_check(
+        a_source(tmp_path),
+        Analysis.THREAD_SAFETY,
+        toolchain=a_clang(),
+        platform=a_linux(),
+        capabilities=statuses(status),
+        checks=None,
+        timeout_s=CHECK_TIMEOUT_S,
+        runner=RefusingRunner(),
+    )
+
+    assert outcome is status
+    verdict = next(row.verdict for row in resolutions if row.analyzer.name == "compiler-warnings")
+    assert not verdict.eligible
+    assert verdict.reason == GCC_DENIED_REASON
+
+
 # ------------------------------------------------------------------------------ snippets
 
 
@@ -740,3 +851,52 @@ def test_a_snippet_is_written_down_before_it_is_checked(tmp_path: Path) -> None:
     assert snippet.read_text(encoding="utf-8") == text
     assert str(snippet) in runner.checked.cmd
     assert [finding.category for finding in report.findings] == [THREAD_SAFETY_CATEGORY]
+
+
+def test_the_same_snippet_shares_identity_across_scratch_directories(tmp_path: Path) -> None:
+    """Two calls, two random scratch directories, one snippet: the fingerprints agree.
+    Snippet paths are minted fresh per call, so hashing them verbatim would make the
+    same snippet a new finding every time -- dedup and baselines would never hold.
+    """
+    text = "int shadowed() { int x = 1; { int x = 2; } return x; }\n"
+
+    def checked_in(directory: Path) -> AnalysisReport:
+        snippet = directory / "snippet.cpp"
+        # the fake prints the real scratch path, exactly as the compiler would
+        output = f"{snippet}:1:29: warning: declaration shadows a local [-Wshadow]\n"
+        runner = ScriptedRunner([RunResult(exit_code=0, output=output)])
+        return reported(
+            check_snippet(
+                text,
+                Analysis.THREAD_SAFETY,
+                toolchain=a_clang(),
+                platform=a_linux(),
+                capabilities=statuses(a_working_status()),
+                build_dir=directory,
+                runner=runner,
+            )
+        )
+
+    first = checked_in(tmp_path / "one")
+    second = checked_in(tmp_path / "two")
+
+    assert [finding.fingerprint for finding in first.findings] == [
+        finding.fingerprint for finding in second.findings
+    ]
+    # the visible location still names each call's own real file
+    location = first.findings[0].location
+    assert location is not None
+    assert location.file == str(tmp_path / "one" / "snippet.cpp")
+
+
+def test_findings_say_which_engine_observed_them(tmp_path: Path) -> None:
+    """ADR-0004: every finding records where it was observed. A bridged platform's label
+    lands on each finding; the local default stays exactly as it was."""
+    golden_run = RunResult(exit_code=0, output=golden(THREAD_SAFETY_GOLDEN))
+    bridged = Platform(name="container", engine="container", compile_extras=LINUX_COMPILE_EXTRAS)
+
+    report = reported(check(tmp_path, ScriptedRunner([golden_run]), platform=bridged))
+    local = reported(check(tmp_path, ScriptedRunner([golden_run])))
+
+    assert report.findings and all(f.engine == "container" for f in report.findings)
+    assert local.findings and all(f.engine == "local" for f in local.findings)

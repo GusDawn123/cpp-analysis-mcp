@@ -1,8 +1,6 @@
-"""Check the per-OS tables from a machine that is only one of those operating systems.
-
-Every behavioural test here builds its own Platform out of the tables the platform modules
-declare, instead of asking the host what it is. That is what rule 3 buys: the Linux failure
-signatures below are exercised on macOS, where none of those crashes can happen.
+"""Check the per-OS tables from a machine that is only one of those operating systems:
+every test builds its own Platform out of the declared tables instead of asking the host.
+That is what rule 3 buys -- the Linux failure signatures are exercised on macOS.
 """
 
 from __future__ import annotations
@@ -14,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import platforms
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.platforms import darwin, linux, windows
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 # vm.mmap_rnd_bits as Ubuntu 24.04 ships it -- the value the mapping crash was measured at
 MEASURED_RND_BITS = "32"
@@ -292,16 +290,9 @@ def test_ubsan_is_linked_against_llvms_own_runtime_by_full_path(tmp_path: Path) 
 
 
 def test_a_ubsan_cmake_build_is_moved_onto_the_static_c_runtime() -> None:
-    """LLVM ships UBSan's runtime built against the static CRT and no other. cmake stamps
-    every object with a /failifmismatch naming the CRT it chose, defaults that to the dynamic
-    one, and lld-link then refuses the pair -- measured against a real project:
-
-        mismatch detected for 'RuntimeLibrary':
-        OrderBook.cpp.obj has value MD_DynamicRelease
-        clang_rt.ubsan_standalone_cxx-x86_64.lib(...) has value MT_StaticRelease
-
-    So the project moves to the runtime's CRT, which is the only direction available. It has
-    to reach the configure: the directive is written when each object is compiled, once.
+    """LLVM ships UBSan's runtime for the static CRT only; cmake stamps every object with
+    a /failifmismatch defaulting to the dynamic CRT and lld-link refuses the pair
+    (measured). The move must reach the configure: the directive is written per object.
     """
     platform = windows.detect()
 

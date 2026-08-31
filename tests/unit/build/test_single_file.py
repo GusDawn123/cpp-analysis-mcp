@@ -1,12 +1,6 @@
-"""Compile one file with no compiler anywhere: every runner here is a fake.
-
-Every expectation is written down rather than read from the code under test -- the base
-flags, the pinned TSan options, the sanitizer variables that must not survive, the exact
-argument order handed to the compiler. A test that asked single_file.py what it composes
-would agree with it forever, including the day it composes the wrong thing.
-
-The Toolchain and Platform are built by hand, the way tests/unit/platforms/test_platforms.py
-does it, so the Linux command line is exercised on macOS (rule 3).
+"""Compile one file with no compiler anywhere: every runner here is a fake. Every
+expectation is written down, not read from the code under test -- asking single_file.py
+what it composes would agree with it forever, including the day it composes wrong.
 """
 
 from __future__ import annotations
@@ -19,9 +13,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp.build.single_file import compile_file, with_runtime_on_path
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.platforms.base import FailureSignature, Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind, Severity
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations
@@ -525,11 +519,9 @@ def test_the_binary_lands_in_the_build_dir_under_the_source_stem(tmp_path: Path)
 
 
 def test_two_sanitizers_builds_of_one_source_do_not_collide(tmp_path: Path) -> None:
-    """TSan then ASan into one directory: the first binary must survive the second build.
-
-    Overwriting would leave the first BuiltBinary's path holding the second's binary --
-    bound to the wrong runtime environment, which is the silent-run bug this layer exists
-    to make impossible.
+    """TSan then ASan into one directory: the first binary must survive the second build,
+    or the first BuiltBinary's path holds the second's binary bound to the wrong runtime
+    environment -- the silent-run bug this layer exists to make impossible.
     """
     build_dir = tmp_path / "build"
     source = a_source(tmp_path)
@@ -608,12 +600,9 @@ def test_a_successful_build_still_reports_its_warnings(tmp_path: Path) -> None:
 def test_the_runtime_directory_goes_on_path_for_a_build_that_runs_what_it_links(
     tmp_path: Path,
 ) -> None:
-    """Copying the DLL beside the binary covers running it afterwards and nothing else.
-
-    gtest_discover_tests executes each freshly linked test program during the build to
-    enumerate the tests in it, before anything has been copied anywhere. The loader then
-    cannot find ASan's runtime and the program dies on STATUS_DLL_NOT_FOUND printing nothing,
-    which reads as a build broken inside a test framework.
+    """Copying the DLL beside the binary covers running it afterwards and nothing else:
+    gtest_discover_tests executes each freshly linked test during the build, before any
+    copy, and the program dies on STATUS_DLL_NOT_FOUND printing nothing.
     """
     runtime = tmp_path / "llvm" / "windows"
     platform = Platform(

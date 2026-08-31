@@ -1,21 +1,6 @@
 """Find the compilation database near a source file, and read the flags it needs to parse.
-
-A compile-time check on one file out of a real project fails for a boring reason before it
-can fail for an interesting one: the file opens with `#include "orderbook/OrderBook.hpp"` and
-nothing has told the compiler where `orderbook/` is. What comes back is "file not found",
-which says nothing about the code and stops the cheapest rung of the ladder being usable on
-any project big enough to have subdirectories -- which is most of them.
-
-The answer already exists on disk. Every build system writes compile_commands.json, the flags
-each file was really compiled with, and every other C++ tool reads it. So this finds it and
-takes the part that decides whether a file parses: include directories, macro definitions and
-the language standard. Nothing else. Optimization levels, warning flags, sanitizers and output
-paths all belong to a build that is not happening here, and copying them across would make the
-check answer for a different compilation than the one it is doing.
-
-Pure apart from reading files it was pointed at: no subprocess, and nothing here decides which
-tool runs. Relative paths in a database are relative to that entry's own `directory`, so they
-are made absolute on the way out -- the check runs from somewhere else entirely.
+Takes only what decides whether a file parses -- include directories, macro definitions,
+the language standard -- never optimization, warnings, sanitizers, or output paths.
 """
 
 from __future__ import annotations
@@ -28,8 +13,6 @@ from pathlib import Path
 
 DATABASE = "compile_commands.json"
 
-# where a database is looked for at each level: beside the sources, or in the build directory
-# that a conventionally named build tree would have put it in
 BUILD_GLOB = "build*"
 
 # how far up from the file to look. Deep enough for any project layout, and bounded so a
@@ -57,13 +40,9 @@ PATH_ATTACHED = ("-I", "-isystem", "-iquote", "-idirafter", "--sysroot=")
 
 
 def find(source: Path) -> Path | None:
-    """Return the compilation database that best covers `source`, or None when there is none.
-
-    Best means: the nearest one that actually names this file. A checkout commonly holds
-    several build trees -- a debug one, a release one, one an IDE made -- and they do not
-    describe the same files. Falling back to the nearest database that exists at all is still
-    worth doing when none names the file, because a header never appears in one and its
-    include directories are the same as its neighbours'.
+    """The database that best covers `source`: the nearest one that actually names this
+    file, else the nearest that exists at all -- a header appears in none, and its include
+    directories are the same as its neighbours'.
     """
     found = list(_candidates(source))
     for candidate in found:
@@ -72,14 +51,41 @@ def find(source: Path) -> Path | None:
     return found[0] if found else None
 
 
-def flags_for(database: Path, source: Path) -> tuple[str, ...]:
-    """Return the flags this file needs to parse, taken from the database.
+def find_under(root: Path) -> Path | None:
+    """The database a project keeps at its root: beside it, or in a build tree there. Never
+    walks upward -- a parent checkout's database describes someone else's build.
+    """
+    return next(iter(databases_under(root)), None)
 
-    The entry for the file itself when there is one. When there is not -- which is every
-    header, since a build compiles no header on its own -- the include and define flags of
-    every entry, in first-seen order and without repeats. That is a wider set than any one
-    translation unit used, and wider is the safe direction: an unnecessary -I changes nothing
-    about how the file parses, and a missing one stops it parsing at all.
+
+def databases_under(root: Path) -> tuple[Path, ...]:
+    """Every database at the root, best first: a checkout commonly holds several build
+    trees, so a report naming the one it read needs to know how many it chose between.
+    """
+    beside = root / DATABASE
+    found = sorted(root.glob(f"{BUILD_GLOB}/{DATABASE}"))
+    return (beside, *found) if beside.is_file() else tuple(found)
+
+
+def sources(database: Path) -> tuple[Path, ...]:
+    """The absolute path of every file the database names, in its own order. Relative
+    entries resolve against their entry's `directory`; malformed ones contribute nothing.
+    """
+    named: list[Path] = []
+    for entry in _entries(database):
+        file = entry.get("file")
+        if not isinstance(file, str):
+            continue
+        directory = entry.get("directory")
+        base = Path(directory) if isinstance(directory, str) else Path.cwd()
+        named.append(Path(_absolute(file, base)))
+    return tuple(named)
+
+
+def flags_for(database: Path, source: Path) -> tuple[str, ...]:
+    """The flags this file needs to parse: its own entry when there is one, else -- every
+    header's case -- the include and define flags of every entry, deduped. Wider is the
+    safe direction: an extra -I changes nothing, a missing one stops the parse.
     """
     entry = _entry(database, source)
     if entry is not None:
@@ -98,17 +104,13 @@ def _candidates(source: Path) -> Iterator[Path]:
         beside = directory / DATABASE
         if beside.is_file():
             yield beside
-        # sorted so a checkout with several build trees is read in one order rather than
-        # whichever the filesystem happens to hand back
+        # sorted so multiple build trees are read in one order, not whichever the filesystem returns
         yield from sorted(path for path in directory.glob(f"{BUILD_GLOB}/{DATABASE}"))
 
 
 def _entries(database: Path) -> list[dict[str, object]]:
-    """Read the database, or nothing at all when it cannot be read.
-
-    A database we cannot parse is a database we do not have. Raising here would turn a
-    half-written build directory into a crash about the wrong thing, and the check can still
-    run without one -- it just runs the way it did before this file existed.
+    """Read the database, or nothing at all when it cannot be read: a database we cannot
+    parse is a database we do not have, and the check still runs without one.
     """
     try:
         document: object = json.loads(database.read_text(encoding="utf-8"))
@@ -120,16 +122,21 @@ def _entries(database: Path) -> list[dict[str, object]]:
 
 
 def _entry(database: Path, source: Path) -> dict[str, object] | None:
-    """Find this file's own entry, comparing paths as the filesystem would.
-
-    A database writes whatever spelling the build used -- forward slashes on Windows, a
-    different case, a path through a symlink -- so the strings are not comparable and the
-    resolved paths are.
+    """Find this file's own entry, comparing paths as the filesystem would: a database
+    writes whatever spelling the build used -- forward slashes on Windows, a symlink --
+    so the resolved paths are comparable and the strings are not.
     """
     wanted = _normalized(source)
     for entry in _entries(database):
         named = entry.get("file")
-        if isinstance(named, str) and _normalized(Path(named)) == wanted:
+        if not isinstance(named, str):
+            continue
+        # a relative `file` is relative to the entry's own `directory`, per the spec:
+        # CMake writes absolute paths, but bear and hand-written databases write
+        # relative ones, and resolved against the cwd they would match nothing
+        directory = entry.get("directory")
+        base = Path(directory) if isinstance(directory, str) else Path.cwd()
+        if _normalized(Path(_absolute(named, base))) == wanted:
             return entry
     return None
 
@@ -165,18 +172,9 @@ def _flags(entry: dict[str, object]) -> tuple[str, ...]:
 
 
 def _tokens(entry: dict[str, object], base: Path) -> list[str]:
-    """Read an entry's command line, in either shape a database writes it.
-
-    `arguments` is already a list and needs nothing. `command` is one string, and is split
-    without POSIX rules because on Windows those eat the backslashes that make up the paths;
-    the quotes that survive that are stripped by hand.
-
-    Either shape can hand the include directories over indirectly, as `@some/file.rsp`, and
-    on Windows that is the common case rather than the exotic one: command lines there are
-    capped near 32k, so cmake moves the include flags into a response file as soon as a
-    project has a few of them. Read without expanding it, such an entry looks like a
-    compilation with no include paths at all -- which is exactly the bug this module exists
-    to fix, wearing a different hat.
+    """Read an entry's command line, in either shape a database writes it. `command` splits
+    without POSIX rules -- those eat the backslashes in a Windows path -- and @file response
+    files are expanded, or an entry compiled through one looks like it has no includes.
     """
     return _expanded(_raw(entry), base)
 
@@ -200,11 +198,8 @@ def _split(text: str) -> list[str]:
 
 
 def _expanded(tokens: list[str], base: Path) -> list[str]:
-    """Replace each @file argument with the arguments inside it.
-
-    One level deep on purpose: cmake writes flat response files, and following them without
-    limit would let a file that names itself hang the check that was supposed to be the
-    cheap one.
+    """Replace each @file argument with the arguments inside it -- one level deep, so a
+    response file that names itself cannot hang the check that was supposed to be cheap.
     """
     expanded: list[str] = []
     for token in tokens:

@@ -1,0 +1,10 @@
+id: capabilities-before-trusting-empty
+title: An empty sanitizer result is checked against what this host can do
+prompt: >-
+  I ran the thread sanitizer on {project}/engine/src/OrderBook.cpp and it reported nothing at
+  all. Does that mean the file is race-free?
+needs_project: true
+expected:
+  first_tool: capabilities
+  calls: [capabilities]
+  max_calls: 4

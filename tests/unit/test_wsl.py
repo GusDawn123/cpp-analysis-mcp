@@ -1,10 +1,6 @@
-"""The WSL bridge with no WSL anywhere: the only fake is the subprocess boundary.
-
-Discovery, the platform table, the path respelling and the wrapping runner are all the real
-code running; what the fakes script is what wsl.exe and the distros inside it would have
-answered. The measured shapes these tests pin -- the UTF-16 listing, the --exec env spawn,
-the --cd Windows path -- come from the 2026-08-12 spec's measurements, so a refactor that
-drifts from what the real wsl.exe accepts fails here first.
+"""The WSL bridge with no WSL anywhere: the only fake is the subprocess boundary. The
+pinned shapes -- UTF-16 listing, --exec env spawn, --cd Windows path -- come from the
+2026-08-12 spec, so drift from what real wsl.exe answers fails here.
 """
 
 from __future__ import annotations
@@ -17,9 +13,9 @@ from pathlib import Path
 import pytest
 
 from cpp_analysis_mcp import wsl
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms import linux
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis
 
 # where the fake PATH puts wsl.exe; spelled through Path so comparisons hold on any OS
 WSL_PATH = str(Path("/windows/system32/wsl.exe"))
@@ -35,11 +31,9 @@ DISTROS = "docker-desktop\nUbuntu\n"
 # UTF-8 decode, NUL after every character. Measured shape.
 DISTROS_UTF16 = "".join(f"{ch}\x00" for ch in DISTROS)
 
-# what the distro answers when asked for each kernel setting the bridge fingerprints on.
-# Keyed by the posix spelling on purpose, so a discovery that asks in Windows spelling falls
-# through to the assertion instead of being answered: these are Linux paths carried in a Path,
-# and a Path renders as "\proc\sys\..." on the only OS that has a bridge, which cat cannot
-# open. Answering both spellings here is what let that go unnoticed once already.
+# what the distro answers for each kernel setting, keyed by posix spelling on purpose: a
+# discovery asking in Windows spelling ("\proc\sys\...", which cat cannot open) must fall
+# through to the assertion -- answering both spellings let that bug go unnoticed once.
 HOST_SETTINGS = {
     linux.MMAP_RND_BITS.as_posix(): "32\n",
     linux.PERF_PARANOID.as_posix(): "2\n",
@@ -92,7 +86,6 @@ def wsl_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def asked_distro(cmd: list[str]) -> str:
-    """Read which distro a wrapped command was aimed at."""
     return cmd[cmd.index("-d") + 1]
 
 
@@ -316,12 +309,9 @@ def test_the_bridged_analyses_say_where_they_run_and_how_paths_read() -> None:
 
 
 def test_a_bridged_profile_says_it_ranked_a_different_binary() -> None:
-    """The one bridged analysis whose answer is about a build Windows would not have made.
-
-    A race is a race in either build, so TSan's answer carries across unchanged. Where the
-    time goes is decided by the compiler and standard library that produced the code, and
-    those are the distro's -- a caller told only "runs inside WSL" would read a libstdc++
-    hotspot as one they can act on from Windows.
+    """The one bridged analysis whose answer is about a build Windows would not have made:
+    where the time goes is decided by the compiler and standard library that produced the
+    code, and those are the distro's. A race, by contrast, carries across unchanged.
     """
     platform = wsl.bridge_platform("Ubuntu", {"distro": "Ubuntu"})
 

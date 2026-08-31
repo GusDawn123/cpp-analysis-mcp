@@ -1,14 +1,13 @@
 """gcc: the sanitizers work, since gcc vendors LLVM's runtime rather than writing its own.
-
-The one real loss is the compile-time lock analysis, reported as unavailable with the reason
-rather than as a run that found nothing -- silence would read as "your locking is fine".
+The one real loss is the compile-time lock analysis, reported as unavailable with the
+reason -- silence would read as "your locking is fine".
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis
+from cpp_analysis_mcp.store.models import Analysis
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 NO_THREAD_SAFETY = (

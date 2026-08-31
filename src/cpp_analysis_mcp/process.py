@@ -1,12 +1,6 @@
-"""The single place subprocesses get launched. Owns timeouts, output capture and environment
-hygiene. Every layer that touches a host tool goes through here instead of calling subprocess
-directly, so the rules about what may run and for how long are enforced in one file rather than
-restated at each call site; a test walks the package and fails any other module that imports
-subprocess.
-
-scripts/fixtures.py carries its own copy of this logic on purpose: it predates the package,
-runs bare in CI, and imports nothing from src/. The duplication is the price of that, so a
-fix to the kill path belongs in both.
+"""The single place subprocesses get launched: timeouts, output capture, environment
+hygiene. Every layer calls through here, never subprocess directly (a test enforces it).
+scripts/fixtures.py duplicates this on purpose, so a kill-path fix belongs in both.
 """
 
 from __future__ import annotations
@@ -55,13 +49,9 @@ def run(
     env: Mapping[str, str] | None = None,
     cwd: Path | None = None,
 ) -> RunResult:
-    """Run a command to completion or to its timeout, stderr merged into stdout.
-
-    A tool that is not installed comes back as exit 127 carrying the OS's own words, not as
-    an exception. Every caller here already treats "the tool failed" as an ordinary thing to
-    observe and report -- a capability probe exists precisely to find out that a tool is
-    missing -- and a raise would turn that answer into a crash one layer above, taking the
-    whole startup down with it because one optional tool was absent.
+    """Run a command to completion or to its timeout, stderr merged into stdout. A missing
+    tool returns exit 127 with the OS's own message rather than raising -- callers already
+    treat tool failure as an ordinary result to report.
     """
     try:
         # New session so a hung sanitizer takes its symbolizer child down with it.
@@ -88,23 +78,14 @@ def run(
 
 
 def _kill_tree(pid: int) -> None:
-    """Take down a timed-out process and its children, in each OS's own words.
-
-    POSIX: start_new_session made the child its own group leader, so its pid is the pgid;
-    it may also exit on its own between the timeout and the kill. Windows has no process
-    groups to signal (start_new_session is inert there), so taskkill /T walks the child's
-    process tree instead -- same semantics, and a tree already gone exits nonzero, which
-    is the ProcessLookupError case and is ignored the same way.
-
-    The branch is on sys.platform rather than os.name because mypy narrows the former:
-    killpg and SIGKILL do not exist in Windows stubs, and only this spelling lets each
-    OS type-check the code it will actually run.
+    """Take down a timed-out process and its children: killpg on POSIX (start_new_session
+    made the child its own group leader), taskkill /F /T on Windows, an already-gone tree
+    ignored on both. sys.platform, not os.name -- only that spelling type-checks on both.
     """
     if sys.platform == "win32":
-        # by full path: bare "taskkill" is resolved through a search that can reach the
-        # process's current directory, and this server is launched from directories it
-        # does not control. Bounded, because the cleanup after a timeout must not be
-        # able to hang the way the thing it is cleaning up did.
+        # Full path: a bare "taskkill" can resolve through the process's current
+        # directory, which this server does not control. Bounded, so this cleanup
+        # can't hang the way the thing it's cleaning up did.
         taskkill = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe"
         with contextlib.suppress(subprocess.TimeoutExpired):
             subprocess.run(
@@ -119,14 +100,9 @@ def _kill_tree(pid: int) -> None:
 
 
 def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
-    """Collect what a killed process left in its pipe, refusing to wait forever for it.
-
-    The tree kill is not guaranteed: taskkill cannot touch an elevated child, and a
-    grandchild that started its own session escapes the POSIX group. A survivor keeps
-    the pipe's write end open, and a communicate() with no timeout then blocks on it --
-    one timed-out analysis becoming a request that never returns. So the read is bound,
-    the root is killed directly when it expires, and whatever output was gathered before
-    giving up still comes back, with the note saying what happened.
+    """Collect what a killed process left in its pipe, without waiting forever for it. The
+    tree kill isn't guaranteed -- an elevated child or a new-session grandchild survives and
+    keeps the pipe open -- so this read is itself bound and the root killed if it expires.
     """
     try:
         output, _ = proc.communicate(timeout=KILL_GRACE_S)
@@ -140,10 +116,9 @@ def _drained(proc: subprocess.Popen[str], timeout_s: int) -> str:
 
 
 def _salvaged(undead: subprocess.TimeoutExpired) -> str:
-    """Read the partial output off a timed-out communicate(), whatever shape it took.
-
-    text=True notwithstanding, communicate() attaches what it had read as bytes on
-    POSIX and attaches nothing at all on Windows -- only run() re-raises with str.
+    """Read the partial output off a timed-out communicate(), whatever shape it took:
+    text=True notwithstanding, communicate() attaches bytes on POSIX and nothing at all
+    on Windows -- only run() re-raises with str.
     """
     if isinstance(undead.output, bytes):
         return undead.output.decode(errors="replace")
@@ -151,10 +126,8 @@ def _salvaged(undead: subprocess.TimeoutExpired) -> str:
 
 
 class Runner(Protocol):
-    """run's call shape, named so anything that spawns can be handed a fake instead.
-
-    Lives here rather than beside its callers so every layer that takes a runner takes the
-    same one, and a test can inject something that never reaches a subprocess.
+    """run's call shape, named so anything that spawns can be handed a fake instead --
+    living here so every layer that takes a runner takes the same one.
     """
 
     def __call__(
@@ -169,9 +142,8 @@ class Runner(Protocol):
 
 def hygienic_env(overrides: Mapping[str, str]) -> dict[str, str]:
     """Copy the environment with every sanitizer option stripped, then apply overrides.
-
-    Stricter than scripts/fixtures.py, which drops two of the four and pins two of its own:
-    here nothing survives from the user's shell and every pin arrives through overrides.
+    Stricter than scripts/fixtures.py: nothing survives from the user's shell, and every
+    pin arrives through overrides.
     """
     env = dict(os.environ)
     for name in SANITIZER_ENV_VARS:

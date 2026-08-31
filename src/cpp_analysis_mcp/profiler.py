@@ -1,16 +1,6 @@
-"""The two perf invocations, composed in one place because two layers need the same pair.
-
-Profiling is a record step and a report step, and the flags of one decide what the other can
-say: recording without frame pointers leaves the report with no call graph to attribute
-cumulative time through, and reporting without a field separator leaves the parser reading
-column positions that move with the widest symbol in the profile. Kept apart, the two drift
-and the failure is silent -- a report that parses into fewer hotspots than were measured.
-
-Both the capability probe and the profile pipeline run this pair. The probe sits below
-pipelines, so the commands live here rather than in the pipeline that is their main caller.
-
-Spawns nothing itself: these are lists of words, and whoever holds a Runner decides where
-they run. That is what lets Windows profile through the WSL bridge without this file knowing.
+"""The two perf invocations, kept together because record's flags decide what report can
+say -- kept apart they silently drift out of sync. Spawns nothing itself: these are
+argument lists a Runner executes, which is what lets Windows profile through the bridge.
 """
 
 from __future__ import annotations
@@ -25,14 +15,12 @@ PERF = "perf"
 # recording lands in the build directory the caller owns instead of its current directory
 DATA_NAME = "perf.data"
 
-# samples per second. 999 rather than 1000 on purpose: a workload doing periodic work on the
-# kernel's 1000Hz tick would be sampled at the same phase every time and the profile would
-# describe the tick rather than the program.
+# 999, not 1000: a workload doing periodic work on the kernel's 1000Hz tick would sample
+# the same phase every time, describing the tick rather than the program.
 FREQUENCY = "999"
 
-# rows below this share of the profile are not reported. Under a percent is within the noise
-# of any run short enough to wait for, and a real program has a long tail of them that would
-# otherwise dominate the response by volume while saying nothing.
+# rows below this share aren't reported -- under a percent is noise for a short run, and a
+# program's long tail of tiny rows would otherwise dominate the response, saying nothing.
 PERCENT_LIMIT = 0.5
 
 # said back to the caller, because a threshold nobody was told about reads as completeness
@@ -41,9 +29,9 @@ TRUNCATION = (
     "time evenly over many small functions will show fewer hotspots than it has"
 )
 
-# frame pointers rather than DWARF unwinding: the build already passes
-# -fno-omit-frame-pointer, fp costs almost nothing to record, and DWARF mode copies a chunk
-# of every thread's stack into the trace, which on a busy workload drops samples instead
+# frame pointers, not DWARF unwinding: the build already passes -fno-omit-frame-pointer,
+# fp is nearly free to record, and DWARF copies a chunk of every thread's stack into the
+# trace -- on a busy workload, that drops samples instead.
 CALL_GRAPH = "fp"
 
 
@@ -77,8 +65,6 @@ def report_command(data: Path) -> list[str]:
         # tree is thousands of lines and the table already carries what it produced
         "-g",
         "none",
-        # the symbol alone answers "which function"; the source line answers "which line in
-        # it", which is the question worth having a profiler for
         "--sort",
         "symbol,srcline",
         "--full-source-path",

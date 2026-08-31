@@ -1,5 +1,4 @@
 """What every compiler contributes: flag syntax, pinned runtime options, what it cannot do.
-
 Tables and lookups only. Nothing here runs a compiler -- the path and version string arrive
 from whoever discovered them, which keeps a Toolchain constructible in a test.
 """
@@ -11,17 +10,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 # must match the flags scripts/fixtures.py compile_case passes; a test cross-checks the two
 BASE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O1", "-fno-omit-frame-pointer")
 
-# what a build meant to be profiled is compiled with. -O2 rather than BASE_FLAGS' -O1 is the
-# whole point: optimization decides which calls get inlined, and inlining decides where the
-# time appears to go, so a profile of an -O1 build is a ranking of code the release build
-# does not contain. -g stays for the source lines and -fno-omit-frame-pointer for the call
-# graph -- perf walks frame pointers, and -O2 discards them without it.
+# what a profiled build compiles with. -O2, not BASE_FLAGS' -O1: optimization decides
+# inlining, and inlining decides where the time appears to go. -g stays for source lines,
+# -fno-omit-frame-pointer for the call graph -- perf walks frame pointers
 PROFILE_FLAGS: tuple[str, ...] = ("-std=c++20", "-g", "-O2", "-fno-omit-frame-pointer")
+
+# what a raced build compiles with: the release shape. No -g and no kept frame pointers,
+# because nothing walks these stacks -- a race should time the code a release would ship.
+BENCH_FLAGS: tuple[str, ...] = ("-std=c++20", "-O2")
 
 # must match PINNED_ENV in scripts/fixtures.py so a run reproduces the goldens; a test
 # cross-checks. ASan and LSan are empty because the goldens were captured on their defaults.

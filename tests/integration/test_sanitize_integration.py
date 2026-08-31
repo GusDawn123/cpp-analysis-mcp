@@ -1,14 +1,6 @@
-"""Run the whole sanitize chain against the real compiler and the real fixtures.
-
-The unit suite replays captured output through a fake process; this proves the loop that
-output came from -- probe the host, compile a fixture whose bug is known, run it under the
-environment the build handed back, and require the parser to name the planted bug. A
-pipeline that dropped the runtime environment, ran the wrong binary or parsed with the
-wrong reader all produce the same empty report here, which is the failure this suite is
-built to catch.
-
-The clean fixture matters as much as the buggy ones: an all-clear is only worth anything
-from a chain that was demonstrated to report when there is something to report.
+"""Run the whole sanitize chain against the real compiler and the real fixtures: a dropped
+runtime environment, the wrong binary, or the wrong parser would all look like the same
+empty report. The clean fixture proves that all-clear is earned.
 """
 
 from __future__ import annotations
@@ -21,9 +13,9 @@ from helpers import FIXTURES_DIR, bug_line, cpp_source
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file, analyze_project, analyze_snippet
 from cpp_analysis_mcp.platforms.base import Platform
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration
@@ -78,12 +70,9 @@ def host() -> Platform:
 
 @pytest.fixture(scope="module")
 def toolchain() -> Toolchain:
-    """clang, because the assertions below pin the line a report blames.
-
-    gcc attributes the same planted race to a different line -- the committed goldens show
-    it naming the for-statement where clang names the increment -- so a suite that took
-    either compiler would have to stop pinning the thing it is here to check. clang is also
-    the one compiler present on all three target platforms.
+    """clang, because the assertions below pin the line a report blames and gcc attributes
+    the same planted race to a different line (the committed goldens show it). clang is
+    also the one compiler present on all three target platforms.
     """
     found = [chain for chain in discover_toolchains() if chain.family == "clang"]
     if not found:
@@ -93,11 +82,8 @@ def toolchain() -> Toolchain:
 
 @pytest.fixture(scope="module")
 def capabilities(toolchain: Toolchain, host: Platform) -> Capabilities:
-    """Probe once for the whole module: every case here goes through the same gate.
-
-    The cache is off, so these are this machine's answers today rather than a file written
-    by some earlier run.
-    """
+    """Probe once for the module, with the cache off so these are today's answers, not a file
+    some earlier run wrote."""
     return probe_all(toolchain, host, cache_dir=None)
 
 
@@ -117,7 +103,6 @@ def analyze(
     capabilities: Capabilities,
     tmp_path: Path,
 ) -> AnalysisReport | CapabilityStatus:
-    """Analyze one fixture, failing with what the build said when nothing was produced."""
     result = analyze_file(
         cpp_source(stem),
         analysis,
@@ -274,7 +259,6 @@ def test_lsan_either_finds_the_leak_or_says_why_it_cannot(
     toolchain: Toolchain, host: Platform, capabilities: Capabilities, tmp_path: Path
 ) -> None:
     """macOS arm64 has no LeakSanitizer, and saying so is the honest answer, not silence.
-
     Both branches are the same guarantee from opposite sides: a caller never gets an empty
     finding list from a detector that was not running.
     """

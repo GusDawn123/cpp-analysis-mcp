@@ -1,7 +1,5 @@
-"""Turn UndefinedBehaviorSanitizer output into findings.
-
-UBSan reports one line per trip -- `file:line:col: runtime error: <what happened>` --
-optionally followed by a stack. The reporting line carries everything a finding needs,
+"""Turn UndefinedBehaviorSanitizer output into findings: one line per trip --
+`file:line:col: runtime error: <what happened>` -- carrying everything a finding needs,
 so the stack below it is not read.
 """
 
@@ -9,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from ..models import Finding, Location, Severity
+from ..store.models import Finding, Location, Severity
 
 TOOL = "ubsan"
 
@@ -42,7 +40,6 @@ def parse(text: str) -> list[Finding]:
 
 
 def _category(message: str) -> str:
-    """Name the check that fired: the phrase before the colon, kebab-cased."""
     phrase = message.split(":", 1)[0]
     return "-".join(PHRASE_WORD.findall(phrase.lower()))
 

@@ -1,14 +1,6 @@
-"""Compile one source file into a BuiltBinary, or say why it did not build.
-
-Choosing -fsanitize=thread and knowing the run needs TSAN_OPTIONS are one decision, so the
-binary comes back already bound to its environment. Held apart, they drift: a build with
-the sanitizer and a run without its options reports nothing at all, which reads exactly
-like clean code. One object means a caller cannot pick up the binary and leave the
-environment behind.
-
-A build that failed is a BuildFailure, not an exception -- user code that does not compile
-is an ordinary thing to observe. The Platform and Toolchain always arrive as arguments
-(rule 3); nothing here looks up the host.
+"""Compile one source file into a BuiltBinary, or say why it did not build. The binary
+comes back bound to its runtime environment: a sanitized build run without its options
+reports nothing, reading like clean code. Toolchain and Platform arrive as arguments.
 """
 
 from __future__ import annotations
@@ -18,10 +10,10 @@ import shutil
 from pathlib import Path
 
 from cpp_analysis_mcp import process
-from cpp_analysis_mcp.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.parsers import diagnostics
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import BuildFailure, BuiltBinary, SanitizerKind
 from cpp_analysis_mcp.toolchains.base import BASE_FLAGS, PINNED_RUNTIME_ENV, Toolchain
 
 COMPILE_TIMEOUT_S = 120
@@ -41,14 +33,9 @@ def compile_file(
     timeout_s: int = COMPILE_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> BuiltBinary | BuildFailure:
-    """Build one source file, under a sanitizer or under none.
-
-    A build that succeeded can still carry findings: -Wthread-safety reports while
-    compiling, so the compiler's own output is parsed into the returned warnings.
-
-    `base_flags` is what an unsanitized build compiles with, and a sanitized one ignores it:
-    every sanitizer flag set is built on BASE_FLAGS already. It exists so the profiler can
-    ask for its own optimization level without a second build module.
+    """Build one source file, under a sanitizer or under none. A successful build can still
+    carry findings: -Wthread-safety reports while compiling, so the compiler's own output
+    is parsed into the returned warnings. Sanitized builds ignore `base_flags`.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
     binary = build_dir / _binary_name(source, sanitizer, platform.executable_suffix)
@@ -83,23 +70,18 @@ def compile_file(
 
 
 def _binary_name(source: Path, sanitizer: SanitizerKind | None, suffix: str) -> str:
-    """Name the output by source and variant, so one file's sanitized builds coexist.
-
-    A TSan and an ASan build of the same source into one directory must not overwrite
-    each other: the survivor would sit at the other's reported path, bound to the wrong
-    runtime environment. The platform's executable suffix goes on last: Windows will
-    only execute a file that ends in .exe.
+    """Name the output by source and variant: a TSan and an ASan build of one source must
+    not overwrite each other, or the survivor sits at the other's path bound to the wrong
+    runtime environment. The suffix goes on last -- Windows only executes .exe files.
     """
     stem = f"{source.stem}.{sanitizer}" if sanitizer is not None else source.stem
     return f"{stem}{suffix}"
 
 
 def place_runtime_dlls(platform: Platform, sanitizer: SanitizerKind | None, beside: Path) -> None:
-    """Copy the DLLs a sanitized binary needs into the directory it will run from.
-
-    Windows resolves a DLL from the executable's own directory first, and ASan's runtime
-    lives nowhere else the loader looks; on the other platforms the table is empty and
-    this is a no-op.
+    """Copy the DLLs a sanitized binary needs into the directory it will run from: Windows
+    resolves a DLL from the executable's own directory first, and ASan's runtime lives
+    nowhere else the loader looks. Elsewhere the table is empty and this is a no-op.
     """
     if sanitizer is None:
         return
@@ -110,17 +92,9 @@ def place_runtime_dlls(platform: Platform, sanitizer: SanitizerKind | None, besi
 def with_runtime_on_path(
     platform: Platform, sanitizer: SanitizerKind | None, env: dict[str, str]
 ) -> dict[str, str]:
-    """Return `env` with the directories holding this sanitizer's runtime DLLs on PATH.
-
-    Copying the DLL beside the binary covers running that binary afterwards, and nothing
-    else. A build can run a binary too, and one common thing does: gtest_discover_tests
-    executes each freshly linked test program as a POST_BUILD step to enumerate the tests
-    inside it. That happens while the build is still going, before anything has been copied
-    anywhere, so the loader cannot find the ASan runtime and the program dies immediately on
-    STATUS_DLL_NOT_FOUND (0xC0000135), printing nothing. What the caller sees is a build
-    that failed inside a test framework, which explains none of it.
-
-    A no-op everywhere but Windows, where the runtime_dlls table is the only non-empty one.
+    """Return `env` with this sanitizer's runtime-DLL directories prepended to PATH: a build
+    can run what it just linked (gtest_discover_tests does, POST_BUILD, before any DLL is
+    copied) and dies on STATUS_DLL_NOT_FOUND printing nothing. A no-op except on Windows.
     """
     if sanitizer is None:
         return env

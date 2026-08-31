@@ -1,28 +1,13 @@
-"""Turn clang-tidy output into Findings.
-
-clang-tidy borrows the compiler's diagnostic line -- `file:line:col: severity: message
-[suffix]` -- but the bracket holds something else. A compiler names the flag that produced
-the warning; clang-tidy names the check that fired, with no `-W` in front of it, and
-occasionally several checks comma-separated when one line trips more than one. Sharing the
-line shape with parsers.diagnostics while disagreeing about the bracket is why this is its
-own module: one reader would have to guess which tool wrote the text it was handed.
-
-Compile errors in the checked code come through here too, filed by clang-tidy under
-`clang-diagnostic-error` and followed by `note:` lines. They stay findings rather than
-becoming a failure, because an error carrying a file and a line is worth more than the same
-error inside a blob of output.
-
-Only `warning:` and `error:` lines become Findings. Everything else clang-tidy prints -- the
-tallies, the "Error while processing" banner, the echoed source, the caret, the fix-it's
-replacement text, and the notes -- is skipped. Text in, Findings out: nothing here reads a
-file or spawns.
+"""Turn clang-tidy output into Findings. Shares its line shape with parsers.diagnostics
+but disagrees about the trailing bracket -- a compiler names the flag, clang-tidy the check
+(no `-W`, sometimes several) -- so it is its own module, not a shared reader guessing.
 """
 
 from __future__ import annotations
 
 import re
 
-from cpp_analysis_mcp.models import Finding, Location, Severity
+from cpp_analysis_mcp.store.models import Finding, Location, Severity
 
 TOOL = "clang-tidy"
 
@@ -35,7 +20,6 @@ DIAGNOSTIC = re.compile(
     r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<column>\d+))?: "
     r"(?P<severity>warning|error): (?P<message>.*?)\s*$"
 )
-# the check that produced the line, in brackets, at the end
 CHECK_SUFFIX = re.compile(r"\s*\[(?P<checks>[^\]]+)\]$")
 
 # clang-tidy quotes the offending source under each diagnostic, then a caret line, then the
@@ -43,6 +27,8 @@ CHECK_SUFFIX = re.compile(r"\s*\[(?P<checks>[^\]]+)\]$")
 # Quoted source holding a colon and the word error parses as a diagnostic without this.
 CARET_BLOCK = re.compile(r"^\s*\d*\s*\|")
 
+# "error" on purpose: compile errors in checked code arrive as clang-diagnostic-error lines
+# and stay findings -- an error carrying a file and a line beats the same text in a blob
 SEVERITIES = {"warning": Severity.WARNING, "error": Severity.ERROR}
 
 # what makes two diagnostic lines the same one: file, line, column, severity, message, checks

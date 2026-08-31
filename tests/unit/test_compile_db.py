@@ -1,10 +1,6 @@
-"""Find and read a compilation database, with nothing but files on disk.
-
-Every shape here was taken off a real cmake build tree rather than imagined. The response
-file especially: on Windows cmake moves include flags into one as soon as a project has a few
-of them, so an entry whose command carries no -I at all is the ordinary case there, not a
-corner. A reader that stopped at the command line would find no include directories and
-report the same "file not found" this module exists to prevent.
+"""Find and read a compilation database, with nothing but files on disk. Every shape here
+came off a real cmake build tree -- especially the response file case: on Windows cmake
+moves include flags into one, so a command with no -I at all is the norm there.
 """
 
 from __future__ import annotations
@@ -34,7 +30,6 @@ def write_db(directory: Path, entries: list[dict[str, object]]) -> Path:
 
 
 def a_project(root: Path) -> tuple[Path, Path]:
-    """A source file and the include directory it needs, on disk."""
     source = root / "engine" / "src" / "OrderBook.cpp"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text('#include "orderbook/OrderBook.hpp"\n', encoding="utf-8")
@@ -67,9 +62,8 @@ def test_a_database_in_a_build_directory_is_found(tmp_path: Path) -> None:
 
 
 def test_the_database_that_names_the_file_wins_over_a_nearer_one(tmp_path: Path) -> None:
-    """A checkout commonly holds several build trees and they do not describe the same files.
-
-    The one that compiled this file knows its flags; the others are guesses about it. Named
+    """A checkout commonly holds several build trees and they do not describe the same
+    files: the one that compiled this file knows its flags, the others are guesses. Named
     so the wrong one sorts first, or the preference would pass by accident.
     """
     source, _ = a_project(tmp_path)
@@ -90,6 +84,66 @@ def test_a_file_with_no_database_anywhere_finds_none(tmp_path: Path) -> None:
     source, _ = a_project(tmp_path)
 
     assert compile_db.find(source) is None
+
+
+def test_find_under_prefers_beside_the_root_over_a_build_tree(tmp_path: Path) -> None:
+    source, _ = a_project(tmp_path)
+    write_db(tmp_path / "build", [{"directory": str(tmp_path), "file": str(source)}])
+    beside = write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+
+    assert compile_db.find_under(tmp_path) == beside
+
+
+def test_every_database_under_the_root_is_listed_with_the_chosen_one_first(
+    tmp_path: Path,
+) -> None:
+    """A report that names the database it read has to know what it chose between."""
+    source, _ = a_project(tmp_path)
+    build = write_db(tmp_path / "build", [{"directory": str(tmp_path), "file": str(source)}])
+    debug = write_db(tmp_path / "build-debug", [{"directory": str(tmp_path), "file": str(source)}])
+    beside = write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+
+    found = compile_db.databases_under(tmp_path)
+
+    assert found[0] == beside == compile_db.find_under(tmp_path)
+    assert set(found) == {beside, build, debug}
+
+
+def test_a_root_with_no_database_lists_nothing(tmp_path: Path) -> None:
+    a_project(tmp_path)
+
+    assert compile_db.databases_under(tmp_path) == ()
+
+
+def test_find_under_stays_inside_the_root(tmp_path: Path) -> None:
+    """find() walks upward on purpose; a project-scoped lookup must not, or a parent
+    checkout's database would describe someone else's build."""
+    source, _ = a_project(tmp_path)
+    write_db(tmp_path, [{"directory": str(tmp_path), "file": str(source)}])
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert compile_db.find_under(child) is None
+
+
+def test_sources_lists_every_named_file_resolved(tmp_path: Path) -> None:
+    """Absolute entries pass through; relative ones resolve against their own entry's
+    directory, exactly as entry matching already treats them."""
+    source, _ = a_project(tmp_path)
+    build = tmp_path / "build"
+    database = write_db(
+        build,
+        [
+            {"directory": str(build), "file": str(source), "command": "clang++"},
+            {"directory": str(source.parent), "file": source.name, "command": "clang++"},
+            {"directory": str(build), "command": "clang++"},
+        ],
+    )
+
+    named = compile_db.sources(database)
+
+    # the entry with no file contributes nothing; the two spellings mean one file
+    assert [path.resolve() for path in named] == [source.resolve(), source.resolve()]
 
 
 # -------------------------------------------------------------------------- reading the flags
@@ -233,10 +287,9 @@ def test_the_arguments_form_is_read_as_well_as_the_command_form(tmp_path: Path) 
 
 
 def test_a_file_the_database_never_compiled_gets_every_include_it_knows(tmp_path: Path) -> None:
-    """Every header. A build compiles no header on its own, so none appears in a database,
-    and a header is a perfectly ordinary thing to point a compile-time check at. Wider than
-    any one translation unit used is the safe direction: a spare -I changes nothing, and a
-    missing one stops the file parsing.
+    """Headers compile in no TU of their own, so none appears in a database, yet a header is
+    an ordinary check target. Wider is the safe default: a spare -I changes nothing, but a
+    missing one stops the file parsing -- so a header gets every -I the database knows.
     """
     source, include = a_project(tmp_path)
     header = include / "orderbook" / "OrderBook.hpp"
@@ -263,6 +316,25 @@ def test_a_file_the_database_never_compiled_gets_every_include_it_knows(tmp_path
 
     assert f"-I{include}" in flags
     assert f"-I{other}" in flags
+
+
+def test_a_relative_file_entry_resolves_against_its_own_directory(tmp_path: Path) -> None:
+    """CMake writes absolute paths, but bear and hand-written databases write relative
+    ones -- resolved against the process's cwd they match nothing, and the entry's
+    flags are silently lost."""
+    source, include = a_project(tmp_path)
+    database = write_db(
+        tmp_path / "build",
+        [
+            {
+                "directory": str(source.parent),
+                "file": source.name,
+                "command": f"clang++ -I{include} -DMATCHED -c {source.name}",
+            }
+        ],
+    )
+
+    assert "-DMATCHED" in compile_db.flags_for(database, source)
 
 
 def test_paths_spelled_differently_still_match_the_same_file(tmp_path: Path) -> None:

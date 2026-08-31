@@ -1,10 +1,6 @@
-"""Probe the prober with no compiler anywhere: every runner here is a fake.
-
-A capability counts as available only when a planted bug came back reported, so most of
-what these tests script is a probe that compiles, runs, and then says nothing -- the false
-all-clear the whole module exists to prevent. The platform and toolchain tables are built
-by hand from the real ones, the same way tests/unit/platforms/test_platforms.py does, so
-Linux's link errors and macOS's arm64 denial are both exercised from one machine.
+"""Probe the prober with no compiler anywhere: every runner here is a fake. A capability
+counts available only when a planted bug came back reported -- most tests script the false
+all-clear. Hand-built platform tables let Linux and macOS both run from one machine.
 """
 
 from __future__ import annotations
@@ -24,10 +20,10 @@ from cpp_analysis_mcp.capabilities import (
     fingerprint,
     probe_all,
 )
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.platforms import darwin, linux
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -116,11 +112,9 @@ class FakeRunner:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names.
-
-    perf is asked for by name rather than by the file it works on: its report step names
-    only the trace and its own flags, none of which carry the probe's stem, and perf is
-    reached for by exactly one analysis.
+    """Read which probe a command belongs to off the scratch file it names. perf is asked
+    for by name instead: its report step names only the trace and its own flags, and perf
+    is reached for by exactly one analysis.
     """
     if cmd and Path(cmd[0]).name == profiler.PERF:
         return Analysis.PROFILE
@@ -137,11 +131,9 @@ def is_run(cmd: Sequence[str]) -> bool:
 
 
 def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
-    """Say whether this is the step whose output has to carry the marker.
-
-    Profiling is the one probe with three steps rather than two, and the marker belongs to
-    the last of them: recording produces a binary trace that says nothing readable, so only
-    the report can name the function that was planted.
+    """Say whether this is the step whose output has to carry the marker. Profiling is the
+    one probe with three steps, and the marker belongs to the last: recording produces a
+    binary trace that says nothing readable, so only the report can name the plant.
     """
     if analysis is Analysis.PROFILE:
         return len(cmd) > 1 and cmd[1] == "report"
@@ -179,8 +171,6 @@ def compile_returns(analysis: Analysis, result: RunResult) -> Reply:
 
 
 def version_replies(versions: Mapping[str, RunResult]) -> Reply:
-    """Answer `<compiler> --version` per compiler name."""
-
     def reply(cmd: list[str]) -> RunResult:
         return versions[Path(cmd[0]).name]
 
@@ -501,6 +491,21 @@ def test_a_different_compiler_version_fingerprints_differently() -> None:
     older = clang.toolchain(Path("/usr/bin/clang++"), "Apple clang version 16.0.0")
 
     assert fingerprint(older, a_darwin()) != fingerprint(a_clang(), a_darwin())
+
+
+def test_a_clang_tidy_change_retires_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tidy probe's outcome depends on a binary the compiler fields never mention:
+    installing or removing clang-tidy must re-probe, not replay a stale answer."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    searched = Platform(name="linux", extra_tool_dirs=(tmp_path,))
+
+    absent = fingerprint(a_clang(), searched)
+    (tmp_path / "clang-tidy").write_text("#!/bin/sh\n", encoding="utf-8")
+    installed = fingerprint(a_clang(), searched)
+
+    assert absent != installed
 
 
 def test_a_different_compiler_path_fingerprints_differently() -> None:

@@ -1,0 +1,14 @@
+id: snippet-race-escalates
+title: A snippet that reads clean still gets run under a sanitizer
+prompt: >-
+  Two threads call this. Does it race?
+
+  long depth = 0; void add(long qty) { depth += qty; } void take(long qty) { depth -= qty; }
+needs_project: false
+expected:
+  first_tool: static_check_snippet
+  calls: [static_check_snippet, sanitize_snippet]
+  after_clean_escalates_to:
+    after: static_check_snippet
+    escalates_to: sanitize_snippet
+  max_calls: 6

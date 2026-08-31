@@ -1,21 +1,6 @@
-"""The MCP tool surface: eight tools, their schemas, and one line each into a pipeline.
-
-Protocol only. Every handler reads the resolved context off the request, hands it to one
-pipeline call and returns what came back -- there is no control flow in this file at all, and
-a test walks it with ast to keep it that way (rule 2). Everything that needed a decision at
-startup was decided in context.py, and everything a call needs to decide is decided in the
-pipeline it delegates to; a handler that grew an `if` would be workflow logic in the layer
-that has no business holding any.
-
-The descriptions below are the product, not documentation of it. MCP hands the assistant a
-menu of names and descriptions and nothing else, so these are the only information it has
-when choosing what to run: they say what each rung of the escalation ladder costs, what it
-can see that the cheaper one cannot, and what it needs to be handed. A vague description
-produces wrong tool choices no matter how good the pipeline underneath is.
-
-Nothing is serialized by hand. The union return annotations are the schema: the SDK reads
-them off the signatures, publishes the JSON shape of every outcome a pipeline can produce,
-and converts the dataclasses on the way out.
+"""The MCP tool surface: every tool, its schema, and one line each into a pipeline.
+No control flow here at all -- a test walks the file with ast to keep it that way (rule 2).
+Nothing is serialized by hand: the union return annotations are the schema the SDK reads.
 """
 
 from __future__ import annotations
@@ -23,7 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from anyio import to_thread
 from mcp.server import MCPServer
@@ -31,17 +16,25 @@ from mcp.server import MCPServer
 # our own Context is the app state these handlers read, and the SDK's is the request handle
 # they read it off; one of the two names has to move
 from mcp.server.mcpserver import Context as ServerContext
+from mcp.server.mcpserver.prompts import Prompt
+from pydantic import Field
 
-from cpp_analysis_mcp import context
+from cpp_analysis_mcp import battery, context, prompts
 from cpp_analysis_mcp.context import Context
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.pipelines import benchmark, profile, sanitize, static_check
+from cpp_analysis_mcp.pipelines import review as review_pipeline
+from cpp_analysis_mcp.pipelines.review import AuditReport, NoSuchFinding, ReviewReport
+from cpp_analysis_mcp.store.models import (
     Analysis,
     AnalysisReport,
+    BenchmarkReport,
     BuildFailure,
     CapabilityStatus,
+    Finding,
+    FullCheckReport,
     ProfileReport,
+    Variant,
 )
-from cpp_analysis_mcp.pipelines import profile, sanitize, static_check
 
 SERVER_NAME = "cpp-analysis"
 
@@ -68,6 +61,11 @@ Reaching for a sanitizer first is like calling forensics before checking whether
 locked. Escalating is the point, though: a clean compile-time result is not an all-clear,
 because a data race, a leak and a use-after-free exist only while the program is running.
 
+For "did MY change break anything?", the review gate: audit records a ref's whole picture
+once, then review reports only the findings your change introduced:
+
+  audit, review, get_finding                seconds   the compile-time tier over git scope
+
 For "why is this code slow?", that ladder is the wrong tool entirely and no amount of
 climbing it will answer the question:
 
@@ -78,8 +76,21 @@ be moved. It cannot say that the copy is 40% of the runtime, or that the real co
 container being rebuilt in a loop it never looks inside. Only measurement ranks anything, and
 guessing at hot code from reading it is famously unreliable even for the person who wrote it.
 
+For "which version is faster?", measure that too: benchmark_variants races 2 to 5 whole
+programs on this machine and rejects any whose output stopped matching the baseline's. A
+speedup claim without a race behind it is a guess.
+
+For the whole correctness picture in one call, full_check_file runs both compile-time
+checks and all four sanitizers in parallel and merges the findings. The ladder is for when
+you already know which question you are asking.
+
 capabilities says which analyses this machine proved it can do, and is worth reading before
 trusting an empty result from any of them.
+
+A machine missing tools is not out of the game: with Docker running, anything the host
+cannot run happens inside a pinned toolbox container instead -- automatically, probed with
+the same planted bugs, and every finding says which engine observed it. When something is
+unavailable, its status names the one docker pull that would unlock it.
 """
 
 CAPABILITIES_DOC = """\
@@ -92,7 +103,9 @@ ThreadSanitizer while the runtime library is missing.
 
 An analysis reported unavailable returns that status instead of findings when you call it,
 and an available one can still carry limitations: ThreadSanitizer runs on macOS but its
-deadlock detector does not, so deadlock findings there require Linux.
+deadlock detector does not, so deadlock findings there require Linux. Where Docker could
+carry an unavailable analysis, the suggestion says so: one toolbox image pull, no other
+installs.
 
 Read this when a result surprises you, particularly an empty one.
 """
@@ -142,6 +155,53 @@ program is running.
 
 `text` has to be a complete program with a main(): it is compiled, linked and executed. The
 file written for it stays behind on purpose, since every frame in the report names it.
+"""
+
+REVIEW_DOC = """\
+Reports only the findings your current change introduced, compared against a git ref.
+
+The review gate: run this before declaring work done. It asks git what changed since
+`against`, runs every applicable compile-time analyzer over exactly those files, and
+subtracts the ref's recorded baseline so pre-existing findings stay out of the way. What
+comes back is counts by danger tier, an index of every new finding with its fingerprint,
+full detail for the top few, the plan trace saying what ran and what was skipped and why,
+and the name of the compilation database that decided how your files parsed. Each detailed
+finding carries clang-tidy's own committable fix where the check offered one, and names the
+runtime tool that could watch the defect happen rather than suspect it.
+
+Read the tiers first. Critical means a runtime tool watched the defect happen, so a
+compile-time review never reports one -- a linter suspects, and tops out at major. Style
+is counted but never takes a detail slot, so the one use-after-move is not buried under a
+hundred opinions about naming.
+
+Subtraction needs a memory: run audit on the ref once to record its baseline. With no
+trustworthy baseline, everything found is reported and a note says so -- never a silent
+guess. Fetch any indexed finding whole with get_finding.
+"""
+
+AUDIT_DOC = """\
+Scans everything git tracks in a project and records the result as a baseline.
+
+The whole picture at one ref, and the memory the review gate subtracts against: run this
+on a clean checkout (main, just merged) and review can afterward report only what a change
+added. The baseline is recorded under `record_as` -- defaulting to the current branch
+name, or the commit when detached -- and retires itself the moment the world changes: a
+new compiler, changed flags, an edited clang-tidy config.
+
+Costs seconds per file and executes nothing. The report is the same shape review returns:
+counts by danger tier, an index of everything, detail for the top few -- each with the fix
+its check offered and the runtime tool that could witness it -- the plan trace, and the
+compilation database it read. Critical is reserved for defects a runtime tool watched
+happen, so an audit of the compile-time tier counts none of them.
+"""
+
+GET_FINDING_DOC = """\
+Fetch one finding whole, by the fingerprint a review or audit index listed.
+
+The index is deliberately thin so a big report cannot crowd out the code you are reasoning
+about; this is the other half of that bargain. Answers from the remembered last run on
+disk, so it spawns nothing. A miss explains itself: no remembered run for this project, or
+a fingerprint that run never held.
 """
 
 STATIC_CHECK_FILE_DOC = """\
@@ -207,6 +267,43 @@ ranking rests on, and a few dozen of them ranks noise. Read `event` too: `cpu/cy
 the hardware counter, while `cpu-clock` means the machine had none and a timer stood in.
 """
 
+FULL_CHECK_FILE_DOC = """\
+Runs every correctness analysis on one C++ file in a single call and merges what they saw:
+both compile-time checks and all four sanitizers, in parallel, one report.
+
+This is the one-call answer to "is this file wrong?". Use it when you want the whole
+picture; use the individual tools when you already know which question you are asking, or
+when the file has no main() for the sanitizers to run.
+
+`source` is a path to a file with a main(): the sanitizers compile, link and execute it,
+so this costs minutes. The report's `ran` list names the detectors that provably worked
+and reported. An analysis this machine cannot run appears under `unavailable` with its
+reason, and a build that died appears under `failed_builds`; neither stops the others.
+Duplicate findings are merged, and `next_step` says what to do when anything was found.
+"""
+
+BENCHMARK_VARIANTS_DOC = """\
+Races 2 to 5 versions of a program on this machine and reports which is faster, by how much,
+and whether each still produced the same output as the baseline.
+
+This is the tool that settles "which rewrite is faster". Reading code and reasoning about
+what looks expensive cannot, and a speedup claim without a race behind it is a guess. Hand
+it whole programs: each variant is a complete file with a main() that runs the same workload
+and prints its result. The first variant is the baseline. Outputs are compared byte for
+byte, and a variant that answered differently is rejected no matter how fast it ran --
+wrong but quick must not win.
+
+Keep incidental logging out of what the programs print and give the workload a fixed seed:
+the comparison is exact, so a timestamp or an unseeded shuffle reads as a wrong answer. Aim
+for a second or more of work per run; times include process start, and differences of a few
+milliseconds are noise.
+
+Costs minutes: every variant builds at release optimization and runs `repeats` times (2 to
+20, default 5), interleaved round-robin, timed one at a time so variants never fight each
+other for the machine. Read `stddev_ms` before believing `mean_ms`, and `next_step` for
+what to do with the winner.
+"""
+
 STATIC_CHECK_SNIPPET_DOC = """\
 Checks a piece of C++ at compile time and reports what the compiler or clang-tidy said.
 
@@ -229,12 +326,9 @@ file decides. The file written for the snippet stays behind, since every finding
 
 @asynccontextmanager
 async def live(server: MCPServer[Context]) -> AsyncIterator[Context]:
-    """Read this host once at startup and hand the result to every request the process serves.
-
-    Off the event loop, because a cold cache means compiling and running six probes -- minutes
-    on a first start -- and resolve() is ordinary blocking code. Run inline it would stall the
-    loop for all of that, and a host waiting on the initialize response would give up on a
-    server that is working exactly as intended.
+    """Read this host once at startup and hand the result to every request the process
+    serves. Off the event loop: a cold cache means minutes of probes, and run inline that
+    would stall initialize until the host gives up on a server working as intended.
     """
     yield await to_thread.run_sync(context.resolve)
 
@@ -308,9 +402,8 @@ def profile_file(
     ctx: ServerContext[Context],
 ) -> ProfileReport | BuildFailure | CapabilityStatus:
     """Delegate to the profile pipeline, on the engine this analysis was resolved onto.
-
-    No `analysis` argument, unlike the sanitizer tools: there is one profiler, so there is
-    nothing here for a caller to choose and no wrong choice to make.
+    No `analysis` argument, unlike the sanitizer tools: there is one profiler, so there
+    is nothing to choose and no wrong choice to make.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis.PROFILE]
@@ -343,16 +436,114 @@ def profile_project(
     )
 
 
+def benchmark_variants(
+    variants: Annotated[
+        list[Variant],
+        Field(min_length=benchmark.MIN_VARIANTS, max_length=benchmark.MAX_VARIANTS),
+    ],
+    ctx: ServerContext[Context],
+    repeats: Annotated[
+        int, Field(ge=benchmark.MIN_REPEATS, le=benchmark.MAX_REPEATS)
+    ] = benchmark.DEFAULT_REPEATS,
+) -> BenchmarkReport | BuildFailure:
+    """Delegate to the benchmark pipeline, on the host's own engine. No capability gate,
+    unlike every tool that runs something: probes catch detectors that break silently, and
+    a plain compile-and-run cannot -- a failed build is loud, and the clock always ticks.
+    """
+    app = ctx.request_context.lifespan_context
+    return benchmark.race(
+        variants,
+        toolchain=app.toolchain,
+        platform=app.platform,
+        build_dir=context.scratch(app.workspace),
+        repeats=repeats,
+        runner=app.runner,
+    )
+
+
+def full_check_file(
+    source: str,
+    ctx: ServerContext[Context],
+    checks: str | None = None,
+) -> FullCheckReport:
+    """Delegate the whole battery to battery.py, each analysis on its own engine. One
+    return type on purpose: an unavailable analysis or a failed build is a section inside
+    the report, not a different outcome, so the battery never refuses whole.
+    """
+    app = ctx.request_context.lifespan_context
+    return battery.check_file(
+        Path(source),
+        engines=app.engines,
+        capabilities=app.capabilities,
+        build_dir=context.scratch(app.workspace),
+        checks=checks,
+    )
+
+
+def review(
+    project_dir: str,
+    against: str,
+    ctx: ServerContext[Context],
+) -> ReviewReport | CapabilityStatus:
+    """Delegate to the review pipeline; the compile-time engines are never bridged, so the
+    clang-tidy engine speaks for the whole static tier."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.review_project(
+        Path(project_dir),
+        against,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
+        capabilities=app.capabilities,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
+def audit(
+    project_dir: str,
+    ctx: ServerContext[Context],
+    record_as: str | None = None,
+) -> AuditReport | CapabilityStatus:
+    """Delegate to the review pipeline's audit; the baseline lands beside the probe cache."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.audit_project(
+        Path(project_dir),
+        record_as=record_as,
+        toolchain=engine.toolchain,
+        platform=engine.platform,
+        capabilities=app.capabilities,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
+def get_finding(
+    project_dir: str,
+    fingerprint: str,
+    ctx: ServerContext[Context],
+) -> Finding | NoSuchFinding:
+    """Delegate to the remembered-run lookup; one identity in, one whole finding out."""
+    app = ctx.request_context.lifespan_context
+    engine = app.engines[Analysis.CLANG_TIDY]
+    return review_pipeline.remembered_finding(
+        Path(project_dir),
+        fingerprint,
+        cache_dir=context.CACHE_DIR,
+        runner=engine.runner,
+    )
+
+
 def static_check_file(
     source: str,
     analysis: CompileTimeCheck,
     ctx: ServerContext[Context],
     checks: str | None = None,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the static_check pipeline; nothing is built, so there is no build directory.
-
-    `checks` travels as it arrived, None included: a default filled in here would override
-    whatever .clang-tidy the project committed.
+    """Delegate to the static_check pipeline; nothing is built, so there is no build
+    directory. `checks` travels as it arrived, None included: a default filled in here
+    would override whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis(analysis)]
@@ -373,10 +564,9 @@ def static_check_snippet(
     ctx: ServerContext[Context],
     checks: str | None = None,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Delegate to the static_check pipeline; the snippet needs somewhere to be written down.
-
-    `checks` travels as it arrived, None included: a default filled in here would override
-    whatever .clang-tidy the project committed.
+    """Delegate to the static_check pipeline; the snippet needs somewhere to be written
+    down. `checks` travels as it arrived, None included: a default filled in here would
+    override whatever .clang-tidy the project committed.
     """
     app = ctx.request_context.lifespan_context
     engine = app.engines[Analysis(analysis)]
@@ -393,10 +583,9 @@ def static_check_snippet(
 
 
 def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
-    """Register the eight tools against one server; `lifespan` is the seam a test starts through.
-
-    The default is what ships. A test injects a context it wrote down instead, because the
-    live one probes the machine the suite happens to be running on.
+    """Register every tool against one server; `lifespan` is the seam a test starts
+    through -- the default is what ships, and a test injects a context it wrote down
+    because the live one probes the machine the suite runs on.
     """
     server: MCPServer[Context] = MCPServer(
         SERVER_NAME, instructions=INSTRUCTIONS, lifespan=lifespan
@@ -407,8 +596,27 @@ def build_server(*, lifespan: Lifespan = live) -> MCPServer[Context]:
     server.add_tool(sanitize_snippet, description=SANITIZE_SNIPPET_DOC)
     server.add_tool(static_check_file, description=STATIC_CHECK_FILE_DOC)
     server.add_tool(static_check_snippet, description=STATIC_CHECK_SNIPPET_DOC)
+    server.add_tool(review, description=REVIEW_DOC)
+    server.add_tool(audit, description=AUDIT_DOC)
+    server.add_tool(get_finding, description=GET_FINDING_DOC)
     server.add_tool(profile_file, description=PROFILE_FILE_DOC)
     server.add_tool(profile_project, description=PROFILE_PROJECT_DOC)
+    server.add_tool(benchmark_variants, description=BENCHMARK_VARIANTS_DOC)
+    server.add_tool(full_check_file, description=FULL_CHECK_FILE_DOC)
+    server.add_prompt(
+        Prompt.from_function(
+            prompts.checkup,
+            name="checkup",
+            description="Run every correctness check on a file and fix findings until clean.",
+        )
+    )
+    server.add_prompt(
+        Prompt.from_function(
+            prompts.make_it_faster,
+            name="make-it-faster",
+            description="Profile a file, race rewrite candidates, adopt only a proven winner.",
+        )
+    )
     return server
 
 

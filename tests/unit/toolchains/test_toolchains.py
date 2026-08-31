@@ -1,8 +1,6 @@
-"""Hold the compiler tables to what scripts/fixtures.py actually used to capture the goldens.
-
-The flags and pinned options in toolchains/ are a second copy of what the capture script
-passes. These tests cross-check the copies, so a change to one that is not made in the other
-fails here rather than showing up as goldens that no longer reproduce.
+"""Hold the compiler tables to what scripts/fixtures.py actually used to capture the
+goldens: the flags and pinned options in toolchains/ are a second copy of what the capture
+script passes, and a change to one that is not made in the other fails here.
 """
 
 from __future__ import annotations
@@ -17,7 +15,7 @@ from typing import Any
 
 from helpers import FIXTURES_SCRIPT
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import (
     BASE_FLAGS,
@@ -49,7 +47,6 @@ def compile_case_body() -> ast.Module:
 
 
 def compile_case_literals() -> set[str]:
-    """Return every string literal in the capture script's compile_case."""
     return {
         node.value
         for node in ast.walk(compile_case_body())
@@ -58,10 +55,9 @@ def compile_case_literals() -> set[str]:
 
 
 def compile_case_flag_list() -> list[str]:
-    """Return the flags in compile_case's `cmd = [...]`, in order.
-
-    Only the literal ones: the compiler name is a variable and -fsanitize= is an f-string,
-    which is what leaves exactly the flags every compile gets regardless of case or OS.
+    """The flags in compile_case's `cmd = [...]`, in order -- only the literal ones: the
+    compiler name is a variable and -fsanitize= is an f-string, which leaves exactly the
+    flags every compile gets regardless of case or OS.
     """
     for node in ast.walk(compile_case_body()):
         named_cmd = (

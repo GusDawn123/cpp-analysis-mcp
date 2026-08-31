@@ -1,17 +1,6 @@
 """Gate on the capability, build, run, parse -- the four steps of one sanitizer analysis.
-
-Each step is worthless alone and the order is the whole point. A capability status with no
-run is a promise; a run without the environment its build decided on reports nothing; and
-findings with no status behind them cannot be told from a detector that was never watching.
-Keeping the four in one place means there is one order rather than one per caller.
-
-The gate is a hard stop, not a note on the report. If the probe could not catch a planted
-bug on this machine, nothing is spawned and the status comes back as the answer -- running
-anyway would produce an empty finding list that reads exactly like clean code, which is the
-false all-clear this project exists to avoid.
-
-Composes primitives only, never another pipeline (rule 1); the Platform and Toolchain arrive
-as arguments (rule 3).
+The gate is a hard stop: if the probe couldn't catch a planted bug here, nothing is spawned,
+because an empty finding list reads exactly like clean code -- the false all-clear.
 """
 
 from __future__ import annotations
@@ -21,7 +10,10 @@ from pathlib import Path
 
 from cpp_analysis_mcp import process
 from cpp_analysis_mcp.build import cmake, single_file
-from cpp_analysis_mcp.models import (
+from cpp_analysis_mcp.parsers import PARSER_FOR
+from cpp_analysis_mcp.platforms.base import Platform, stamped
+from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import (
     SANITIZER_FOR,
     Analysis,
     AnalysisReport,
@@ -29,9 +21,6 @@ from cpp_analysis_mcp.models import (
     BuiltBinary,
     CapabilityStatus,
 )
-from cpp_analysis_mcp.parsers import PARSER_FOR
-from cpp_analysis_mcp.platforms.base import Platform
-from cpp_analysis_mcp.process import Runner
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # a sanitized program runs at a fraction of its normal speed, so this is generous next to
@@ -53,10 +42,9 @@ def analyze_file(
     run_timeout_s: int = RUN_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Build one source file under its sanitizer and report what running it produced.
-
-    Three outcomes, all of them ordinary: a report, the build failure that stopped one being
-    produced, or the capability status saying this machine cannot run this analysis at all.
+    """Build one source file under its sanitizer and report what running it produced. Three
+    ordinary outcomes: a report, the build failure that stopped one, or the capability
+    status saying this machine cannot run this analysis at all.
     """
     kind = SANITIZER_FOR[analysis]
     status = capabilities[analysis]
@@ -74,7 +62,9 @@ def analyze_file(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, analysis, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(
+        built, analysis, status, engine=platform.engine, run_timeout_s=run_timeout_s, runner=runner
+    )
 
 
 def analyze_project(
@@ -91,7 +81,6 @@ def analyze_project(
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
     """Build a CMake project under its sanitizer and report what running its binary produced.
-
     With no `target`, a project holding one executable builds it; anything else comes back
     as the build's failure naming the targets there are.
     """
@@ -112,7 +101,9 @@ def analyze_project(
     )
     if isinstance(built, BuildFailure):
         return built
-    return _observe(built, analysis, status, run_timeout_s=run_timeout_s, runner=runner)
+    return _observe(
+        built, analysis, status, engine=platform.engine, run_timeout_s=run_timeout_s, runner=runner
+    )
 
 
 def analyze_snippet(
@@ -127,10 +118,9 @@ def analyze_snippet(
     run_timeout_s: int = RUN_TIMEOUT_S,
     runner: Runner = process.run,
 ) -> AnalysisReport | BuildFailure | CapabilityStatus:
-    """Write a piece of C++ to disk and analyze it as a file.
-
-    The file stays behind on purpose: every path in a compiler diagnostic and every frame in
-    a sanitizer report names it, and those are unreadable pointing at something deleted.
+    """Write a piece of C++ to disk and analyze it as a file. The file stays behind on
+    purpose: every diagnostic path and sanitizer frame names it, and those are unreadable
+    pointing at something deleted.
     """
     build_dir.mkdir(parents=True, exist_ok=True)
     source = build_dir / f"{SNIPPET_STEM}.cpp"
@@ -154,6 +144,7 @@ def _observe(
     analysis: Analysis,
     status: CapabilityStatus,
     *,
+    engine: str,
     run_timeout_s: int,
     runner: Runner,
 ) -> AnalysisReport:
@@ -171,8 +162,8 @@ def _observe(
     # exit 66, and a run killed at its timeout still leaves the output it had produced
     return AnalysisReport(
         analysis=analysis,
-        findings=tuple(PARSER_FOR[analysis](result.output)),
-        build_warnings=built.warnings,
+        findings=stamped(tuple(PARSER_FOR[analysis](result.output)), engine),
+        build_warnings=stamped(built.warnings, engine),
         exit_code=result.exit_code,
         timed_out=result.timed_out,
         limitations=status.limitations,

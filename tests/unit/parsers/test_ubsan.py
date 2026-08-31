@@ -1,8 +1,6 @@
-"""Check the UBSan parser against every committed UBSan golden.
-
-UBSan reports the source position on the runtime-error line itself, so the goldens
-agree on line and column and differ only in the path the build saw. The multi-error
-case is hand-written in the same format; no captured run trips twice.
+"""Check the UBSan parser against every committed UBSan golden. UBSan reports the source
+position on the runtime-error line itself, so the goldens agree on line and column and
+differ only in the path. The multi-error case is hand-written; no captured run trips twice.
 """
 
 from __future__ import annotations
@@ -12,8 +10,8 @@ from dataclasses import dataclass
 import pytest
 from helpers import GOLDEN_DIR
 
-from cpp_analysis_mcp.models import Severity
 from cpp_analysis_mcp.parsers import ubsan
+from cpp_analysis_mcp.store.models import Severity
 
 
 @dataclass(frozen=True)

@@ -1,9 +1,6 @@
-"""Windows: no TSan or LSan runtime exists here at all, and LLVM installs off PATH.
-
-Both denials are structural facts about the platform, not missing packages: no compiler ships
-a ThreadSanitizer or LeakSanitizer runtime for Windows, so there is nothing to install and
-the honest suggestion is a different operating system. WSL is that answer without leaving
-the machine.
+"""Windows: no TSan or LSan runtime exists here at all, and LLVM installs off PATH. Both
+denials are structural facts, not missing packages -- there is nothing to install, and the
+honest suggestion is a different OS. WSL is that answer without leaving the machine.
 """
 
 from __future__ import annotations
@@ -11,8 +8,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
 from cpp_analysis_mcp.platforms.base import Denial, FailureSignature, Platform
+from cpp_analysis_mcp.store.models import Analysis, SanitizerKind
 
 NAME = "windows"
 
@@ -35,19 +32,9 @@ UBSAN_LIBS = (
     "clang_rt.ubsan_standalone_cxx-x86_64.lib",
 )
 
-# LLVM ships UBSan's runtime built against the static CRT only -- there is no _dynamic
-# variant of it the way there is for ASan. cmake stamps every object it compiles with a
-# /failifmismatch directive naming the CRT it chose, defaults that to the dynamic one, and
-# the linker then refuses the pair:
-#
-#   lld-link: error: /failifmismatch: mismatch detected for 'RuntimeLibrary':
-#   >>> OrderBook.cpp.obj has value MD_DynamicRelease
-#   >>> clang_rt.ubsan_standalone_cxx-x86_64.lib(ubsan_type_hash_win.cpp.obj) MT_StaticRelease
-#
-# Measured. So the project is moved to the CRT its sanitizer runtime was built against,
-# rather than the other way round, which is not available. Only the configure can do it:
-# the directive is written when each object is compiled. Single-file builds never hit this
-# -- clang's own driver writes no such directive, which is why sanitize_file works.
+# LLVM ships UBSan's runtime for the static CRT only, and cmake stamps every object with a
+# /failifmismatch directive defaulting to the dynamic CRT -- the linker refuses the pair
+# (measured). Single-file builds never hit this: clang's driver writes no such directive.
 UBSAN_STATIC_CRT = ("-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",)
 
 # what that costs the caller, said out loud rather than silently changing the binary
@@ -146,13 +133,8 @@ def detect() -> Platform:
 
 def llvm_root() -> Path:
     """The LLVM installation whose clang++ toolchain discovery will find, or the default.
-
-    Discovery resolves clang++ through PATH, so the runtime tables must come from that
-    same installation: on a machine with two LLVMs, binding the installer default would
-    hand ASan and UBSan a different version's runtime than the compiler that builds with
-    them. The default stands when nothing on PATH answers, and when the PATH clang++
-    carries no runtime directory in the layout this table knows -- the probes then
-    report whatever is actually true of what got linked.
+    The runtime tables must come from the same installation as the PATH clang++: with two
+    LLVMs, the installer default would hand ASan a different version's runtime.
     """
     on_path = shutil.which(COMPILER)
     if on_path is None:
@@ -171,12 +153,9 @@ def find_ninja() -> Path | None:
 
 
 def cmake_extras(ninja: Path | None) -> tuple[str, ...]:
-    """Force the Ninja generator, which obeys CMAKE_CXX_COMPILER.
-
-    Measured: cmake's Windows default is the Visual Studio generator, which ignores the
-    chosen compiler and hands the build to cl.exe -- the configure then dies on cl
-    rejecting -Wthread-safety, three lines of MSBuild deep. Without a ninja to point at,
-    the default stands and the configure failure speaks for itself.
+    """Force the Ninja generator, which obeys CMAKE_CXX_COMPILER. Measured: cmake's Windows
+    default is the Visual Studio generator, which hands the build to cl.exe and dies on cl
+    rejecting -Wthread-safety. With no ninja to point at, the default stands.
     """
     if ninja is None:
         return ()
@@ -184,10 +163,8 @@ def cmake_extras(ninja: Path | None) -> tuple[str, ...]:
 
 
 def runtime_dir(root: Path) -> Path | None:
-    """Return the newest clang version's runtime directory, or None without an LLVM install.
-
-    Newest by the version number in the path, not by glob order: "9" sorts after "22" as
-    text, and the machine that has both wants the one its clang binary will link against.
+    """The newest clang version's runtime directory, or None without an LLVM install --
+    newest by the version number in the path, not glob order: "9" sorts after "22" as text.
     """
     versioned = [
         (int(path.parts[-3]), path) for path in root.glob(RUNTIME_DIRS) if path.parts[-3].isdigit()

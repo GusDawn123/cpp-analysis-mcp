@@ -1,9 +1,6 @@
-"""Keep scripts/fixtures.py, the C++ fixtures, and the captured goldens in agreement.
-
-The support matrix in scripts/fixtures.py is the ground truth for which fixture proves
-which tool still works. These tests fail when the three drift apart -- a case naming a
-source that no longer exists, a source nothing exercises, a golden that no case explains.
-No compiler is involved; everything here is reading files.
+"""Keep scripts/fixtures.py, the C++ fixtures, and the captured goldens in agreement: the
+support matrix is ground truth for which fixture proves which tool, and these fail when
+the three drift apart. No compiler is involved; everything here is reading files.
 """
 
 from __future__ import annotations
@@ -37,11 +34,9 @@ CASES_BY_KEY: dict[tuple[str, str], Any] = {(case.tool, case.fixture): case for 
 # tool_stem.os-family.txt -- the stem carries underscores, so peel the suffix off the end
 GOLDEN_NAME = re.compile(r"^(?P<pair>.+)\.(?P<os>darwin|linux|windows)-(?P<family>clang|gcc)\.txt$")
 
-# The capture script builds and runs programs, so it owns the runtime sanitizers only.
-# -Wthread-safety reports while compiling: there is nothing to run and no sanitizer to
-# name, so these are captured by hand and the matrix does not speak for them. One mapping
-# registers each hand-captured golden to its fixture -- two independent lists could drift,
-# and an orphaned or mistyped name on either side would pass both.
+# The capture script owns runtime sanitizers only; -Wthread-safety reports while compiling,
+# so it's captured by hand and the matrix doesn't speak for it. This mapping registers each
+# hand-captured golden to its fixture so the two lists can't drift apart silently.
 COMPILE_TIME_CAPTURES = {
     "unguarded_write": ("thread_safety_unguarded_write.darwin-clang.txt",),
     "nullptr_zero": ("clang_tidy_nullptr_zero.linux-clang.txt",),
@@ -181,7 +176,6 @@ def test_goldens_contain_what_their_case_expects() -> None:
 
 
 def test_golden_points_at_the_marked_bug_line() -> None:
-    """End-to-end check of the marker convention: TSan reported the line // BUG: sits on."""
     golden = GOLDEN_DIR / "tsan_data_race.darwin-clang.txt"
     assert golden.is_file(), f"missing captured output: {golden}"
 

@@ -7,6 +7,9 @@ requires-python = ">=3.11"
 dependencies = [
     "anyio>=4.14.2",
     "mcp>=2.0.0",
+    "pydantic>=2.0",
+    # clang-tidy writes its fix-its as YAML (--export-fixes); this reads that file
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -25,6 +28,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -40,7 +44,7 @@ exclude = ["*.md"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "evals"]
 python_version = "3.11"
 mypy_path = "src"
 
@@ -54,4 +58,5 @@ markers = ["integration: requires a real C++ toolchain"]
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}", "*.dSYM"]
 # don't depend on the editable-install .pth: sandboxed shells on macOS can
 # write it with the hidden flag set, which site.py (3.11.15+) silently skips
-pythonpath = ["src"]
+# "." puts evals/ on the path for tests/unit/evals; the wheel still ships src/ alone
+pythonpath = ["src", "."]

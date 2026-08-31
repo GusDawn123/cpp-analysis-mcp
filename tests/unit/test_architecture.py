@@ -1,14 +1,6 @@
-"""Enforce the layer rules from docs/architecture.md by reading the source tree.
-
-Each of the four rules is checked by parsing the real files under src/cpp_analysis_mcp
-with ast, so a violation fails a test instead of relying on review discipline. One
-narrower rule rides along: subprocess belongs to process.py alone. Most of the package
-is still docstring stubs; these tests are the ratchet for what gets added.
-
-Rule 3 is checked from its exception inwards. Something has to call platforms.detect(),
-and the rule is only worth anything while that something stays singular, so the tests
-below name the one sanctioned caller and refuse every other -- including the second-hand
-version, a pipeline importing the composition root to resolve a context of its own.
+"""Enforce the layer rules from docs/architecture.md by reading the source tree with ast:
+a violation fails a test instead of relying on review discipline. Each rule's own test
+below explains its own reasoning, including Rule 3's sanctioned exception.
 """
 
 from __future__ import annotations
@@ -30,6 +22,7 @@ PRIMITIVE_PACKAGES = ("build", "parsers", "platforms", "toolchains")
 TOP_LEVEL_PRIMITIVES = (
     PACKAGE_DIR / "capabilities.py",
     PACKAGE_DIR / "context.py",
+    PACKAGE_DIR / "fingerprints.py",
     PACKAGE_DIR / "process.py",
     PACKAGE_DIR / "wsl.py",
 )
@@ -67,7 +60,6 @@ IMPURE_ATTRIBUTES = ("os.system", "os.popen")
 
 
 def modules_in(*package_names: str) -> list[Path]:
-    """Return every .py file under the named subpackages, nested ones included."""
     found: list[Path] = []
     for name in package_names:
         found.extend(sorted((PACKAGE_DIR / name).rglob("*.py")))
@@ -85,11 +77,9 @@ def package_of(path: Path) -> str:
 
 
 def import_targets(node: ast.stmt, package: str) -> list[str]:
-    """Return the dotted names one import statement pulls in, relative forms resolved.
-
-    `from ..pipelines import sanitize` inside cpp_analysis_mcp.build yields both
-    cpp_analysis_mcp.pipelines and cpp_analysis_mcp.pipelines.sanitize, since the
-    imported name may be either a submodule or an attribute of the package.
+    """The dotted names one import statement pulls in, relative forms resolved: `from
+    ..pipelines import sanitize` yields both cpp_analysis_mcp.pipelines and .sanitize,
+    since the imported name may be either a submodule or an attribute of the package.
     """
     if isinstance(node, ast.Import):
         return [alias.name for alias in node.names]
@@ -114,15 +104,13 @@ def imports_of(tree: ast.Module, package: str) -> Iterator[tuple[ast.stmt, list[
 
 
 def reaches(target: str, package: str) -> bool:
-    """Report whether a dotted name is that package or something inside it."""
     return target == package or target.startswith(f"{package}.")
 
 
 def platform_lookups(tree: ast.Module) -> Iterator[ast.Attribute]:
-    """Yield every reference to platforms.detect, spelled bare or fully qualified.
-
-    An aliased import (`import ...platforms as p`) could still slip past; the ratchet is
-    aimed at honest drift in the spellings this package actually uses, not at evasion.
+    """Yield every reference to platforms.detect, spelled bare or fully qualified. An
+    aliased import could still slip past; the ratchet is aimed at honest drift in the
+    spellings this package actually uses, not at evasion.
     """
     for node in ast.walk(tree):
         if (
@@ -158,9 +146,8 @@ def test_layer_packages_exist() -> None:
 
 
 def test_every_layer_directory_under_tests_is_collected(pytestconfig: pytest.Config) -> None:
-    """pytest skips directories named "build" by default, and tests/unit/build/ is one.
-
-    Left at the default the build tests are never collected: no failures, no count, green.
+    """pytest skips directories named "build" by default, and tests/unit/build/ is one --
+    left at the default those tests are never collected: no failures, no count, green.
     A test that cannot run is worse than one that fails, so the exclusion is pinned here.
     """
     excluded = list(pytestconfig.getini("norecursedirs"))
@@ -220,11 +207,9 @@ def test_server_has_no_control_flow() -> None:
 
 
 def test_only_the_composition_root_looks_the_platform_up() -> None:
-    """Rule 3's sanctioned exception, made structural rather than remembered.
-
-    Something has to call platforms.detect(), and context.resolve() is that something. A
-    second caller is how the rule erodes: code that looks the platform up itself always
-    finds this machine, so the Linux behaviour it decides can never be tested from here.
+    """Rule 3's sanctioned exception, made structural rather than remembered: something
+    has to call platforms.detect(), and context.resolve() is that something. A second
+    caller always finds this machine, so the Linux behaviour it decides is untestable here.
     """
     violations: list[str] = []
     for path in sorted(PACKAGE_DIR.rglob("*.py")):
@@ -298,9 +283,37 @@ def test_only_process_may_spawn() -> None:
 
 
 def _callee_name(func: ast.expr) -> str:
-    """Return the last name in a call target: `open`, `p.open` -> open."""
     if isinstance(func, ast.Name):
         return func.id
     if isinstance(func, ast.Attribute):
         return func.attr
     return ""
+
+
+def test_analyzer_plugins_import_no_upper_layer() -> None:
+    """Plugins receive their tooling injected; they may never reach for it themselves. A
+    plugin importing the protocol, the composition root, or the pipelines is a pipeline
+    growing back under a new name -- the legitimate wiring lives outside analyzers/.
+    """
+    forbidden = (
+        "mcp",
+        f"{PACKAGE_NAME}.server",
+        f"{PACKAGE_NAME}.context",
+        f"{PACKAGE_NAME}.pipelines",
+        # the planner sits directly above the analyzers; a plugin importing it is the
+        # same upward reach one layer nearer
+        f"{PACKAGE_NAME}.planner",
+    )
+    violations: list[str] = []
+    for path in modules_in("analyzers"):
+        package = package_of(path)
+        for node, targets in imports_of(parse(path), package):
+            offending = [
+                target for target in targets if any(reaches(target, name) for name in forbidden)
+            ]
+            if offending:
+                violations.append(f"{path}:{node.lineno} imports {offending[0]}")
+
+    assert not violations, "analyzer plugins must not import upper layers:\n" + "\n".join(
+        violations
+    )

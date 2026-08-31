@@ -1,29 +1,21 @@
 """Everything server.py would otherwise have to decide at startup, decided one layer down.
-
-server.py holds no control flow at all (rule 2), and startup is nothing but decisions: which
-OS this is, which compilers the machine has, which of them to build with, what this machine
-can actually do, and where work is allowed to happen. Each of those needs a branch, so each
-lives here and the server's lifespan is one call whose result it hands to every pipeline.
-
-resolve() is the composition root -- the one sanctioned caller of platforms.detect() outside
-tests. Nothing below server.py may call it: a pipeline that resolved its own context would be
-looking the platform up globally, which is exactly what rule 3 forbids, and would stop being
-testable from one machine the moment it did.
+server.py holds no control flow (rule 2), so each startup decision lives here. resolve() is
+the composition root, the one sanctioned caller of platforms.detect() outside tests (rule 3).
 """
 
 from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp import capabilities, platforms, process, wsl
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
+from cpp_analysis_mcp import capabilities, container, platforms, process, wsl
 from cpp_analysis_mcp.platforms import windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import Runner
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 CLANG_FAMILY = "clang"
@@ -34,26 +26,24 @@ TEMP_PREFIX = "cpp-analysis-"
 # pays for compiling and running six smoke tests
 CACHE_DIR = Path.home() / ".cache" / "cpp-analysis-mcp"
 
-# names the compilers that were looked for and both ways the search comes back empty: a bare
-# "no toolchain found" leaves the reader guessing what to install, and "not on PATH" alone
-# would be a lie next to a `which clang++` that answers -- discovery also drops a compiler
-# that is there but exits nonzero on --version, which is macOS without Command Line Tools
+# names the compilers that were looked for and both ways the search comes back empty --
+# discovery also drops a compiler that answers `which` but exits nonzero on --version,
+# which is macOS without Command Line Tools
 NO_COMPILER = (
     "no usable C++ compiler found (looked for "
     f"{' and '.join(capabilities.COMPILER_CANDIDATES)}): neither is on PATH, or one is there "
     "but could not report a version when asked. Install or repair one: xcode-select --install "
     "or brew install llvm on macOS, sudo apt install clang or sudo apt install g++ on Debian "
-    "and Ubuntu."
+    "and Ubuntu, winget install LLVM.LLVM on Windows (then add its bin directory to PATH; "
+    "the installer offers a checkbox for it)."
 )
 
 
 @dataclass(frozen=True, slots=True)
 class Engine:
     """What one analysis actually runs on: a compiler, an OS's data, and a way to spawn.
-
-    Almost every analysis runs on the host's own engine. A bridged one -- TSan on a
-    Windows with a WSL distro -- runs on the bridge's, and deciding that here at startup
-    is what keeps the pipelines free of any idea that a second machine exists.
+    A bridged analysis -- TSan on a Windows with a WSL distro -- runs on the bridge's, and
+    deciding that at startup keeps the pipelines free of any idea of a second machine.
     """
 
     toolchain: Toolchain
@@ -64,16 +54,8 @@ class Engine:
 @dataclass(frozen=True, slots=True)
 class Context:
     """What one server process resolved once at startup and hands down to every call.
-
-    The Context docs/architecture.md sketches, with two fields added and one dropped. The
-    toolchain is here because the OS and the compiler vary independently and every pipeline
-    needs both. The runner is here because it is the one testability seam this project
-    allows: a fake replaces the subprocess boundary and nothing else, so a test drives the
-    real discovery, the real gate and the real composition without a compiler anywhere.
-
-    default_timeout_s is gone. Each pipeline knows what its own steps cost -- a sanitized run
-    is minutes and a syntax check is seconds -- so one number here would be too tight for one
-    and meaningless for the other.
+    Toolchain rides here because OS and compiler vary independently; Runner because it is
+    the one testability seam allowed. No default timeout -- each pipeline knows its costs.
     """
 
     platform: Platform  # the OS does not change mid-run
@@ -104,19 +86,9 @@ class Context:
 
 
 def prefer(toolchains: Sequence[Toolchain]) -> Toolchain:
-    """Choose which discovered compiler to build with: clang when the machine has one.
-
-    clang is the preference for the reasons docs/architecture.md gives under "Why clang is
-    still the default" -- it is the only compiler present on all three target platforms,
-    -Wthread-safety exists on no other, and its sanitizers are LLVM's own rather than a
-    periodic snapshot of them. It is never a requirement: a machine with only gcc gets gcc,
-    and the capability probes report what that costs.
-
-    Discovery order must not be what decides this. COMPILER_CANDIDATES happens to list
-    clang++ before g++ today, and a preference that rode on that would quietly invert the
-    day someone reordered the tuple.
-
-    Callers guarantee a non-empty sequence; resolve() is where the empty case is answered.
+    """Choose the build compiler: clang when the machine has one (docs/architecture.md says
+    why), never a requirement. Discovery order must not decide this -- relying on
+    COMPILER_CANDIDATES' order would quietly invert. Callers pass a non-empty sequence.
     """
     return next((chain for chain in toolchains if chain.family == CLANG_FAMILY), toolchains[0])
 
@@ -128,35 +100,23 @@ def resolve(
     runner: Runner = process.run,
 ) -> Context:
     """Read this host once and bind everything a request will need into one immutable value.
-
-    cache_dir defaults to CACHE_DIR rather than to None so a live server pays the probe cost
-    once per machine instead of once per start. Passing None explicitly is the way to say
-    "remember nothing", which is what probe_all already understands and what a caller who
-    must not write to a home directory asks for.
-
-    The workspace is settled first because it is the only question here that costs nothing to
-    answer. Everything after it spawns -- two version queries, then six compiles and six runs
-    -- and a configured path that can never hold a build should not surface at the end of all
-    that.
+    cache_dir=None means "remember nothing"; the default pays the probe cost once per machine.
+    The workspace settles first: it is the only question here that costs no spawns to answer.
     """
     platform = platforms.detect()
     workspace = _workspace(workspace)
     toolchains = capabilities.discover_toolchains(runner=runner)
-    # every analysis in the set needs something to compile with, so there is no reduced
-    # service to start up with here
+    # a machine with no compiler at all can still serve: the toolbox image carries one,
+    # and only when Docker cannot stand in either does startup refuse (ADR-0004's floor)
     if not toolchains:
-        raise RuntimeError(NO_COMPILER)
+        return _floor(platform, workspace, cache_dir, runner)
 
     toolchain = prefer(toolchains)
     statuses = capabilities.probe_all(toolchain, platform, cache_dir=cache_dir, runner=runner)
 
-    # Windows is the one OS with analyses it structurally cannot run and a Linux nearby
-    # that can. When a WSL distro answers for clang, the bridged analyses are probed
-    # through it -- same planted bugs, same cache, its own fingerprint -- and each one
-    # whose probe passed is rerouted: the bridged status replaces the denial and the
-    # engine points into the distro. A bridged probe that failed changes nothing: the
-    # native denial's suggestion already says what to fix, and no analysis is ever routed
-    # somewhere its probe did not pass.
+    # On Windows a WSL distro that answers gets probed too (same planted bugs, its own cache
+    # fingerprint); each analysis whose bridged probe passed is rerouted into the distro.
+    # No analysis is ever routed where its own probe didn't pass.
     engines: dict[Analysis, Engine] = {}
     bridge = wsl.discover(runner=runner) if platform.name == windows.NAME else None
     if bridge is not None:
@@ -170,6 +130,31 @@ def resolve(
                     toolchain=bridge.toolchain, platform=bridge.platform, runner=bridge.runner
                 )
 
+    # the container floor (ADR-0004): whatever is still unavailable gets one more chance
+    # inside the toolbox image. A machine already running everything asks Docker nothing.
+    needy = [
+        analysis
+        for analysis in Analysis
+        if not statuses[analysis].available and analysis in container.CARRIED
+    ]
+    if needy:
+        settled = container.discover(workspace=workspace, runner=runner)
+        if isinstance(settled, container.Bridge):
+            contained = capabilities.probe_all(
+                settled.toolchain, settled.platform, cache_dir=cache_dir, runner=settled.runner
+            )
+            for analysis in needy:
+                if contained[analysis].available:
+                    statuses[analysis] = contained[analysis]
+                    engines[analysis] = Engine(
+                        toolchain=settled.toolchain,
+                        platform=settled.platform,
+                        runner=settled.runner,
+                    )
+        else:
+            for analysis in needy:
+                statuses[analysis] = _offered_docker(statuses[analysis], settled)
+
     return Context(
         platform=platform,
         toolchain=toolchain,
@@ -180,25 +165,47 @@ def resolve(
     )
 
 
-def scratch(workspace: Path) -> Path:
-    """Return a fresh empty directory under the workspace for one call to build in.
+def _floor(platform: Platform, workspace: Path, cache_dir: Path | None, runner: Runner) -> Context:
+    """Serve a machine with no compiler through the container engine, or refuse plainly."""
+    settled = container.discover(workspace=workspace, runner=runner)
+    if isinstance(settled, container.Absence):
+        raise RuntimeError(
+            f"{NO_COMPILER} Or skip installing compilers: with Docker, every analysis "
+            f"can run inside the toolbox image -- {settled.reason}; {settled.suggestion}."
+        )
+    statuses = capabilities.probe_all(
+        settled.toolchain, settled.platform, cache_dir=cache_dir, runner=settled.runner
+    )
+    engine = Engine(toolchain=settled.toolchain, platform=settled.platform, runner=settled.runner)
+    return Context(
+        platform=platform,
+        toolchain=settled.toolchain,
+        capabilities=statuses,
+        workspace=workspace,
+        runner=runner,
+        engines={analysis: engine for analysis in settled.analyses if statuses[analysis].available},
+    )
 
-    Every tool call gets its own. Two requests sharing a build directory would overwrite each
-    other's binaries between the compile and the run, and each report would then describe
-    whatever the other one compiled last.
+
+def _offered_docker(status: CapabilityStatus, absence: container.Absence) -> CapabilityStatus:
+    """Add the container way out to an unavailable status, keeping its own advice first."""
+    hint = f"or run it in the container engine: {absence.reason} -- {absence.suggestion}"
+    combined = f"{status.suggestion}; {hint}" if status.suggestion else hint
+    return replace(status, suggestion=combined)
+
+
+def scratch(workspace: Path) -> Path:
+    """A fresh empty directory under the workspace for one call to build in. Two requests
+    sharing a build directory would overwrite each other's binaries between compile and
+    run, each report then describing whatever the other compiled last.
     """
     return Path(tempfile.mkdtemp(dir=workspace))
 
 
 def _workspace(workspace: Path | None) -> Path:
     """Use the directory the caller named, creating it when absent, or make a temporary one.
-
-    Absolute always. A relative path means "wherever this process happens to be", and the
-    host that launches an MCP server owns that: one chdir later, scratch() either fails or
-    builds somewhere nobody configured.
-
-    exist_ok, because a configured workspace is meant to survive restarts: whatever a
-    previous run left in it is the operator's, not ours to clear.
+    Absolute always -- a relative path means "wherever this process happens to be". exist_ok
+    because a configured workspace survives restarts; what it holds is the operator's.
     """
     if workspace is None:
         return Path(tempfile.mkdtemp(prefix=TEMP_PREFIX))

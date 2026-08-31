@@ -1,17 +1,6 @@
 """Resolve the composition root with no compiler anywhere: the only fake is the subprocess.
-
-resolve() reads the real host on purpose -- it is the one sanctioned caller of
-platforms.detect() -- so what these tests replace is the boundary underneath it: what PATH
-appears to hold, and what each spawn prints. Discovery, the clang preference, the probe gate
-and the cache are all the real code running.
-
-What the code under test decides is written down here rather than read back out of it: the
-compiler paths the fake PATH hands out, where the probe cache lives by default, the length of
-the name a cache file carries, and the phrase the no-compiler error names both compilers in.
-
-Three names are imported on purpose -- Analysis, SANITIZER_FOR and PROBE_STEM. Those are the
-vocabulary the fakes have to answer in, not expectations about behaviour: a test carrying its
-own list of analyses would quietly stop covering a seventh the day one is added.
+resolve() reads the real host on purpose, as platforms.detect()'s one sanctioned caller;
+tests fake only the boundary beneath it, against written-down expectations.
 """
 
 from __future__ import annotations
@@ -25,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from cpp_analysis_mcp import platforms, profiler
+from cpp_analysis_mcp import container, platforms, profiler
 from cpp_analysis_mcp.capabilities import PROBE_STEM
 from cpp_analysis_mcp.context import Context, prefer, resolve, scratch
-from cpp_analysis_mcp.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.platforms import linux, windows
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import SANITIZER_FOR, Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains import clang, gcc
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
@@ -125,10 +114,9 @@ class RefusingRunner:
 
 
 def perf_step(cmd: Sequence[str]) -> str | None:
-    """Return which perf subcommand a command runs, or None when it does not run perf.
-
-    Found by position rather than at argv[0], because a bridged spawn buries the real
-    command behind `wsl.exe -d Ubuntu --exec env` and the step still has to be readable.
+    """Return which perf subcommand a command runs, or None when it does not run perf --
+    found by position rather than at argv[0], because a bridged spawn buries the real
+    command behind `wsl.exe -d Ubuntu --exec env`.
     """
     names = [Path(arg).name for arg in cmd]
     if profiler.PERF not in names:
@@ -138,13 +126,9 @@ def perf_step(cmd: Sequence[str]) -> str | None:
 
 
 def probe_analysis(cmd: Sequence[str]) -> Analysis | None:
-    """Read which probe a command belongs to off the scratch file it names.
-
-    .exe comes off as well as .cpp: on a real Windows host the probes name their
-    binaries with the platform's executable suffix.
-
-    perf is recognized by name instead: its report step names only the trace and its own
-    flags, none of which carry the probe's stem, and one analysis reaches for perf.
+    """Read which probe a command belongs to off the scratch file it names. .exe comes off
+    as well as .cpp, since Windows probes carry the platform's suffix; perf is recognized
+    by name, because its report step never carries the probe's stem.
     """
     if perf_step(cmd) is not None:
         return Analysis.PROFILE
@@ -161,12 +145,9 @@ def probe_calls(runner: FakeRunner) -> list[list[str]]:
 
 
 def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
-    """Say whether this is the step whose output has to carry the marker.
-
-    A sanitizer probe detects when its binary runs, which is a bare one-element command;
-    the compile-time checks detect in the only step they have. Profiling has three steps
-    and detects in the last: recording writes a binary trace that says nothing readable,
-    so only the report can name the function the probe planted.
+    """Say whether this is the step whose output has to carry the marker: a sanitizer
+    probe detects when its bare binary runs, the compile-time checks in their only step,
+    and profiling in its report -- the recording is a binary trace saying nothing readable.
     """
     if analysis is Analysis.PROFILE:
         return perf_step(cmd) == "report"
@@ -175,6 +156,9 @@ def is_detection(cmd: Sequence[str], analysis: Analysis) -> bool:
 
 def a_host_where_every_detector_works(cmd: list[str]) -> RunResult:
     """Answer by command shape: a version query, a build that succeeds, a detector that reports."""
+    if Path(cmd[0]).name == "docker":
+        # no container engine on this host; tests that want one script docker themselves
+        return RunResult(exit_code=1, output="docker daemon is not running")
     if cmd[-1] == "--version":
         return RunResult(exit_code=0, output=VERSIONS[Path(cmd[0]).name])
     analysis = probe_analysis(cmd)
@@ -254,10 +238,9 @@ def test_resolve_binds_the_host_the_compiler_and_the_probes_into_one_value(
 def test_discovery_asked_the_callers_runner_what_the_compilers_are(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Discovery is a spawn too -- `<compiler> --version` on everything PATH offered -- and it
-    has to go through the injected runner like every other one. A resolve() that discovered
-    with its own runner would run the developer's real compilers behind a test's back, and
-    then bind the context to whatever those said rather than to what the test scripted."""
+    """Discovery is a spawn too -- `<compiler> --version` on everything PATH offered -- and
+    it must go through the injected runner: a resolve() that discovered with its own
+    runner would run the developer's real compilers behind a test's back."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -271,11 +254,9 @@ def test_discovery_asked_the_callers_runner_what_the_compilers_are(
 def test_the_probes_ran_through_the_callers_runner_on_the_chosen_compiler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The capability table must describe the toolchain the context binds, and its probes must
-    be visible to whoever injected the runner. A resolve() that probed with its own runner
-    would compile for real behind a test's back, and one that probed the other compiler would
-    hand every request a table about a machine the pipelines never build on: -Wthread-safety
-    probed on gcc reads unavailable while the clang builds quietly have it."""
+    """The capability table must describe the toolchain the context binds, and its probes
+    must be visible to whoever injected the runner: probing the other compiler would hand
+    every request a table about a machine the pipelines never build on."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -296,11 +277,8 @@ def test_startup_still_prefers_clang_when_discovery_hands_back_gcc_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """prefer() is tested on its own above; this pins that resolve() is the one asking it.
-
-    The two version texts are swapped, which inverts discovery's order the way a real host
-    can -- family comes off the version text, so the clang++ binary here is a gcc and the g++
-    binary is a clang. Taking whatever discovery found first would cost every -Wthread-safety
-    analysis on a machine that has clang, and nothing in the suite would notice."""
+    The two version texts are swapped, inverting discovery's order the way a real host
+    can -- family comes off the version text, so the g++-named binary here is the clang."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_each_binary_reports_the_other_family)
 
@@ -318,12 +296,9 @@ def test_startup_still_prefers_clang_when_discovery_hands_back_gcc_first(
 def test_asking_for_no_cache_probes_again_and_leaves_nothing_behind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """cache_dir=None is the explicit "don't remember this", which is what a test asking not
-    to touch the developer's home directory needs, and what probe_all already understands.
-
-    What proves nothing was remembered is the second start paying for every probe again.
-    Watching the real ~/.cache would prove less and flake more: any other process on the
-    machine writing there mid-test fails a run of perfectly correct code."""
+    """cache_dir=None is the explicit "don't remember this". What proves nothing was
+    remembered is the second start paying for every probe again -- watching the real
+    ~/.cache would prove less and flake more on unrelated writers."""
     both_compilers_on_path(monkeypatch)
     runner = FakeRunner(a_host_where_every_detector_works)
 
@@ -363,10 +338,9 @@ def test_the_cache_directory_the_caller_named_is_the_one_the_probes_use(
 
 
 def test_a_server_that_asks_for_nothing_gets_the_probe_cache() -> None:
-    """The default is the whole point of CACHE_DIR: a live start that forgot to ask must pay
-    the six probes once per machine, not once per start. No test may exercise the default
-    behaviorally -- it writes into the developer's real home directory -- so the promise is
-    pinned on the signature, where a default quietly flipped to None is still visible."""
+    """The default is the whole point of CACHE_DIR: a live start must pay the probes once
+    per machine, not once per start. No test may exercise the default behaviorally -- it
+    writes the developer's real home -- so the promise is pinned on the signature."""
     default = inspect.signature(resolve).parameters["cache_dir"].default
 
     # spelled out rather than imported from context.py: a pin that reads CACHE_DIR back
@@ -516,11 +490,9 @@ UBUNTU_CLANG = "Ubuntu clang version 21.1.8 (6ubuntu1)\nTarget: x86_64-pc-linux-
 
 
 def a_windows_machine(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pin the detected platform to Windows, whatever OS this test host happens to be.
-
-    The bridge exists for exactly one platform, and these tests have to hold on the other
-    two as well -- so this is the one section that fakes detect() rather than reading the
-    real host, in order to stand on the platform whose behaviour it pins.
+    """Pin the detected platform to Windows, whatever OS this test host happens to be:
+    the bridge exists for one platform and these tests must hold on the other two, so
+    this is the one section that fakes detect() rather than reading the real host.
     """
     both_compilers_on_path(monkeypatch)
     monkeypatch.setattr(platforms, "detect", windows.detect)
@@ -694,3 +666,142 @@ def test_the_capability_table_cannot_be_edited_through_the_context(
         context.capabilities[Analysis.TSAN] = denied  # type: ignore[index]
 
     shutil.rmtree(context.workspace)
+
+
+# ------------------------------------------------------------------------- the container floor
+
+DOCKER_EXE = str(BIN_DIR / "docker")
+
+CONTAINER_CLANG = "Ubuntu clang version 18.1.3 (1ubuntu1)\nTarget: x86_64-pc-linux-gnu\n"
+
+
+def a_docker_with_the_toolbox(cmd: list[str]) -> RunResult:
+    """Answer as a machine with a running daemon and the toolbox image would."""
+    if cmd[1] == "version":
+        return RunResult(exit_code=0, output="29.3.1\n")
+    if cmd[1:3] == ["image", "inspect"]:
+        return RunResult(exit_code=0, output="sha256:toolbox\n")
+    if cmd[1] == "run":
+        inner = cmd[cmd.index(container.IMAGE) + 1 :]
+        if inner[-1] == "--version":
+            return RunResult(exit_code=0, output=CONTAINER_CLANG)
+        if inner[0] == "cat":
+            return RunResult(exit_code=0, output="28\n" if "mmap" in inner[1] else "2\n")
+        analysis = probe_analysis(inner)
+        if analysis is not None and is_detection(inner, analysis):
+            exit_code, report = CAUGHT[analysis]
+            return RunResult(exit_code=exit_code, output=report)
+    return RunResult(exit_code=0, output="")
+
+
+def a_linux_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin detect() to Linux so these tests hold identically on every CI host."""
+    monkeypatch.setattr(platforms, "detect", linux.detect)
+
+
+def test_a_machine_that_runs_everything_asks_docker_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The container is a fallback, never a toll: a fully tooled host must start exactly
+    as it did before the engine existed, with no docker spawn on its startup path."""
+    a_linux_machine(monkeypatch)
+    both_compilers_on_path(monkeypatch)
+    runner = FakeRunner(a_host_where_every_detector_works)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    assert all(Path(cmd[0]).name != "docker" for cmd in runner.calls)
+    assert all(engine.platform.name == "linux" for engine in context.engines.values())
+    shutil.rmtree(context.workspace)
+
+
+def test_a_missing_tool_is_carried_by_the_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The point of the floor: clang-tidy is not installed, Docker is, so the tidy probe
+    runs inside the toolbox and only tidy moves -- everything native stays native."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(
+        shutil, "which", lambda name: None if name == "clang-tidy" else str(BIN_DIR / name)
+    )
+
+    def reply(cmd: list[str]) -> RunResult:
+        if Path(cmd[0]).name == "docker":
+            return a_docker_with_the_toolbox(cmd)
+        return a_host_where_every_detector_works(cmd)
+
+    runner = FakeRunner(reply)
+    context = resolve(cache_dir=None, runner=runner)
+
+    status = context.capabilities[Analysis.CLANG_TIDY]
+    assert status.available
+    assert any("container" in note for note in status.limitations)
+    engine = context.engines[Analysis.CLANG_TIDY]
+    assert engine.platform.name == container.NAME
+    assert engine.runner is not runner
+    assert context.engines[Analysis.TSAN].platform.name == "linux"
+    assert context.toolchain.compiler == Path(CLANG_PATH)
+    shutil.rmtree(context.workspace)
+
+
+def test_without_docker_the_refusal_names_the_container_way_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A status that stays unavailable now also says Docker could carry it -- the only
+    place a zero-tools reader learns the one install that unlocks everything."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: None if name in ("clang-tidy", "docker") else str(BIN_DIR / name),
+    )
+    runner = FakeRunner(a_host_where_every_detector_works)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    status = context.capabilities[Analysis.CLANG_TIDY]
+    assert not status.available
+    assert status.suggestion is not None
+    assert "container engine" in status.suggestion
+    assert "install Docker" in status.suggestion
+    assert context.engines[Analysis.CLANG_TIDY].platform.name == "linux"
+    shutil.rmtree(context.workspace)
+
+
+def test_a_machine_with_no_compiler_serves_through_the_toolbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The zero-tools machine: startup used to refuse outright; with Docker present it now
+    binds the container's own clang and routes every carried analysis inside."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda name: DOCKER_EXE if name == "docker" else None)
+    runner = FakeRunner(a_docker_with_the_toolbox)
+
+    context = resolve(cache_dir=None, runner=runner)
+
+    assert context.toolchain.family == "clang"
+    assert "18" in context.toolchain.version
+    assert context.platform.name == "linux"
+    for analysis in (Analysis.TSAN, Analysis.ASAN, Analysis.CLANG_TIDY):
+        assert context.capabilities[analysis].available
+        assert context.engines[analysis].platform.name == container.NAME
+    profile = context.capabilities[Analysis.PROFILE]
+    assert not profile.available
+    assert profile.reason is not None and "profile" in profile.reason
+    shutil.rmtree(context.workspace)
+
+
+def test_no_compiler_and_no_docker_refuses_naming_both_ways_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal keeps teaching: compilers to install, or the one Docker install that
+    makes them unnecessary. Nothing is spawned; there is nothing to run."""
+    a_linux_machine(monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    with pytest.raises(RuntimeError) as raised:
+        resolve(cache_dir=None, runner=RefusingRunner())
+
+    message = str(raised.value)
+    assert "clang++ and g++" in message
+    assert "Docker" in message

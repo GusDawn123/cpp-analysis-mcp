@@ -1,17 +1,12 @@
 """Read a real perf table, and every shape it uses to say it does not know something.
-
-REPORT below is not written by hand: it is what `perf report --stdio -g none --sort
-symbol,srcline --full-source-path -t ';'` printed for a small C++ program on Ubuntu 26.04
-under WSL2, trimmed only in the length of the paths. That matters more here than for the
-sanitizer parsers, because perf's table is padded to the widest demangled symbol in the
-profile and an approximation would be padded differently -- a parser that passed against a
-tidy hand-written sample would meet template-heavy C++ and read the wrong columns.
+REPORT is real `perf report --stdio -g none --sort symbol,srcline --full-source-path -t ';'`
+output (Ubuntu 26.04, WSL2), trimmed only in path length: a tidy sample would pad differently.
 """
 
 from __future__ import annotations
 
-from cpp_analysis_mcp.models import Hotspot
 from cpp_analysis_mcp.parsers.perf import header, parse
+from cpp_analysis_mcp.store.models import Hotspot
 
 # captured output. The interesting rows, in order: a hot function with a source line; main;
 # three frames perf could not place; and an inlined standard library frame with no self time
@@ -73,10 +68,9 @@ def test_output_with_no_header_says_so_rather_than_guessing() -> None:
 
 
 def test_the_hottest_self_time_leads_rather_than_the_deepest_stack() -> None:
-    """perf ranks by cumulative time, which puts _start and main on top of every profile.
-
-    Those are true and never the answer. Self time names the code actually executing, so
-    the ranking is rebuilt on it -- otherwise the first thing a reader sees is the runtime.
+    """perf ranks by cumulative time, which puts _start and main on top of every profile --
+    true and never the answer. Self time names the code actually executing, so the ranking
+    is rebuilt on it; otherwise the first thing a reader sees is the runtime.
     """
     spots = parse(REPORT)
 
@@ -100,10 +94,9 @@ def test_a_resolved_row_carries_the_line_to_open() -> None:
 
 
 def test_every_shape_perf_uses_for_unknown_becomes_no_location() -> None:
-    """Four of them, and a Location built from any would point somewhere unopenable.
-
-    Line 0 is the subtle one: perf resolved the object but no line inside it, so the file
-    is real and the position is not.
+    """Four of them, and a Location built from any would point somewhere unopenable. Line 0
+    is the subtle one: perf resolved the object but no line inside it, so the file is real
+    and the position is not.
     """
     for name in ("__libc_start_main", "_start", "0x000074f3cea2a601"):
         assert by_name(REPORT, name).location is None, name

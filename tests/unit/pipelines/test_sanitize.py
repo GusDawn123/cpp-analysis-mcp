@@ -1,15 +1,6 @@
-"""Drive the whole sanitize chain with no compiler and no child process anywhere.
-
-The only thing faked is the subprocess boundary: capability gating, build composition,
-environment binding and parsing are the real code, and the fake answers each spawn with
-text a real sanitizer once printed. That is why the run-stage replies are committed
-goldens rather than invented strings -- a chain that parsed a hand-written approximation
-would keep passing on the day it stopped understanding the real thing.
-
-Every expectation is written down rather than read from the code under test: the pinned
-TSan options, the category and line each golden holds, the name the build gives a
-sanitized binary. Assertions are on what the fake recorded and on what came back, never
-on how many times something was called.
+"""Drive the whole sanitize chain with no compiler and no child process anywhere. Only the
+subprocess boundary is faked, and run-stage replies are committed goldens, never invented
+strings, so an approximation can't keep passing after the real tool's output changes.
 """
 
 from __future__ import annotations
@@ -22,10 +13,10 @@ from pathlib import Path
 import pytest
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.pipelines.sanitize import analyze_file, analyze_project, analyze_snippet
 from cpp_analysis_mcp.platforms.base import Platform
 from cpp_analysis_mcp.process import RunResult
+from cpp_analysis_mcp.store.models import Analysis, AnalysisReport, BuildFailure, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 # ---------------------------------------------------------------- pinned expectations
@@ -196,9 +187,8 @@ def write_json(path: Path, document: object) -> None:
 
 
 def write_reply(build_dir: Path, executables: tuple[tuple[str, str], ...]) -> None:
-    """Leave the index, codemodel and target files a real configure would have written.
-
-    Reading these is how the build learns where the artifact lands, so the run's command
+    """Leave the index, codemodel and target files a real configure would have written:
+    reading these is how the build learns where the artifact lands, so the run's command
     can only be right if the whole chain read them.
     """
     reply_dir = build_dir / REPLY_DIR
@@ -265,10 +255,9 @@ def a_denied_status() -> CapabilityStatus:
 
 
 def statuses(status: CapabilityStatus) -> dict[Analysis, CapabilityStatus]:
-    """The same status under every analysis, the compile-time ones included.
-
-    THREAD_SAFETY and CLANG_TIDY are in here on purpose: asking this pipeline for one must
-    fail on the sanitizer lookup, not on a capability the test forgot to write down.
+    """The same status under every analysis, the compile-time ones included on purpose:
+    asking this pipeline for one must fail on the sanitizer lookup, not on a capability
+    the test forgot to write down.
     """
     return dict.fromkeys(Analysis, status)
 
@@ -349,7 +338,6 @@ def test_the_run_gets_the_options_its_build_chose_and_nothing_from_the_shell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The false all-clear in one test: a TSan run without TSAN_OPTIONS reports nothing.
-
     All four variables are poisoned in this process first, so this proves the pipeline
     replaced them rather than that they happened to be absent.
     """
@@ -368,9 +356,8 @@ def test_the_run_gets_the_options_its_build_chose_and_nothing_from_the_shell(
 def test_the_run_keeps_the_rest_of_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Hygiene means replacing the sanitizer variables, not starting from an empty world.
-
-    The run still needs PATH and friends: on Linux the TSan runtime finds llvm-symbolizer
+    """Hygiene means replacing the sanitizer variables, not starting from an empty world:
+    the run still needs PATH and friends -- on Linux the TSan runtime finds llvm-symbolizer
     through them, and without it every frame in a report is a raw address.
     """
     monkeypatch.setenv("CPP_ANALYSIS_TEST_CANARY", "still-here")
@@ -384,10 +371,9 @@ def test_the_run_keeps_the_rest_of_the_environment(
 def test_an_asan_run_pins_no_options_and_still_strips_the_shell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ASan's goldens were captured on its defaults, so its pinned table is empty.
-
-    Empty is not "leave the shell alone": the developer's ASAN_OPTIONS could turn off the
-    very check being asked for, so all four still have to go.
+    """ASan's goldens were captured on its defaults, so its pinned table is empty. Empty is
+    not "leave the shell alone": the developer's ASAN_OPTIONS could turn off the very check
+    being asked for, so all four still have to go.
     """
     for name in EVERY_SANITIZER_VAR:
         monkeypatch.setenv(name, POISON)
@@ -617,10 +603,9 @@ def test_a_project_configures_builds_and_then_runs_what_cmake_named(tmp_path: Pa
 
 
 def test_the_callers_chosen_target_is_the_one_built_and_run(tmp_path: Path) -> None:
-    """With two executables the caller's word decides which one is analyzed.
-
-    A pipeline that dropped the target on the way down would come back asking the caller
-    to choose from the very list the caller already chose from.
+    """With two executables the caller's word decides which one is analyzed. A pipeline
+    that dropped the target on the way down would come back asking the caller to choose
+    from the very list the caller already chose from.
     """
     project_dir = tmp_path / "project"
     project_dir.mkdir()
@@ -664,3 +649,25 @@ def test_a_project_whose_capability_is_denied_spawns_no_cmake(tmp_path: Path) ->
     )
 
     assert result is status
+
+
+def test_findings_say_which_engine_observed_them(tmp_path: Path) -> None:
+    """ADR-0004: a race witnessed inside a container must say so on the finding itself."""
+    runner = ScriptedRunner(
+        [SUCCESS, RunResult(exit_code=TSAN_EXIT_CODE, output=golden(TSAN_RACE_GOLDEN))]
+    )
+    bridged = Platform(name="container", engine="container", compile_extras=LINUX_COMPILE_EXTRAS)
+
+    report = reported(
+        analyze_file(
+            a_source(tmp_path),
+            Analysis.TSAN,
+            toolchain=a_clang(),
+            platform=bridged,
+            capabilities=statuses(a_working_status()),
+            build_dir=build_dir(tmp_path),
+            runner=runner,
+        )
+    )
+
+    assert report.findings and all(f.engine == "container" for f in report.findings)

@@ -1,18 +1,16 @@
 """The contract every platform satisfies: what this OS refuses, what it caveats, how it fails.
-
-Tables and one lookup. Reading the real host happens in each platform's detect(); everything
-else receives a Platform as an argument (rule 3), which is what lets the Linux tables be
-developed and tested from a macOS laptop.
+Tables and one lookup; reading the real host happens only in each platform's detect(), so
+the Linux tables can be developed and tested from a macOS laptop (rule 3).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
-from cpp_analysis_mcp.models import Analysis, SanitizerKind
+from cpp_analysis_mcp.store.models import Analysis, Finding, SanitizerKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,18 +30,30 @@ class FailureSignature:
     suggestion: str | None = None
 
 
+LOCAL_ENGINE = "local"
+
+
+def stamped(findings: tuple[Finding, ...], engine: str) -> tuple[Finding, ...]:
+    """Mark where these findings were observed; the local default costs no copies."""
+    if engine == LOCAL_ENGINE:
+        return findings
+    return tuple(replace(finding, engine=engine) for finding in findings)
+
+
 @dataclass(frozen=True, slots=True)
 class Platform:
     """One operating system's differences, as data."""
 
     name: str  # "linux", "darwin" or "windows"
+    # which engine work sent here runs on -- Finding.engine's value. Bridges (wsl,
+    # container) set their own name; a real OS keeps "local".
+    engine: str = LOCAL_ENGINE
     compile_extras: tuple[str, ...] = ()
     # what a runnable binary's name must end in: ".exe" on Windows, "" elsewhere
     executable_suffix: str = ""
-    # extra link inputs a sanitized build needs, per sanitizer. Measured on Windows: the
-    # linker resolves the runtime by bare name through the MSVC lib directories first,
-    # which hands the link a library built for a different compiler and fails on symbols
-    # only MSVC's own objects define; the full path pins LLVM's own runtime instead
+    # extra link inputs a sanitized build needs, per sanitizer. Measured on Windows: linking
+    # the runtime by bare name resolves through MSVC's lib directories to a library built
+    # for a different compiler; the full path pins LLVM's own runtime instead
     sanitize_link_extras: Mapping[SanitizerKind, tuple[str, ...]] = field(default_factory=dict)
     # DLLs a sanitized binary needs found at load time, per sanitizer. Windows looks
     # beside the executable first, so builds copy these next to what they produce
@@ -53,9 +63,8 @@ class Platform:
     # build to cl.exe, so the configure must name a generator that obeys the choice
     cmake_extras: tuple[str, ...] = ()
     # extra cmake configure arguments one sanitizer needs, on top of cmake_extras. Separate
-    # from sanitize_link_extras because these have to reach the configure rather than the
-    # link: they change how every object in the project is compiled, and an object is only
-    # compiled once. Measured on Windows for UBSan -- see windows.py
+    # from sanitize_link_extras because these must reach the configure, not the link: they
+    # change how every object compiles. Measured on Windows for UBSan -- see windows.py
     sanitize_cmake_extras: Mapping[SanitizerKind, tuple[str, ...]] = field(default_factory=dict)
     # searched on top of PATH: brew installs llvm outside it on macOS
     extra_tool_dirs: tuple[Path, ...] = ()

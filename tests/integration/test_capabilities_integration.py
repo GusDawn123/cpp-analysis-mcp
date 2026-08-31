@@ -1,10 +1,6 @@
-"""Run the real probes against the real compilers on this machine.
-
-The unit suite proves the classification; this proves the probes themselves -- that the
-snippets still compile, that each sanitizer still reports the bug planted for it, and that
-what capabilities.py concludes matches what scripts/fixtures.py says this OS supports. It
-compiles and runs a handful of programs per compiler, so it takes tens of seconds and is
-marked integration; `make test` excludes it and `make integration` runs it alone.
+"""Run the real probes against the real compilers on this machine: snippets compile, each
+sanitizer reports its planted bug, and capabilities.py matches what scripts/fixtures.py
+says this OS supports. Tens of seconds per compiler -- `make integration`, not `make test`.
 """
 
 from __future__ import annotations
@@ -20,7 +16,7 @@ from helpers import FIXTURES_SCRIPT
 
 from cpp_analysis_mcp import platforms
 from cpp_analysis_mcp.capabilities import discover_toolchains, probe_all
-from cpp_analysis_mcp.models import Analysis, CapabilityStatus
+from cpp_analysis_mcp.store.models import Analysis, CapabilityStatus
 from cpp_analysis_mcp.toolchains.base import Toolchain
 
 pytestmark = pytest.mark.integration
@@ -51,10 +47,9 @@ SUPPORT: list[Any] = list(load_fixtures_script().SUPPORT)
 
 
 def expected_here() -> dict[Analysis, bool]:
-    """Read off the capture script which sanitizers this OS is supposed to support.
-
-    A tool counts as supported when any one of its cases runs here: TSan's deadlock case is
-    Linux-only, but its data race case runs everywhere, so TSan is supported on both.
+    """Read off the capture script which sanitizers this OS is supposed to support: a tool
+    counts as supported when any one of its cases runs here -- TSan's deadlock case is
+    Linux-only, but its data race case runs everywhere.
     """
     here = host_platform.system().lower()
     expected: dict[Analysis, bool] = {}

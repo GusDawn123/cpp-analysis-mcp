@@ -1,8 +1,6 @@
-"""Check the LSan parser against the committed leak goldens.
-
-LSan only runs on Linux, so there are two goldens. Every constant was read out of
-the golden it is keyed by; the multi-record cases below are hand-written in the same
-format, since no captured run leaks twice.
+"""Check the LSan parser against the committed leak goldens (LSan only runs on Linux, so
+there are two). Every constant was read out of the golden it is keyed by; the multi-record
+cases are hand-written in the same format, since no captured run leaks twice.
 """
 
 from __future__ import annotations
@@ -12,8 +10,8 @@ from dataclasses import dataclass
 import pytest
 from helpers import GOLDEN_DIR
 
-from cpp_analysis_mcp.models import Severity
 from cpp_analysis_mcp.parsers import lsan
+from cpp_analysis_mcp.store.models import Severity
 
 
 @dataclass(frozen=True)
@@ -157,3 +155,23 @@ def test_empty_text_reports_nothing() -> None:
 
 def test_garbage_text_reports_nothing() -> None:
     assert lsan.parse(GARBAGE) == []
+
+
+def test_a_windows_drive_survives_the_frame_parse() -> None:
+    """Same colon trap as ASan's frames: the drive letter must stay on the file."""
+    report = (
+        "==7==ERROR: LeakSanitizer: detected memory leaks\n"
+        "\n"
+        "Direct leak of 4 byte(s) in 1 object(s) allocated from:\n"
+        "    #0 0x4df in operator new(unsigned long) compiler-rt/asan_new_delete.cpp:95\n"
+        "    #1 0x55f in main C:\\Users\\dev\\ws\\leak.cpp:3:13\n"
+        "\n"
+        "SUMMARY: LeakSanitizer: 4 byte(s) leaked in 1 allocation(s).\n"
+    )
+    findings = lsan.parse(report)
+    location = findings[0].location
+
+    assert location is not None
+    assert location.file == "C:\\Users\\dev\\ws\\leak.cpp"
+    assert location.line == 3
+    assert location.column == 13

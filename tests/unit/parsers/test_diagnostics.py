@@ -1,10 +1,6 @@
-"""Pin the compiler-diagnostic parser against a captured -Wthread-safety run.
-
-Every number here was read out of the golden by eye and written down; nothing is computed
-from the parser it checks, so a parser that starts reporting a different line, severity or
-category fails instead of moving the expectation with it. The synthetic cases below cover
-the forms one macOS clang run cannot show: gcc's flagless diagnostics, errors, missing
-columns, and the note lines that must never become findings of their own.
+"""Pin the compiler-diagnostic parser against a captured -Wthread-safety run. Every number
+was read off the golden by eye, not computed from the parser it checks. Synthetic cases
+cover what macOS clang alone can't: gcc's flagless diagnostics, missing columns, notes.
 """
 
 from __future__ import annotations
@@ -13,8 +9,8 @@ from pathlib import Path
 
 from helpers import GOLDEN_DIR, bug_line
 
-from cpp_analysis_mcp.models import Location, Severity
 from cpp_analysis_mcp.parsers.diagnostics import parse
+from cpp_analysis_mcp.store.models import Location, Severity
 
 THREAD_SAFETY_GOLDEN = "thread_safety_unguarded_write.darwin-clang.txt"
 
@@ -69,7 +65,6 @@ def test_the_flag_suffix_leaves_the_message() -> None:
 
 
 def test_the_golden_blames_the_marked_bug_line() -> None:
-    """End-to-end on the fixture convention: clang named the line // BUG: sits on."""
     finding = parse(golden(THREAD_SAFETY_GOLDEN))[0]
 
     assert finding.location is not None
@@ -114,9 +109,8 @@ def test_errors_keep_their_severity() -> None:
 
 def test_a_promoted_warning_is_an_error_filed_under_its_own_flag() -> None:
     """-Werror=flag prints [-Werror=flag]: the severity is promoted, the category is not.
-
-    A category of "error=thread-safety-analysis" would slip past every filter that looks
-    for the flag's name, which is exactly how a promoted lock bug would go unreported.
+    A category of "error=thread-safety-analysis" would slip past every filter looking for
+    the flag's name -- exactly how a promoted lock bug would go unreported.
     """
     text = (
         "a.cpp:21:5: error: writing variable 'counter' requires holding mutex "
@@ -212,7 +206,6 @@ def test_aggregation_keeps_first_seen_order() -> None:
 
 
 def test_lines_differing_anywhere_stay_separate() -> None:
-    """Same message, different position, severity or flag: three problems, not one."""
     text = (
         "a.cpp:1:1: warning: same words [-Wone]\n"
         "a.cpp:2:1: warning: same words [-Wone]\n"

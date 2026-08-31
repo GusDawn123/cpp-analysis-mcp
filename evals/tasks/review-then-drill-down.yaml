@@ -1,0 +1,10 @@
+id: review-then-drill-down
+title: A finding in the index is opened whole before it is acted on
+prompt: >-
+  Review my working tree in {project} against origin/develop, then show me the full detail of
+  the worst thing it found.
+needs_project: true
+expected:
+  first_tool: review
+  calls: [review, get_finding]
+  max_calls: 6

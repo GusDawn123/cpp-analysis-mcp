@@ -1,8 +1,6 @@
 """macOS: brew keeps llvm off PATH, LeakSanitizer has no arm64 build, TSan sees no deadlocks.
-
-Both entries below were measured against the fixtures: the leak case and the deadlock case
-are the two scripts/fixtures.py skips here, and this is where those skips become something
-the server can report.
+Both denials below were measured against the fixtures -- the two cases scripts/fixtures.py
+skips here, turned into something the server can report.
 """
 
 from __future__ import annotations
@@ -10,8 +8,8 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
-from cpp_analysis_mcp.models import Analysis
 from cpp_analysis_mcp.platforms.base import Denial, Platform
+from cpp_analysis_mcp.store.models import Analysis
 
 NAME = "darwin"
 
