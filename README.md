@@ -146,30 +146,29 @@ kernel's performance counters, and the report says exactly that.
 
 ## Setup
 
-You need Python 3.11+ and uv. For the C++ side: a compiler (clang or
-gcc) -- or no tools at all and just Docker, which the server uses to
-run the whole toolchain in a container when the host is missing it.
+One command, no clone. You need [uv](https://docs.astral.sh/uv/);
+for the C++ side, a compiler (clang or gcc) — or no tools at all and
+just Docker, which the server uses to run the whole toolchain in a
+container when the host is missing it.
+
+For Claude Code:
 
 ```bash
-git clone https://github.com/GusDawn123/cpp-analysis-mcp
-cd cpp-analysis-mcp
-uv sync
+claude mcp add cpp-analysis -- uvx --from git+https://github.com/GusDawn123/cpp-analysis-mcp cpp-analysis-mcp
 ```
 
-Then register it with your agent. For Claude Code:
-
-```bash
-claude mcp add cpp-analysis -- uv run --directory <path-to-repo> cpp-analysis-mcp
-```
-
-For any other MCP client, add the same command to its config file:
+For any other MCP client, the same command in its config file:
 
 ```json
 { "mcpServers": { "cpp-analysis": {
-    "command": "uv",
-    "args": ["run", "--directory", "<path-to-repo>", "cpp-analysis-mcp"]
+    "command": "uvx",
+    "args": ["--from", "git+https://github.com/GusDawn123/cpp-analysis-mcp", "cpp-analysis-mcp"]
 }}}
 ```
+
+uvx downloads, builds, and caches it on first run. (Working on the
+server's own code? Then clone and register with
+`uv run --directory <path-to-repo> cpp-analysis-mcp` instead.)
 
 The first start takes a minute. The server compiles and runs a tiny
 buggy program for each analysis to prove the tool really works on
